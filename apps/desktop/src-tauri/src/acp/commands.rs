@@ -26,6 +26,19 @@ impl SessionState {
         }
     }
 
+    /// Stores the newly connected session, stopping the one it replaces. A session started
+    /// for a project that is no longer open (`still_current` false) is stopped instead.
+    async fn install(&self, session: Arc<Session>, still_current: bool) -> Result<()> {
+        if !still_current {
+            session.close();
+            return Err(ProjectError::Other("The project changed while the agent was starting".into()));
+        }
+        if let Some(old) = self.0.lock().await.replace(session) {
+            old.close();
+        }
+        Ok(())
+    }
+
     async fn current(&self) -> Result<Arc<Session>> {
         self.0.lock().await.clone().ok_or_else(|| ProjectError::Other("No agent is connected".into()))
     }
@@ -81,6 +94,14 @@ pub fn spawn(spec: &LaunchSpec, root: PathBuf, agent_id: String, events: Arc<dyn
     Ok(session)
 }
 
+/// Passes `r` through, telling the chat when a connect step failed so it doesn't keep showing the old state.
+fn reported<T>(events: &Arc<dyn SessionEvents>, agent_id: &str, r: Result<T>) -> Result<T> {
+    if let Err(e) = &r {
+        events.emit("agent://status", json!({ "state": "error", "agentId": agent_id, "message": e.to_string() }));
+    }
+    r
+}
+
 async fn resolve_spec(app: &AppHandle, agent_id: &str) -> Result<LaunchSpec> {
     let path = shell_path::login_path().await;
     let settings = agents::commands::load(app)?;
@@ -102,15 +123,11 @@ pub async fn agent_connect(
     };
     sessions.close().await;
     let events: Arc<dyn SessionEvents> = Arc::new(TauriEvents(app.clone()));
-    let spec = match resolve_spec(&app, &agent_id).await {
-        Ok(spec) => spec,
-        Err(e) => {
-            events.emit("agent://status", json!({ "state": "error", "agentId": agent_id, "message": e.to_string() }));
-            return Err(e);
-        }
-    };
-    let session = spawn(&spec, root, agent_id, events)?;
-    *sessions.0.lock().await = Some(session.clone());
+    let spec = reported(&events, &agent_id, resolve_spec(&app, &agent_id).await)?;
+    let session = reported(&events, &agent_id, spawn(&spec, root.clone(), agent_id.clone(), events.clone()))?;
+    // resolving the login-shell PATH can take seconds; the project may have been switched meanwhile
+    let still_current = project.root().ok().as_ref() == Some(&root);
+    sessions.install(session.clone(), still_current).await?;
     session.start().await
 }
 
@@ -169,5 +186,50 @@ mod tests {
         let session = spawn(&spec, root, id, Arc::new(Print)).unwrap();
         tokio::time::timeout(std::time::Duration::from_secs(60), session.start()).await.expect("start timed out").unwrap();
         session.close();
+    }
+
+    fn fake_session() -> Arc<Session> {
+        let (r, w, _agent) = crate::acp::fake::pair();
+        Session::connect(r, w, std::env::temp_dir(), "fake".into(), Arc::new(Print))
+    }
+
+    #[derive(Default)]
+    struct Seen(Mutex<Vec<(String, Value)>>);
+
+    impl SessionEvents for Seen {
+        fn emit(&self, event: &str, payload: Value) {
+            self.0.lock().unwrap().push((event.into(), payload));
+        }
+    }
+
+    #[test]
+    fn a_failed_connect_step_is_reported_as_an_error_status() {
+        let seen = Arc::new(Seen::default());
+        let events: Arc<dyn SessionEvents> = seen.clone();
+        let r: Result<()> = reported(&events, "gemini", Err(ProjectError::Other("Couldn't start gemini: not found".into())));
+        assert!(r.is_err());
+        let got = seen.0.lock().unwrap();
+        assert_eq!(got[0].0, "agent://status");
+        assert_eq!(got[0].1, json!({ "state": "error", "agentId": "gemini", "message": "Couldn't start gemini: not found" }));
+    }
+
+    #[tokio::test]
+    async fn installing_a_session_closes_the_one_it_replaces() {
+        let state = SessionState::default();
+        let (first, second) = (fake_session(), fake_session());
+        state.install(first.clone(), true).await.unwrap();
+        state.install(second.clone(), true).await.unwrap();
+        assert!(first.is_closing(), "the overwritten session is stopped, not leaked");
+        assert!(!second.is_closing());
+        assert!(Arc::ptr_eq(&state.current().await.unwrap(), &second));
+    }
+
+    #[tokio::test]
+    async fn a_session_for_a_project_no_longer_open_is_closed_not_stored() {
+        let state = SessionState::default();
+        let stale = fake_session();
+        assert!(state.install(stale.clone(), false).await.is_err());
+        assert!(stale.is_closing());
+        assert!(state.current().await.is_err());
     }
 }

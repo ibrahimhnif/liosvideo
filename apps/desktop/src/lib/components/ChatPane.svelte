@@ -69,7 +69,7 @@
     {#if running}
       <button onclick={() => api.cancel().catch(fail)}>Cancel</button>
     {:else}
-      <button onclick={() => api.connect().catch(fail)}>{chat.connection ? "Reconnect" : "Connect"}</button>
+      <button disabled={chat.connection?.state === "connecting"} onclick={() => api.connect().catch(fail)}>{chat.connection ? "Reconnect" : "Connect"}</button>
     {/if}
   </div>
   {#if chat.connection?.state === "auth_required"}

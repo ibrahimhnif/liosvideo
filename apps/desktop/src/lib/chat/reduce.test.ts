@@ -24,7 +24,7 @@ describe("applyEvent", () => {
       { type: "update", update: { sessionUpdate: "tool_call_update", toolCallId: "t1", status: "completed", content: [{ type: "diff", path: "scenes/intro.ts", oldText: "a", newText: "b" }, { type: "content", content: { type: "text", text: "ok" } }] } },
     ]);
     expect(s.items).toEqual([
-      { kind: "tool", id: "t1", title: "Edit intro", toolKind: "edit", status: "completed", locations: ["/p/scenes/intro.ts"], content: ["Edited scenes/intro.ts", "ok"] },
+      { kind: "tool", id: "k1", toolCallId: "t1", gen: 0, title: "Edit intro", toolKind: "edit", status: "completed", locations: ["/p/scenes/intro.ts"], content: ["Edited scenes/intro.ts", "ok"] },
     ]);
   });
 
@@ -43,7 +43,7 @@ describe("applyEvent", () => {
     ]);
     expect(s.turn).toBe("running");
     expect(s.items[0]).toMatchObject({ kind: "user", text: "do it", selection: "long.ts › intro" });
-    expect(s.items[1]).toMatchObject({ kind: "permission", id: "p1", title: "Run rm" });
+    expect(s.items[1]).toMatchObject({ kind: "permission", requestId: "p1", title: "Run rm" });
     s = run([{ type: "turn", state: "ended", stopReason: "cancelled" }], s);
     expect(s.turn).toBe("idle");
     expect(s.items[1]).toMatchObject({ answer: "cancelled" });
@@ -68,6 +68,27 @@ describe("applyEvent", () => {
     expect(s.items.at(-1)).toMatchObject({ kind: "notice", level: "error", text: "segfault" });
     const t = run([{ type: "turn", state: "ended", error: "Agent exited" }]);
     expect(t.items.at(-1)).toMatchObject({ kind: "notice", level: "error", text: "Agent exited" });
+  });
+
+  it("keeps item keys unique when a reconnected agent reuses its ids", () => {
+    const perm = { type: "permission" as const, requestId: "perm-1", toolCall: { title: "Write" }, options: [{ optionId: "ok", name: "Allow", kind: "allow_once" }] };
+    const tool = (title: string) => ({ type: "update" as const, update: { sessionUpdate: "tool_call", toolCallId: "1", title } });
+    const s = run([
+      { type: "status", state: "ready", agentId: "gemini" },
+      perm,
+      tool("first"),
+      { type: "turn", state: "ended", stopReason: "end_turn" },
+      { type: "status", state: "connecting", agentId: "gemini" },
+      { type: "status", state: "ready", agentId: "gemini" },
+      perm,
+      tool("second"),
+      { type: "answered", requestId: "perm-1", optionId: "ok" },
+    ]);
+    const ids = s.items.map((i) => i.id);
+    expect(new Set(ids).size).toBe(ids.length);
+    const perms = s.items.filter((i) => i.kind === "permission");
+    expect(perms.map((p) => p.answer)).toEqual(["cancelled", "ok"]);
+    expect(s.items.filter((i) => i.kind === "tool").map((t) => t.title)).toEqual(["first", "second"]);
   });
 
   it("ignores unknown update variants", () => {

@@ -48,11 +48,13 @@ pub fn resolve_in_project(root: &Path, rel: &str) -> Result<PathBuf> {
     let root = root.canonicalize()?;
     let joined = root.join(&normalized);
     // Canonicalize the deepest existing ancestor so symlinks are resolved even for new files.
+    // A dangling symlink counts as existing; it can't be canonicalized, so it is refused
+    // rather than letting a write follow it out of the project.
     let mut existing = joined.as_path();
-    while !existing.exists() {
+    while existing.symlink_metadata().is_err() {
         existing = existing.parent().ok_or_else(outside)?;
     }
-    if !existing.canonicalize()?.starts_with(&root) {
+    if !existing.canonicalize().map_err(|_| outside())?.starts_with(&root) {
         return Err(outside());
     }
     Ok(joined)
@@ -295,6 +297,15 @@ mod tests {
         fs::write(outside.path().join("f"), "secret").unwrap();
         std::os::unix::fs::symlink(outside.path(), dir.path().join("link")).unwrap();
         assert!(resolve_in_project(dir.path(), "link/f").is_err());
+    }
+
+    #[test]
+    fn rejects_dangling_symlinks_leading_outside() {
+        let dir = project();
+        let outside = tempfile::tempdir().unwrap();
+        std::os::unix::fs::symlink(outside.path().join("new"), dir.path().join("out")).unwrap();
+        assert!(resolve_in_project(dir.path(), "out").is_err());
+        assert!(resolve_in_project(dir.path(), "out/deeper.txt").is_err());
     }
 
     #[test]

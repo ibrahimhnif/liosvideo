@@ -26,7 +26,7 @@
     {#each item.entries as e, i (i)}<div class="entry {e.status}">{e.status === "completed" ? "✓" : e.status === "in_progress" ? "▸" : "○"} {e.content}</div>{/each}
   </div>
 {:else if item.kind === "permission"}
-  <PermissionCard {item} onAnswer={(optionId) => onAnswer(item.id, optionId)} />
+  <PermissionCard {item} onAnswer={(optionId) => onAnswer(item.requestId, optionId)} />
 {:else if item.kind === "notice"}
   <div class="notice {item.level}">{item.text}</div>
 {/if}

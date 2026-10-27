@@ -97,6 +97,8 @@ fn cancelled() -> Value {
 }
 
 /// One ACP session for the open project: the connection, its turn state and pending permission prompts.
+const START_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(60);
+
 pub struct Session {
     client: AcpClient,
     root: PathBuf,
@@ -181,12 +183,28 @@ impl Session {
 
     /// `initialize` + `session/new`; reports ready, auth_required or error through status events.
     pub async fn start(&self) -> Result<(), ProjectError> {
+        self.start_within(START_TIMEOUT).await
+    }
+
+    /// `start`, giving up (and stopping the agent) when it doesn't answer within `limit`.
+    pub async fn start_within(&self, limit: std::time::Duration) -> Result<(), ProjectError> {
         self.status("connecting", json!({}));
-        if let Err(e) = self.client.initialize().await {
-            self.status("error", json!({ "message": e.message }));
-            return Err(ProjectError::Other(e.message));
+        let handshake = async {
+            if let Err(e) = self.client.initialize().await {
+                self.status("error", json!({ "message": e.message }));
+                return Err(ProjectError::Other(e.message));
+            }
+            self.open_session().await
+        };
+        match tokio::time::timeout(limit, handshake).await {
+            Ok(result) => result,
+            Err(_) => {
+                let message = format!("The agent didn't respond within {} s", limit.as_secs());
+                self.close();
+                self.status("error", json!({ "message": message }));
+                Err(ProjectError::Other(message))
+            }
         }
-        self.open_session().await
     }
 
     pub async fn authenticate(&self, method_id: &str) -> Result<(), ProjectError> {
@@ -340,6 +358,22 @@ mod tests {
         start.await.unwrap().unwrap();
         assert_eq!(rec.of("agent://status").last().unwrap()["state"], "ready");
         (session, agent, rec)
+    }
+
+    #[tokio::test]
+    async fn start_gives_up_on_a_silent_agent() {
+        let dir = project(false);
+        let (r, w, mut agent) = pair();
+        let rec = Arc::new(Recorder::default());
+        let session = Session::connect(r, w, dir.path().canonicalize().unwrap(), "fake".into(), rec.clone());
+        let s = session.clone();
+        let start = tokio::spawn(async move { s.start_within(std::time::Duration::from_millis(50)).await });
+        agent.recv_method("initialize").await; // never answered
+        assert!(start.await.unwrap().is_err());
+        let last = rec.of("agent://status").last().unwrap().clone();
+        assert_eq!(last["state"], "error");
+        assert!(last["message"].as_str().unwrap().contains("didn't respond"));
+        assert!(session.is_closing());
     }
 
     fn summaries(root: &std::path::Path) -> Vec<String> {

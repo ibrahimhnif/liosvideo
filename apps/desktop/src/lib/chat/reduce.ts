@@ -4,9 +4,9 @@ export type ChatItem =
   | { kind: "user"; id: string; text: string; selection?: string }
   | { kind: "agent"; id: string; text: string; messageId?: string }
   | { kind: "thought"; id: string; text: string; messageId?: string }
-  | { kind: "tool"; id: string; title: string; toolKind: string; status: string; locations: string[]; content: string[] }
+  | { kind: "tool"; id: string; toolCallId: string; gen: number; title: string; toolKind: string; status: string; locations: string[]; content: string[] }
   | { kind: "plan"; id: string; entries: { content: string; status: string; priority: string }[] }
-  | { kind: "permission"; id: string; title: string; options: PermissionOption[]; answer?: string }
+  | { kind: "permission"; id: string; requestId: string; gen: number; title: string; options: PermissionOption[]; answer?: string }
   | { kind: "notice"; id: string; level: "info" | "error"; text: string };
 
 export type Connection = {
@@ -14,12 +14,14 @@ export type Connection = {
   agentInfo?: { name?: string; title?: string; version?: string } | null;
 };
 
-export type ChatState = { items: ChatItem[]; turn: "idle" | "running"; connection?: Connection; nextId: number };
+/** `id` keys an item in the list and is never reused; agents' own ids (tool calls, permission
+ * requests) restart with each connection, so they are matched within the current `gen` only. */
+export type ChatState = { items: ChatItem[]; turn: "idle" | "running"; connection?: Connection; nextId: number; gen: number };
 
 /** Events the UI adds on its own, next to the agent's. */
 export type ChatEvent = AgentEvent | { type: "user"; text: string; selection?: string } | { type: "answered"; requestId: string; optionId: string | null };
 
-export const initialChat = (): ChatState => ({ items: [], turn: "idle", nextId: 1 });
+export const initialChat = (): ChatState => ({ items: [], turn: "idle", nextId: 1, gen: 0 });
 
 const textOf = (block: any): string => (block?.type === "text" ? String(block.text ?? "") : "");
 
@@ -32,6 +34,9 @@ function toolContent(content: any[] | undefined): string[] | undefined {
     return [];
   });
 }
+
+const cancelOpen = (items: ChatItem[]): ChatItem[] =>
+  items.map((x) => (x.kind === "permission" && x.answer === undefined ? { ...x, answer: "cancelled" } : x));
 
 function notice(s: ChatState, level: "info" | "error", text: string): ChatState {
   return { ...s, items: [...s.items, { kind: "notice", id: `n${s.nextId}`, level, text }], nextId: s.nextId + 1 };
@@ -51,18 +56,20 @@ function applyUpdate(s: ChatState, u: any): ChatState {
     }
     case "tool_call":
     case "tool_call_update": {
-      const i = s.items.findIndex((x) => x.kind === "tool" && x.id === u.toolCallId);
+      const i = s.items.findIndex((x) => x.kind === "tool" && x.toolCallId === u.toolCallId && x.gen === s.gen);
       const prev = i >= 0 ? (s.items[i] as Extract<ChatItem, { kind: "tool" }>) : undefined;
       const item: ChatItem = {
         kind: "tool",
-        id: u.toolCallId,
+        id: prev?.id ?? `k${s.nextId}`,
+        toolCallId: u.toolCallId,
+        gen: s.gen,
         title: u.title ?? prev?.title ?? "Tool call",
         toolKind: u.kind ?? prev?.toolKind ?? "other",
         status: u.status ?? prev?.status ?? "pending",
         locations: Array.isArray(u.locations) ? u.locations.map((l: any) => String(l.path)) : (prev?.locations ?? []),
         content: toolContent(u.content) ?? prev?.content ?? [],
       };
-      if (i < 0) return { ...s, items: [...s.items, item] };
+      if (i < 0) return { ...s, items: [...s.items, item], nextId: s.nextId + 1 };
       return { ...s, items: s.items.map((x, j) => (j === i ? item : x)) };
     }
     case "plan": {
@@ -85,19 +92,21 @@ export function applyEvent(s: ChatState, e: ChatEvent): ChatState {
     case "permission":
       return {
         ...s,
-        items: [...s.items, { kind: "permission", id: e.requestId, title: e.toolCall?.title ?? "The agent asks for permission", options: e.options }],
+        items: [...s.items, { kind: "permission", id: `k${s.nextId}`, requestId: e.requestId, gen: s.gen, title: e.toolCall?.title ?? "The agent asks for permission", options: e.options }],
+        nextId: s.nextId + 1,
       };
     case "answered":
-      return { ...s, items: s.items.map((x) => (x.kind === "permission" && x.id === e.requestId ? { ...x, answer: e.optionId ?? "cancelled" } : x)) };
+      return { ...s, items: s.items.map((x) => (x.kind === "permission" && x.requestId === e.requestId && x.gen === s.gen ? { ...x, answer: e.optionId ?? "cancelled" } : x)) };
     case "turn": {
       if (e.state === "started") return { ...s, turn: "running" };
-      const items = s.items.map((x) => (x.kind === "permission" && x.answer === undefined ? { ...x, answer: "cancelled" } : x));
-      const ended = { ...s, items, turn: "idle" as const };
+      const ended = { ...s, items: cancelOpen(s.items), turn: "idle" as const };
       return e.error ? notice(ended, "error", e.error) : ended;
     }
     case "status": {
       const { type: _, ...connection } = e;
-      const next = { ...s, connection, turn: e.state === "ready" || e.state === "connecting" ? s.turn : ("idle" as const) };
+      // a new connection: the agent's ids start over and old permission requests can't be answered
+      const fresh = e.state === "connecting" ? { ...s, items: cancelOpen(s.items), gen: s.gen + 1 } : s;
+      const next = { ...fresh, connection, turn: e.state === "ready" || e.state === "connecting" ? fresh.turn : ("idle" as const) };
       if (e.state === "error" || e.state === "exited") return notice(next, "error", e.message ?? `The agent ${e.state === "exited" ? "exited" : "failed"}`);
       return next;
     }
