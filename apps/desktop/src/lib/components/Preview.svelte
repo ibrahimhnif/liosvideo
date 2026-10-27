@@ -6,6 +6,7 @@
   import { BuildCoordinator, bundleComposition, type BuildError } from "$lib/bundle/bundler";
   import { devLog, devSnapshots } from "$lib/devlog";
   import { loadProjectImage } from "$lib/preview/assets";
+  import { AudioPlayer } from "$lib/preview/audio_player";
   import { PlaybackClock } from "$lib/preview/clock";
   import { PreviewHost, SceneError, SupersededError, arrayBufferToBase64 } from "$lib/preview/host";
   import type { LoadedInfo, SourceLocation } from "$lib/preview/protocol";
@@ -30,6 +31,7 @@
   let runtimeError = $state<{ message: string; stack?: string; location?: SourceLocation } | undefined>();
 
   const clock = new PlaybackClock(30, 0);
+  const audioPlayer = new AudioPlayer();
   let host: PreviewHost;
   let lastFiles = new Set<string>();
   let lastBuildOk = true;
@@ -73,6 +75,8 @@
         info = loaded;
         runtimeError = undefined;
         clock.setLength(loaded.fps, loaded.totalFrames);
+        const allClips = loaded.manifest.audioTracks?.flatMap((t) => t.clips) ?? [];
+        audioPlayer.setClips(allClips).catch((e) => devLog(`audio-error ${e}`));
         select(reconcileSelection(selection.current, entry, loaded.manifest));
         invoke("report_timeline_manifest", { composition: entry, manifest: loaded.manifest }).catch(() => {});
         devLog(`timeline ${entry} ${visibleRows(loaded.manifest, new Set(loaded.manifest.scenes.map((s) => s.id))).map((r) => "  ".repeat(r.depth) + r.label).join(" | ")}`);
@@ -96,14 +100,21 @@
 
   function toggle() {
     const now = performance.now();
-    if (clock.playing) clock.pause(now);
-    else clock.play(now);
+    if (clock.playing) {
+      clock.pause(now);
+      audioPlayer.pause();
+    } else {
+      clock.play(now);
+      audioPlayer.play(clock.frameAt(now), info?.fps ?? 30);
+    }
     playing = clock.playing;
   }
 
   function seek(f: number) {
     clock.seek(f);
-    show(clock.frameAt(performance.now()));
+    const targetFrame = clock.frameAt(performance.now());
+    show(targetFrame);
+    audioPlayer.seek(targetFrame, info?.fps ?? 30);
   }
 
   function onKey(e: KeyboardEvent) {
@@ -133,8 +144,12 @@
 
     let raf = 0;
     const tick = () => {
+      const wasPlaying = playing;
       if (clock.playing) show(clock.frameAt(performance.now()));
       playing = clock.playing;
+      if (wasPlaying && !playing) {
+        audioPlayer.pause();
+      }
       raf = requestAnimationFrame(tick);
     };
     raf = requestAnimationFrame(tick);
@@ -183,6 +198,7 @@
       void unlisten.then((u) => u());
       void unlistenCapture.then((u) => u());
       void unlistenSeek.then((u) => u());
+      audioPlayer.destroy();
       host.dispose();
     };
   });
