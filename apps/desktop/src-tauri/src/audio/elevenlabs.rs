@@ -29,7 +29,7 @@ struct TtsResponse {
 impl ElevenLabsTtsProvider {
     pub fn new(api_key: Option<String>) -> Self {
         Self {
-            api_key: api_key.or_else(|| std::env::var("ELEVENLABS_API_KEY").ok()),
+            api_key: api_key.or_else(|| crate::keychain::Keychain::get_secret("ELEVENLABS_API_KEY")),
             client: reqwest::Client::new(),
         }
     }

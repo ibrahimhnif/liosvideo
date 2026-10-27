@@ -3,6 +3,7 @@ mod agents;
 pub mod audio;
 pub mod export;
 mod git;
+pub mod keychain;
 pub mod mcp;
 mod project;
 mod recent;
@@ -82,6 +83,9 @@ pub fn run() {
             project::asset_url_path,
             export::save_exported_video,
             export::save_voice_recording,
+            keychain::get_api_key,
+            keychain::set_api_key,
+            keychain::delete_api_key,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

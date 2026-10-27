@@ -35,8 +35,8 @@ impl GoogleCloudTtsProvider {
     pub fn new(api_key: Option<String>) -> Self {
         Self {
             api_key: api_key
-                .or_else(|| std::env::var("GOOGLE_TTS_API_KEY").ok())
-                .or_else(|| std::env::var("GOOGLE_API_KEY").ok()),
+                .or_else(|| crate::keychain::Keychain::get_secret("GOOGLE_TTS_API_KEY"))
+                .or_else(|| crate::keychain::Keychain::get_secret("GOOGLE_API_KEY")),
             client: reqwest::Client::new(),
         }
     }
