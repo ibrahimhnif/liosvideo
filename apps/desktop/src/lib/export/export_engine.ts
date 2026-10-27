@@ -7,6 +7,52 @@ import {
   Quality,
 } from "mediabunny";
 
+/**
+ * In Safari / WebKit (e.g. macOS WKWebView in Tauri), hardware VideoToolbox buffers
+ * lookahead frames for rate control and B-frames without emitting chunks or firing 'dequeue'
+ * until additional future frames are pushed into the pipeline.
+ *
+ * Mediabunny pauses feeding when `encodeQueueSize >= 4` and waits for a 'dequeue' event.
+ * Without this fallback timer, VideoToolbox waits for frames while Mediabunny waits for dequeue,
+ * causing a permanent deadlock at Frame 5.
+ */
+function patchEncoderDequeue(EncoderClass: any) {
+  if (!EncoderClass?.prototype) return;
+  const proto = EncoderClass.prototype;
+  if (proto.__dequeuePatched) return;
+  proto.__dequeuePatched = true;
+
+  const origAddEventListener = proto.addEventListener;
+  proto.addEventListener = function (type: string, listener: any, options: any) {
+    if (type === "dequeue" && typeof listener === "function") {
+      let fired = false;
+      const wrapped = (e: any) => {
+        if (!fired) {
+          fired = true;
+          clearTimeout(timer);
+          listener.call(this, e);
+        }
+      };
+      const timer = setTimeout(() => {
+        if (!fired) {
+          fired = true;
+          try {
+            this.removeEventListener("dequeue", wrapped);
+          } catch {}
+          listener.call(this, new Event("dequeue"));
+        }
+      }, 4);
+      return origAddEventListener.call(this, type, wrapped, options);
+    }
+    return origAddEventListener.call(this, type, listener, options);
+  };
+}
+
+if (typeof globalThis !== "undefined") {
+  patchEncoderDequeue((globalThis as any).VideoEncoder);
+  patchEncoderDequeue((globalThis as any).AudioEncoder);
+}
+
 export interface ExportConfig {
   width: number;
   height: number;
@@ -61,6 +107,8 @@ export class ExportEngine {
     onProgress?: (percent: number, stage?: string, logLine?: string) => void,
   ): Promise<Uint8Array> {
     this.cancelled = false;
+    patchEncoderDequeue((globalThis as any).VideoEncoder);
+    patchEncoderDequeue((globalThis as any).AudioEncoder);
 
     this.log(
       `export: Initializing Mediabunny (${this.config.width}x${this.config.height} @ ${this.config.fps}fps, totalFrames=${this.config.totalFrames})`,
