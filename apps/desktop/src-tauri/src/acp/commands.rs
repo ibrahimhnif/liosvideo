@@ -125,7 +125,12 @@ pub async fn get_or_start_mcp_server(app: &AppHandle) -> Option<u16> {
             if eleven.has_key() {
                 Arc::new(eleven)
             } else {
-                Arc::new(crate::audio::MockTtsProvider::new())
+                let google = crate::audio::GoogleCloudTtsProvider::new(None);
+                if google.has_key() {
+                    Arc::new(google)
+                } else {
+                    Arc::new(crate::audio::MockTtsProvider::new())
+                }
             }
         }
     };
