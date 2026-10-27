@@ -37,7 +37,10 @@ describe("ExportModal", () => {
       resolveExport = res;
     });
 
-    const onStart = vi.fn().mockImplementation(() => exportPromise);
+    const onStart = vi.fn().mockImplementation((_cfg, onProgress) => {
+      onProgress(50, "Rendering frame 45/90...", "Frame 45/90 rendered");
+      return exportPromise;
+    });
     const onFinder = vi.fn();
 
     const screen = await render(ExportModal, {
@@ -54,6 +57,11 @@ describe("ExportModal", () => {
 
     await screen.getByRole("button", { name: "Start Export" }).click();
     expect(onStart).toHaveBeenCalled();
+
+    // Verify progress text and stage are rendered
+    await expect.element(screen.getByText("Exporting... 50%")).toBeVisible();
+    await expect.element(screen.getByTestId("progress-stage")).toHaveTextContent("Rendering frame 45/90...");
+    await expect.element(screen.getByTestId("export-logs")).toBeVisible();
 
     // Resolves export completion
     resolveExport("/path/to/out/video.mp4");

@@ -1,8 +1,7 @@
 import { invoke } from "@tauri-apps/api/core";
 
-/** Mirrors a diagnostic line to the `tauri dev` terminal (development builds only). */
+/** Mirrors a diagnostic line to console and the `tauri dev` terminal. */
 export function devLog(message: string): void {
-  if (!import.meta.env.DEV) return;
   console.log(message);
   invoke("dev_log", { message: `${Date.now()} ${message}` }).catch(() => {});
 }

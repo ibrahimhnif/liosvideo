@@ -147,16 +147,27 @@
     }
   }
 
-  export async function runExport(config: ExportConfig, onProgress: (pct: number) => void): Promise<string> {
+  export async function runExport(
+    config: ExportConfig,
+    onProgress: (pct: number, stage?: string, logLine?: string) => void,
+  ): Promise<string> {
     if (!host || !info) throw new Error("Composition not loaded");
     if (clock.playing) toggle();
 
+    devLog(`[export] Starting export for ${entry}: ${config.totalFrames} frames (${(config.totalFrames / config.fps).toFixed(1)}s), ${config.width}x${config.height} @ ${config.fps}fps`);
+    onProgress(0, "Preparing export...", `Starting export: ${config.totalFrames} frames`);
+
     host.resize(config.width, config.height);
-    currentExportEngine = new ExportEngine(config);
+    currentExportEngine = new ExportEngine(config, { log: devLog });
 
     try {
+      devLog("[export] Step 1/3: Audio mixdown started");
+      onProgress(0, "Mixing audio tracks...", "Preparing audio mixdown");
+
       const audioBuffer = info.manifest
         ? await mixdownAudio(info.manifest, async (src) => {
+            devLog(`[export] Loading audio asset: ${src}`);
+            onProgress(0, `Loading audio: ${src}...`, `Loading audio asset "${src}"`);
             const path = await invoke<string>("asset_url_path", { rel: src });
             const url = convertFileSrc(path);
             const res = await fetch(url);
@@ -165,6 +176,10 @@
           })
         : null;
 
+      devLog(`[export] Step 1/3: Audio mixdown complete (${audioBuffer ? `${(audioBuffer.length / audioBuffer.sampleRate).toFixed(1)}s` : "none"})`);
+      onProgress(0, "Audio ready", "Audio mixdown completed");
+
+      devLog("[export] Step 2/3: Video & Audio encoding started");
       const bytes = await currentExportEngine.export(
         async (f) => {
           await host.renderFrame(f);
@@ -174,10 +189,31 @@
         onProgress,
       );
 
+      devLog(`[export] Step 2/3: Encoding complete, size=${bytes.length} bytes`);
+      onProgress(100, "Saving video file...", `Saving ${bytes.length} bytes to disk`);
+
       const timestamp = new Date().toISOString().replace(/[:.]/g, "-");
       const filename = `${entry.replace(/\.ts$/, "")}-${timestamp}.mp4`;
-      const filePath = await saveExportedVideoChunks(filename, bytes);
+      devLog(`[export] Step 3/3: Writing ${filename} to out/ directory...`);
+
+      const filePath = await saveExportedVideoChunks(
+        filename,
+        bytes,
+        invoke,
+        2 * 1024 * 1024,
+        (chunkIdx, totalChunks) => {
+          const pct = Math.round((chunkIdx / totalChunks) * 100);
+          devLog(`[export] Saving file: ${chunkIdx}/${totalChunks} chunks (${pct}%)`);
+          onProgress(100, `Saving file (${pct}%)...`, `Saved chunk ${chunkIdx}/${totalChunks} (${pct}%)`);
+        },
+      );
+
+      devLog(`[export] Export finished successfully! Saved to: ${filePath}`);
+      onProgress(100, "Export completed!", `Export saved to ${filePath}`);
       return filePath;
+    } catch (err: any) {
+      devLog(`[export] ERROR: ${err?.message ?? err}`);
+      throw err;
     } finally {
       currentExportEngine = null;
       fitCanvas();

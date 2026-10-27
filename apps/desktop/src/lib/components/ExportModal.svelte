@@ -20,7 +20,7 @@
     fps: number;
     totalFrames: number;
     onClose: () => void;
-    onStartExport: (config: ExportConfig, onProgress: (pct: number) => void) => Promise<string>;
+    onStartExport: (config: ExportConfig, onProgress: (pct: number, stage?: string, logLine?: string) => void) => Promise<string>;
     onCancelExport?: () => void;
     onShowInFinder?: (filePath: string) => Promise<void>;
   } = $props();
@@ -29,6 +29,8 @@
   let selectedFps = $state(30);
   let status = $state<"idle" | "exporting" | "done" | "error">("idle");
   let progress = $state(0);
+  let currentStage = $state("Starting export...");
+  let logLines = $state<string[]>([]);
   let outputPath = $state("");
   let errorMessage = $state("");
   let wasOpen = false;
@@ -42,6 +44,8 @@
       selectedFps = fps;
       status = "idle";
       progress = 0;
+      currentStage = "Starting export...";
+      logLines = [];
       outputPath = "";
       errorMessage = "";
     }
@@ -64,6 +68,8 @@
   async function handleStart() {
     status = "exporting";
     progress = 0;
+    currentStage = "Starting export...";
+    logLines = [];
     errorMessage = "";
     try {
       const config: ExportConfig = {
@@ -73,8 +79,13 @@
         totalFrames,
         bitrate: targetResolution.bitrate,
       };
-      const resultPath = await onStartExport(config, (pct) => {
+      const resultPath = await onStartExport(config, (pct, stage, log) => {
         progress = pct;
+        if (stage) currentStage = stage;
+        if (log) {
+          const time = new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", second: "2-digit" });
+          logLines = [...logLines.slice(-49), `[${time}] ${log}`];
+        }
       });
       outputPath = resultPath;
       status = "done";
@@ -149,6 +160,16 @@
               <div class="progress-fill" style:width="{progress}%"></div>
             </div>
             <span class="progress-text">Exporting... {progress}%</span>
+            <span class="progress-stage" data-testid="progress-stage">{currentStage}</span>
+            <div class="log-container" data-testid="export-logs">
+              {#if logLines.length === 0}
+                <div class="log-line text-muted">Waiting for export pipeline...</div>
+              {:else}
+                {#each logLines.slice(-5) as line}
+                  <div class="log-line">{line}</div>
+                {/each}
+              {/if}
+            </div>
           </div>
         {:else if status === "done"}
           <div class="done-view">
@@ -296,6 +317,38 @@
   .progress-text {
     font-size: 13px;
     font-weight: 500;
+  }
+  .progress-stage {
+    font-size: 12px;
+    color: var(--muted, #8d8d98);
+    font-weight: 500;
+  }
+  .log-container {
+    width: 100%;
+    box-sizing: border-box;
+    background: var(--raised, #1b1b1f);
+    border: 1px solid var(--border, #2e2e34);
+    border-radius: 6px;
+    padding: 8px 10px;
+    text-align: left;
+    font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+    font-size: 11px;
+    color: #a1a1aa;
+    line-height: 1.4;
+    max-height: 90px;
+    overflow-y: auto;
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+  }
+  .log-line {
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  .text-muted {
+    color: #63636e;
+    font-style: italic;
   }
   .success-icon {
     display: grid;

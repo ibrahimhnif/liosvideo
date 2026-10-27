@@ -15,6 +15,7 @@ export interface WebCodecsDeps {
   AudioEncoder?: any;
   AudioData?: any;
   MuxerClass?: any;
+  log?: (message: string) => void;
 }
 
 async function waitForQueueDrain(
@@ -22,6 +23,7 @@ async function waitForQueueDrain(
   maxQueue: number,
   isCancelled: () => boolean,
   getError: () => any,
+  fallbackMs: number = 4,
 ): Promise<void> {
   while ((encoder?.encodeQueueSize ?? 0) > maxQueue) {
     if (isCancelled()) throw new Error("Export cancelled");
@@ -39,7 +41,7 @@ async function waitForQueueDrain(
       };
       const onDequeue = () => cleanup();
       encoder?.addEventListener?.("dequeue", onDequeue);
-      const timer = setTimeout(cleanup, 16);
+      const timer = setTimeout(cleanup, fallbackMs);
     });
   }
 }
@@ -51,6 +53,7 @@ export class ExportEngine {
   private AudioEncoderClass: any;
   private AudioDataClass: any;
   private MuxerClass: any;
+  private log: (message: string) => void;
 
   constructor(
     private config: ExportConfig,
@@ -61,6 +64,7 @@ export class ExportEngine {
     this.AudioEncoderClass = deps?.AudioEncoder ?? globalThis.AudioEncoder;
     this.AudioDataClass = deps?.AudioData ?? globalThis.AudioData;
     this.MuxerClass = deps?.MuxerClass ?? Muxer;
+    this.log = deps?.log ?? ((_m: string) => {});
   }
 
   cancel(): void {
@@ -70,10 +74,13 @@ export class ExportEngine {
   async export(
     renderFrame: (frame: number) => Promise<CanvasImageSource>,
     audioBuffer: AudioBuffer | null = null,
-    onProgress?: (percent: number) => void,
+    onProgress?: (percent: number, stage?: string, logLine?: string) => void,
   ): Promise<Uint8Array> {
     this.cancelled = false;
     const target = new ArrayBufferTarget();
+
+    this.log(`export: Initializing muxer (${this.config.width}x${this.config.height} @ ${this.config.fps}fps, totalFrames=${this.config.totalFrames})`);
+    onProgress?.(0, "Initializing export...", "Initializing MP4 muxer and encoders");
 
     const muxer = new this.MuxerClass({
       target,
@@ -139,11 +146,14 @@ export class ExportEngine {
         const totalSamples = audioBuffer.length;
         let sampleOffset = 0;
 
+        this.log(`export: Audio encoding started, ${totalSamples} samples (${(totalSamples / sampleRate).toFixed(1)}s)`);
+        onProgress?.(0, "Encoding audio...", `Audio encoding started (${(totalSamples / sampleRate).toFixed(1)}s)`);
+
         while (sampleOffset < totalSamples) {
           if (this.cancelled) break;
           if (encoderError) throw encoderError;
 
-          await waitForQueueDrain(audioEncoder, 8, () => this.cancelled, () => encoderError);
+          await waitForQueueDrain(audioEncoder, 128, () => this.cancelled, () => encoderError, 2);
 
           const currentChunkSize = Math.min(frameSize, totalSamples - sampleOffset);
           const planarData = new Float32Array(channels * currentChunkSize);
@@ -165,11 +175,19 @@ export class ExportEngine {
           audioEncoder.encode(audioData);
           audioData.close();
           sampleOffset += currentChunkSize;
+
+          if (sampleOffset % (frameSize * 50) === 0 || sampleOffset >= totalSamples) {
+            const audioPct = Math.round((sampleOffset / totalSamples) * 100);
+            this.log(`export: Audio encoding ${audioPct}% (${sampleOffset}/${totalSamples})`);
+            onProgress?.(0, `Encoding audio (${audioPct}%)...`, `Audio encoding: ${audioPct}%`);
+          }
         }
 
+        this.log("export: Flushing audio encoder");
         await audioEncoder.flush();
         audioEncoder.close();
         audioEncoder = null;
+        this.log("export: Audio encoding complete");
       }
 
       if (this.cancelled) {
@@ -180,6 +198,9 @@ export class ExportEngine {
       const totalFrames = this.config.totalFrames;
       const keyFrameInterval = this.config.fps * 2;
 
+      this.log(`export: Video encoding started for ${totalFrames} frames`);
+      onProgress?.(0, `Rendering frame 1/${totalFrames}...`, `Video encoding started (${totalFrames} frames)`);
+
       for (let f = 0; f < totalFrames; f++) {
         if (this.cancelled) {
           throw new Error("Export cancelled");
@@ -188,9 +209,12 @@ export class ExportEngine {
           throw encoderError;
         }
 
-        await waitForQueueDrain(videoEncoder, 4, () => this.cancelled, () => encoderError);
+        await waitForQueueDrain(videoEncoder, 6, () => this.cancelled, () => encoderError, 4);
 
+        const renderT0 = Date.now();
         const canvasSource = await renderFrame(f);
+        const renderMs = Date.now() - renderT0;
+
         const timestampUs = Math.round((f / this.config.fps) * 1_000_000);
         const durationUs = Math.round((1 / this.config.fps) * 1_000_000);
 
@@ -203,18 +227,31 @@ export class ExportEngine {
         videoEncoder.encode(videoFrame, { keyFrame: isKeyFrame });
         videoFrame.close();
 
-        if (onProgress) {
-          onProgress(Math.round(((f + 1) / totalFrames) * 100));
+        const pct = Math.round(((f + 1) / totalFrames) * 100);
+        const logLine = (f % 15 === 0 || f === totalFrames - 1 || renderMs > 150)
+          ? `Frame ${f + 1}/${totalFrames} (${pct}%) [rendered in ${renderMs}ms, queue=${videoEncoder.encodeQueueSize ?? 0}]`
+          : undefined;
+
+        if (logLine) {
+          this.log(`export: ${logLine}`);
         }
+        onProgress?.(pct, `Rendering frame ${f + 1}/${totalFrames} (${pct}%)...`, logLine);
       }
 
+      this.log("export: Flushing video encoder");
+      onProgress?.(100, "Flushing video encoder...", "Flushing video encoder");
       await videoEncoder.flush();
       videoEncoder.close();
       videoEncoder = null;
 
+      this.log("export: Finalizing MP4 muxer");
+      onProgress?.(100, "Finalizing MP4 container...", "Finalizing MP4 container");
       muxer.finalize();
+      this.log(`export: Muxer finalized, total size: ${target.buffer.byteLength} bytes`);
+
       return new Uint8Array(target.buffer);
-    } catch (err) {
+    } catch (err: any) {
+      this.log(`export: Error encountered: ${err?.message ?? err}`);
       try {
         audioEncoder?.close?.();
       } catch {}
