@@ -22,6 +22,14 @@ export interface ImageProps extends BaseProps {
   fit: ImageFit;
 }
 
+export interface VideoProps extends BaseProps {
+  src: string;
+  fit: ImageFit;
+  startOffset: number;
+  speed: number;
+  loop: boolean;
+}
+
 export class GroupNode extends Node<BaseProps> {
   constructor(init?: NodeInit<BaseProps>) {
     super("group", BASE_DEFAULTS, init);
@@ -65,7 +73,14 @@ export class ImageNode extends Node<ImageProps> {
   }
 }
 
+export class VideoNode extends Node<VideoProps> {
+  constructor(init: NodeInit<VideoProps> & { src: string }) {
+    super("video", { ...BASE_DEFAULTS, src: "", fit: "fill", startOffset: 0, speed: 1.0, loop: false }, init);
+  }
+}
+
 export const group = (init?: NodeInit<BaseProps>) => new GroupNode(init);
 export const rect = (init?: NodeInit<RectProps>) => new RectNode(init);
 export const text = (init: NodeInit<TextProps>) => new TextNode(init);
 export const image = (init: NodeInit<ImageProps> & { src: string }) => new ImageNode(init);
+export const video = (init: NodeInit<VideoProps> & { src: string }) => new VideoNode(init);

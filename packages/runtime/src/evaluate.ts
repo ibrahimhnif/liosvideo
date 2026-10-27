@@ -1,5 +1,5 @@
 import { clampFrame, instantiateScene, layoutComposition, type Composition } from "./composition";
-import { ImageNode, RectNode, TextNode } from "./graph/kinds";
+import { ImageNode, RectNode, TextNode, VideoNode } from "./graph/kinds";
 import type { Node } from "./graph/node";
 import { multiply, type Affine } from "./math/affine";
 import type { RenderItem, RenderList } from "./renderlist";
@@ -24,6 +24,11 @@ function drawable(node: Node<any>, t: number, matrix: Affine, opacity: number): 
   if (node instanceof ImageNode) {
     const p = node.propsAt(t);
     return { kind: "image", path, matrix, src: p.src, width: p.width, height: p.height, fit: p.fit, opacity };
+  }
+  if (node instanceof VideoNode) {
+    const p = node.propsAt(t);
+    const time = t * p.speed + p.startOffset;
+    return { kind: "video", path, matrix, src: p.src, time, width: p.width, height: p.height, fit: p.fit, opacity };
   }
   return undefined;
 }
@@ -63,7 +68,7 @@ function emit(node: Node<any>, t: number, parent: Affine, inherited: number, out
 
 function imageSrcs(items: RenderItem[], into: Set<string>): Set<string> {
   for (const item of items) {
-    if (item.kind === "image") into.add(item.src);
+    if (item.kind === "image" || item.kind === "video") into.add(item.src);
     else if (item.kind === "layer") imageSrcs(item.items, into);
   }
   return into;
@@ -91,7 +96,7 @@ export function evaluateFrame(c: Composition, frame: number): RenderList {
 export function collectAssets(c: Composition): string[] {
   const srcs = new Set<string>();
   const walk = (node: Node<any>) => {
-    if (node instanceof ImageNode) srcs.add(node.propsAt(0).src);
+    if (node instanceof ImageNode || node instanceof VideoNode) srcs.add(node.propsAt(0).src);
     node.children.forEach(walk);
   };
   for (const def of c.scenes) walk(instantiateScene(c, def));

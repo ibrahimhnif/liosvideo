@@ -38,6 +38,18 @@ export type ImageItem = {
   opacity: number;
 };
 
+export type VideoItem = {
+  kind: "video";
+  path: string;
+  matrix: Affine;
+  src: string;
+  time: number;
+  width: number;
+  height: number;
+  fit: ImageFit;
+  opacity: number;
+};
+
 export type LayerItem = {
   kind: "layer";
   path: string;
@@ -47,6 +59,6 @@ export type LayerItem = {
   clip?: { matrix: Affine; width: number; height: number; radius: number };
 };
 
-export type RenderItem = RectItem | TextItem | ImageItem | LayerItem;
+export type RenderItem = RectItem | TextItem | ImageItem | VideoItem | LayerItem;
 
 export type RenderList = { width: number; height: number; background: string; items: RenderItem[]; assets: string[] };
