@@ -14,7 +14,17 @@ where
     W: AsyncWrite + Unpin + Send + 'static,
 {
     let addr = format!("127.0.0.1:{port}");
-    let stream = TcpStream::connect(&addr).await?;
+    eprintln!("[mcp:bridge] connecting to {addr}...");
+    let stream = match TcpStream::connect(&addr).await {
+        Ok(s) => {
+            eprintln!("[mcp:bridge] connected to {addr}");
+            s
+        }
+        Err(e) => {
+            eprintln!("[mcp:bridge:error] failed to connect to {addr}: {e}");
+            return Err(Box::new(e));
+        }
+    };
     let (mut tcp_read, mut tcp_write) = stream.into_split();
 
     let client_to_server = async {

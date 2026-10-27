@@ -108,7 +108,9 @@ async fn handle_connection(
                         if trimmed.is_empty() {
                             continue;
                         }
+                        eprintln!("[mcp:in] {trimmed}");
                         if let Some(resp) = handle_mcp_message(&registry, trimmed).await {
+                            eprintln!("[mcp:out] {resp}");
                             if writer.write_all(resp.as_bytes()).await.is_err() {
                                 break;
                             }

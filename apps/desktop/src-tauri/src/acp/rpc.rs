@@ -67,6 +67,7 @@ impl Connection {
 
         tokio::spawn(async move {
             while let Some(line) = out_rx.recv().await {
+                eprintln!("[acp:out] {line}");
                 if writer.write_all(line.as_bytes()).await.is_err() || writer.write_all(b"\n").await.is_err() || writer.flush().await.is_err() {
                     break;
                 }
@@ -77,6 +78,7 @@ impl Connection {
         tokio::spawn(async move {
             let mut lines = BufReader::new(reader).lines();
             while let Ok(Some(line)) = lines.next_line().await {
+                eprintln!("[acp:in] {line}");
                 let Ok(msg) = serde_json::from_str::<Value>(&line) else { continue };
                 let method = msg.get("method").and_then(Value::as_str).map(str::to_string);
                 let params = msg.get("params").cloned().unwrap_or(Value::Null);

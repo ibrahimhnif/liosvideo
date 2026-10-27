@@ -142,6 +142,7 @@ pub fn spawn(
     let stderr_done = tokio::spawn(async move {
         let mut lines = BufReader::new(stderr).lines();
         while let Ok(Some(l)) = lines.next_line().await {
+            eprintln!("[acp:stderr] {l}");
             let mut t = tail_w.lock().unwrap();
             if t.len() == STDERR_TAIL {
                 t.pop_front();

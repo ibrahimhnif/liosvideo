@@ -200,13 +200,16 @@ impl Session {
                     .to_string_lossy()
                     .into_owned();
                 vec![json!({
+                    "type": "stdio",
                     "name": "liosvideo",
                     "command": command,
                     "args": ["--mcp-bridge", port.to_string()],
+                    "env": []
                 })]
             }
             None => vec![],
         };
+        eprintln!("[acp:session/new] cwd: {:?}, mcp_servers: {}", self.root, serde_json::to_string(&mcp_servers).unwrap_or_default());
         match self.client.new_session(&self.root, mcp_servers).await {
             Ok(setup) => {
                 *self.session_id.lock().unwrap() = Some(setup.session_id);
@@ -224,6 +227,7 @@ impl Session {
                 Ok(())
             }
             Err(SessionError::Rpc(e)) => {
+                eprintln!("[acp:session/new:error] code={}, message={}, data={:?}", e.code, e.message, e.data);
                 self.status("error", json!({ "message": e.message }));
                 Err(ProjectError::Other(e.message))
             }
@@ -645,6 +649,8 @@ mod tests {
 
         let mcp_servers = &m["params"]["mcpServers"];
         assert_eq!(mcp_servers[0]["name"], "liosvideo");
+        assert_eq!(mcp_servers[0]["type"], "stdio");
+        assert_eq!(mcp_servers[0]["env"], json!([]));
         let args = mcp_servers[0]["args"].as_array().expect("args array");
         assert!(args.iter().any(|a| a == "--mcp-bridge"));
         assert!(args.iter().any(|a| a == "8765"));
