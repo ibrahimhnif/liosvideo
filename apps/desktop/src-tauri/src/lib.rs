@@ -1,6 +1,7 @@
 mod acp;
 mod agents;
 pub mod audio;
+pub mod export;
 mod git;
 pub mod mcp;
 mod project;
@@ -79,6 +80,7 @@ pub fn run() {
             project::list_compositions,
             project::read_project_file,
             project::asset_url_path,
+            export::save_exported_video,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
