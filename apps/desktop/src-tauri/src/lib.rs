@@ -1,3 +1,4 @@
+mod acp;
 mod agents;
 mod git;
 mod project;
