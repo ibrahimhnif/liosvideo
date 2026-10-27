@@ -1,6 +1,6 @@
 <script lang="ts">
   import { playhead } from "$lib/playhead.svelte";
-  import { invoke } from "@tauri-apps/api/core";
+  import { convertFileSrc, invoke } from "@tauri-apps/api/core";
   import { listen } from "@tauri-apps/api/event";
   import { onMount } from "svelte";
   import { BuildCoordinator, bundleComposition, type BuildError } from "$lib/bundle/bundler";
@@ -13,13 +13,24 @@
   import { reconcileSelection, visibleRows } from "$lib/timeline/model";
   import { select, selection } from "$lib/timeline/selection.svelte";
   import { shouldRebuild, touchesRootFiles } from "$lib/preview/rebuild";
+  import { ExportEngine, type ExportConfig } from "$lib/export/export_engine";
+  import { mixdownAudio } from "$lib/export/audio_mixdown";
   import ErrorOverlay from "./ErrorOverlay.svelte";
   import Timeline from "./Timeline.svelte";
   import Transport from "./Transport.svelte";
 
-  let { entry, onRootFilesChanged }: { entry: string; onRootFilesChanged: () => void } = $props();
+  let {
+    entry,
+    onRootFilesChanged,
+    onInfoChanged,
+  }: {
+    entry: string;
+    onRootFilesChanged: () => void;
+    onInfoChanged?: (info: LoadedInfo | null) => void;
+  } = $props();
 
   let stage: HTMLDivElement;
+  let canvas: HTMLCanvasElement;
   let frame = $state(0);
   $effect(() => {
     playhead.frame = frame;
@@ -33,6 +44,7 @@
   const clock = new PlaybackClock(30, 0);
   const audioPlayer = new AudioPlayer();
   let host: PreviewHost;
+  let currentExportEngine: ExportEngine | null = null;
   let lastFiles = new Set<string>();
   let lastBuildOk = true;
   let buildToken = 0;
@@ -73,6 +85,7 @@
         if (token !== buildToken) return;
         const sizeChanged = !info || info.width !== loaded.width || info.height !== loaded.height;
         info = loaded;
+        onInfoChanged?.(loaded);
         runtimeError = undefined;
         clock.setLength(loaded.fps, loaded.totalFrames);
         const allClips = loaded.manifest.audioTracks?.flatMap((t) => t.clips) ?? [];
@@ -130,8 +143,53 @@
     }
   }
 
+  export async function runExport(config: ExportConfig, onProgress: (pct: number) => void): Promise<string> {
+    if (!host || !info) throw new Error("Composition not loaded");
+    if (clock.playing) toggle();
+
+    host.resize(config.width, config.height);
+    currentExportEngine = new ExportEngine(config);
+
+    try {
+      const audioBuffer = info.manifest
+        ? await mixdownAudio(info.manifest, async (src) => {
+            const path = await invoke<string>("asset_url_path", { rel: src });
+            const url = convertFileSrc(path);
+            const res = await fetch(url);
+            if (!res.ok) throw new Error(`Could not load audio asset "${src}" (${res.status})`);
+            return res.arrayBuffer();
+          })
+        : null;
+
+      const bytes = await currentExportEngine.export(
+        async (f) => {
+          await host.renderFrame(f);
+          return canvas;
+        },
+        audioBuffer,
+        onProgress,
+      );
+
+      const timestamp = new Date().toISOString().replace(/[:.]/g, "-");
+      const filename = `${entry.replace(/\.ts$/, "")}-${timestamp}.mp4`;
+      const filePath = await invoke<string>("save_exported_video", {
+        filename,
+        bytes: Array.from(bytes),
+      });
+      return filePath;
+    } finally {
+      currentExportEngine = null;
+      fitCanvas();
+      await host.renderFrame(frame);
+    }
+  }
+
+  export function cancelExport() {
+    currentExportEngine?.cancel();
+  }
+
   onMount(() => {
-    const canvas = document.createElement("canvas");
+    canvas = document.createElement("canvas");
     stage.appendChild(canvas);
     host = new PreviewHost(canvas, loadProjectImage);
     host.onError((e) => {

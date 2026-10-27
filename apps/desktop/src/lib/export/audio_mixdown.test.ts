@@ -90,7 +90,7 @@ describe("mixdownAudio", () => {
       ],
     };
 
-    let mockCtx: MockOfflineAudioContext | null = null;
+    let mockCtx: any = null;
     const res = await mixdownAudio(
       manifest,
       async () => new ArrayBuffer(16),

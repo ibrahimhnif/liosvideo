@@ -13,6 +13,9 @@
   import { devLog } from "$lib/devlog";
   import { playhead } from "$lib/playhead.svelte";
   import { select, selection } from "$lib/timeline/selection.svelte";
+  import type { LoadedInfo } from "$lib/preview/protocol";
+  import ExportModal from "$lib/components/ExportModal.svelte";
+  import { revealItemInDir } from "@tauri-apps/plugin-opener";
   import Probe from "$lib/probe/Probe.svelte";
 
   let project = $state<ProjectInfo | null>(null);
@@ -20,6 +23,9 @@
   let showProbe = $state(false);
   let showAgents = $state(false);
   let showHistory = $state(false);
+  let showExport = $state(false);
+  let loadedInfo = $state<LoadedInfo | null>(null);
+  let previewInstance = $state<any>(null);
 
   function opened(info: ProjectInfo) {
     project = info;
@@ -102,13 +108,19 @@
       <header>
         <span class="root" title={project.root}>{project.root.split("/").at(-1)}</span>
         <CompositionSwitcher compositions={project.compositions} selected={entry} onSelect={(c) => (entry = c)} />
+        <button class="btn-export" onclick={() => (showExport = true)} disabled={!loadedInfo}>Export</button>
         <button class="toggle" aria-pressed={showHistory} onclick={() => (showHistory = !showHistory)}>History</button>
       </header>
       <div class="workspace" class:with-history={showHistory}>
         <div class="stage">
           {#if entry}
             {#key entry}
-              <Preview {entry} onRootFilesChanged={refreshCompositions} />
+              <Preview
+                bind:this={previewInstance}
+                {entry}
+                onRootFilesChanged={refreshCompositions}
+                onInfoChanged={(i) => (loadedInfo = i)}
+              />
             {/key}
           {:else}
             <p class="placeholder">No composition files (*.ts) in the project root.</p>
@@ -120,6 +132,27 @@
           {/key}
         {/if}
       </div>
+      {#if project}
+        <ExportModal
+          open={showExport}
+          compositionName={entry}
+          width={loadedInfo?.width ?? 1920}
+          height={loadedInfo?.height ?? 1080}
+          fps={loadedInfo?.fps ?? 30}
+          totalFrames={loadedInfo?.totalFrames ?? 0}
+          onClose={() => (showExport = false)}
+          onStartExport={(cfg, onProg) => {
+            if (!previewInstance) throw new Error("Preview not ready");
+            return previewInstance.runExport(cfg, onProg);
+          }}
+          onCancelExport={() => {
+            previewInstance?.cancelExport?.();
+          }}
+          onShowInFinder={async (path) => {
+            await revealItemInDir(path);
+          }}
+        />
+      {/if}
     {/if}
   </section>
 </main>
@@ -145,6 +178,8 @@
   .chat-slot[hidden] { display: none; }
   .toggle { margin-left: auto; font: inherit; font-weight: 500; padding: 3px 10px; border-radius: 6px; border: 1px solid var(--border); background: none; color: var(--fg); cursor: pointer; }
   .toggle[aria-pressed="true"] { background: var(--raised); }
+  .btn-export { font: inherit; font-weight: 500; padding: 3px 12px; border-radius: 6px; border: 1px solid #4f8cff; background: #4f8cff; color: white; cursor: pointer; }
+  .btn-export:disabled { opacity: 0.5; cursor: not-allowed; }
   .workspace { flex: 1; min-height: 0; display: grid; grid-template-columns: 1fr; }
   .workspace.with-history { grid-template-columns: 1fr 320px; }
   .stage { display: flex; flex-direction: column; min-width: 0; min-height: 0; }
