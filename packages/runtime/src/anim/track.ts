@@ -5,14 +5,14 @@ export type Segment<T> = { start: number; end: number; from: T | undefined; to: 
 
 const isColor = (v: unknown): v is string => typeof v === "string" && v.startsWith("#");
 
-function interpolate<T extends number | string>(a: T, b: T, k: number): T {
+function interpolate<T extends number | string | boolean>(a: T, b: T, k: number): T {
   if (typeof a === "number" && typeof b === "number") return (a + (b - a) * k) as T;
   if (isColor(a) && isColor(b)) return lerpColor(a, b, k) as T;
   return b;
 }
 
 /** Keyframe track for one property. Pure: valueAt depends only on t and the segments. */
-export class Track<T extends number | string> {
+export class Track<T extends number | string | boolean> {
   private segments: Segment<T>[] = [];
 
   constructor(private readonly initial: T) {}
