@@ -327,6 +327,18 @@ pub async fn restore_commit(app: AppHandle, state: State<'_, ProjectState>, id: 
 }
 
 #[tauri::command]
+pub async fn revert_commit_files(app: AppHandle, state: State<'_, ProjectState>, id: String, paths: Vec<String>) -> Result<CommitInfo> {
+    let root = state.root()?;
+    let commit = git_job(move || {
+        history_root(&root)?;
+        git::revert_files(&root, &id, &paths)
+    })
+    .await?;
+    emit_committed(&app, &commit);
+    Ok(commit)
+}
+
+#[tauri::command]
 pub fn list_compositions(state: State<ProjectState>) -> Result<Vec<String>> {
     list_compositions_in(&state.root()?)
 }

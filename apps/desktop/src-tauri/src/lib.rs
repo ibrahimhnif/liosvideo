@@ -78,6 +78,7 @@ pub fn run() {
             project::commit_diff,
             project::checkpoint,
             project::restore_commit,
+            project::revert_commit_files,
             project::list_compositions,
             project::read_project_file,
             project::asset_url_path,

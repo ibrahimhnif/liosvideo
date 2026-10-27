@@ -232,6 +232,24 @@ pub fn restore(root: &Path, id: &str) -> Result<CommitInfo> {
     commit_tree(&repo, &tree, &format!("Restore to {}: {}", c.short_id, c.summary))
 }
 
+/// Reverts specific files to the state prior to commit `id` (its parent commit).
+pub fn revert_files(root: &Path, id: &str, paths: &[String]) -> Result<CommitInfo> {
+    commit_all(root, MANUAL_EDIT)?;
+    let repo = git2::Repository::open(root)?;
+    let target = find_commit(&repo, id)?;
+    let parent = target.parents().next().ok_or_else(|| ProjectError::Other("Commit has no parent".into()))?;
+    let parent_tree = parent.tree()?;
+    let mut builder = git2::build::CheckoutBuilder::new();
+    builder.force();
+    for p in paths {
+        builder.path(p);
+    }
+    repo.checkout_tree(parent_tree.as_object(), Some(&mut builder))?;
+    let commit = commit_all(root, &format!("Revert out-of-scope changes: {}", paths.join(", ")))?
+        .ok_or_else(|| ProjectError::Other("Nothing was reverted".into()))?;
+    Ok(commit)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

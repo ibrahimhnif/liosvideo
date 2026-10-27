@@ -1,9 +1,13 @@
 <script lang="ts">
   import { onMount, tick } from "svelte";
+  import { invoke } from "@tauri-apps/api/core";
+  import { listen } from "@tauri-apps/api/event";
   import type { AgentApi, SelectionContext } from "$lib/chat/api";
   import { applyEvent, initialChat, type ChatEvent } from "$lib/chat/reduce";
+  import { detectOutOfScopeChanges } from "$lib/chat/scope_warning";
   import { selectionLabel, type Selection } from "$lib/timeline/model";
   import ChatItem from "./ChatItem.svelte";
+  import ScopeWarningCard from "./ScopeWarningCard.svelte";
   import SelectionChip from "./SelectionChip.svelte";
 
   let { api, selection, playhead, onClearSelection }: {
@@ -17,6 +21,7 @@
   let text = $state("");
   let list: HTMLDivElement | undefined = $state();
   let yolo = $state(false);
+  let outOfScopeWarning = $state<{ files: string[]; commitId: string } | null>(null);
 
   $effect(() => {
     if (typeof localStorage !== "undefined") {
@@ -84,7 +89,46 @@
     }
   }
 
-  onMount(() => api.on(push));
+  onMount(() => {
+    const unsubApi = api.on(push);
+    let unsubEvent: (() => void) | undefined;
+
+    listen<{ id: string; summary: string }>("project://committed", async (e) => {
+      if (!selection || e.payload.summary.startsWith("Revert out-of-scope")) return;
+      try {
+        const diffs = await invoke<Array<{ path: string }>>("commit_diff", { id: e.payload.id });
+        const changed = diffs.map((d) => d.path);
+        const res = detectOutOfScopeChanges(changed, selection);
+        if (res.hasOutOfScope) {
+          outOfScopeWarning = { files: res.outOfScopeFiles, commitId: e.payload.id };
+        } else {
+          outOfScopeWarning = null;
+        }
+      } catch {
+        // Ignore diff query failures in mock or detached environments
+      }
+    }).then((u) => {
+      unsubEvent = u;
+    }).catch(() => {});
+
+    return () => {
+      unsubApi();
+      unsubEvent?.();
+    };
+  });
+
+  async function revertOutOfScope() {
+    if (!outOfScopeWarning) return;
+    try {
+      await invoke("revert_commit_files", {
+        id: outOfScopeWarning.commitId,
+        paths: outOfScopeWarning.files,
+      });
+      outOfScopeWarning = null;
+    } catch (err) {
+      fail(err);
+    }
+  }
 
   function toContext(sel: Selection | undefined): SelectionContext | undefined {
     if (!sel) return undefined;
@@ -171,6 +215,13 @@
     {/each}
     {#if running}<div class="working">Working…</div>{/if}
   </div>
+  {#if outOfScopeWarning && outOfScopeWarning.files.length > 0}
+    <ScopeWarningCard
+      files={outOfScopeWarning.files}
+      onRevert={revertOutOfScope}
+      onDismiss={() => (outOfScopeWarning = null)}
+    />
+  {/if}
   <SelectionChip {selection} onClear={onClearSelection} />
   <form class="composer" onsubmit={(e) => (e.preventDefault(), send())}>
     <textarea rows="3" placeholder={ready ? "Ask the agent… (Enter to send, Shift+Enter for a new line)" : "Ask the agent… (connect first)"} bind:value={text} onkeydown={onKey}></textarea>
