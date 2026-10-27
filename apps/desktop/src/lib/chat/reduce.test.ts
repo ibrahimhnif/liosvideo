@@ -57,6 +57,25 @@ describe("applyEvent", () => {
     expect(s.items[0]).toMatchObject({ answer: "ok" });
   });
 
+  it("immediately marks auto-approved permissions as answered", () => {
+    const s = run([
+      {
+        type: "permission",
+        requestId: "p-auto",
+        toolCall: { title: "Run bash" },
+        options: [{ optionId: "ok", name: "Allow", kind: "allow_once" }],
+        autoApproved: true,
+        selectedOptionId: "ok",
+      },
+    ]);
+    expect(s.items[0]).toMatchObject({
+      kind: "permission",
+      requestId: "p-auto",
+      answer: "ok",
+      autoApproved: true,
+    });
+  });
+
   it("turns errors and exits into notices and keeps the connection state", () => {
     const s = run([
       { type: "status", state: "ready", agentId: "gemini" },

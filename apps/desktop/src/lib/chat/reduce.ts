@@ -6,7 +6,7 @@ export type ChatItem =
   | { kind: "thought"; id: string; text: string; messageId?: string }
   | { kind: "tool"; id: string; toolCallId: string; gen: number; title: string; toolKind: string; status: string; locations: string[]; content: string[] }
   | { kind: "plan"; id: string; entries: { content: string; status: string; priority: string }[] }
-  | { kind: "permission"; id: string; requestId: string; gen: number; title: string; options: PermissionOption[]; answer?: string }
+  | { kind: "permission"; id: string; requestId: string; gen: number; title: string; options: PermissionOption[]; answer?: string; autoApproved?: boolean }
   | { kind: "asset"; id: string; requestId: string; assetId: string; assetKind: string; description: string; answer?: "provided" | "skipped" | "cancelled"; filePath?: string }
   | { kind: "notice"; id: string; level: "info" | "error"; text: string };
 
@@ -117,7 +117,19 @@ export function applyEvent(s: ChatState, e: ChatEvent): ChatState {
     case "permission":
       return {
         ...s,
-        items: [...s.items, { kind: "permission", id: `k${s.nextId}`, requestId: e.requestId, gen: s.gen, title: e.toolCall?.title ?? "The agent asks for permission", options: e.options }],
+        items: [
+          ...s.items,
+          {
+            kind: "permission",
+            id: `k${s.nextId}`,
+            requestId: e.requestId,
+            gen: s.gen,
+            title: e.toolCall?.title ?? "The agent asks for permission",
+            options: e.options,
+            answer: e.autoApproved && e.selectedOptionId ? e.selectedOptionId : undefined,
+            autoApproved: e.autoApproved ?? false,
+          },
+        ],
         nextId: s.nextId + 1,
       };
     case "asset_request":

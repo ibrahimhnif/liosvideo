@@ -24,6 +24,8 @@ export function fakeAgentApi(agents: AgentStatus[] = []) {
     respond: vi.fn(async () => {}),
     resolveAssetRequest: vi.fn(async () => {}),
     setConfigOption: vi.fn(async () => {}),
+    setAutoApprove: vi.fn(async () => {}),
+    getAutoApprove: vi.fn(async () => false),
     on: (h: (e: AgentEvent) => void) => {
       handler = h;
       return () => (handler = undefined);

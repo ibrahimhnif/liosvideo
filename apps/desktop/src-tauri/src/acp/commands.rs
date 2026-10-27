@@ -18,11 +18,14 @@ const STDERR_TAIL: usize = 20;
 
 /// The agent session of the open project, if connected.
 #[derive(Default)]
-pub struct SessionState(tokio::sync::Mutex<Option<Arc<Session>>>);
+pub struct SessionState {
+    session: tokio::sync::Mutex<Option<Arc<Session>>>,
+    auto_approve: std::sync::atomic::AtomicBool,
+}
 
 impl SessionState {
     pub async fn close(&self) {
-        if let Some(s) = self.0.lock().await.take() {
+        if let Some(s) = self.session.lock().await.take() {
             s.close();
         }
     }
@@ -34,14 +37,26 @@ impl SessionState {
             session.close();
             return Err(ProjectError::Other("The project changed while the agent was starting".into()));
         }
-        if let Some(old) = self.0.lock().await.replace(session) {
+        session.set_auto_approve(self.auto_approve.load(std::sync::atomic::Ordering::Relaxed));
+        if let Some(old) = self.session.lock().await.replace(session) {
             old.close();
         }
         Ok(())
     }
 
     async fn current(&self) -> Result<Arc<Session>> {
-        self.0.lock().await.clone().ok_or_else(|| ProjectError::Other("No agent is connected".into()))
+        self.session.lock().await.clone().ok_or_else(|| ProjectError::Other("No agent is connected".into()))
+    }
+
+    pub async fn set_auto_approve(&self, enabled: bool) {
+        self.auto_approve.store(enabled, std::sync::atomic::Ordering::Relaxed);
+        if let Some(s) = self.session.lock().await.as_ref() {
+            s.set_auto_approve(enabled);
+        }
+    }
+
+    pub fn auto_approve(&self) -> bool {
+        self.auto_approve.load(std::sync::atomic::Ordering::Relaxed)
     }
 }
 
@@ -250,6 +265,17 @@ pub async fn agent_set_config_option(
 }
 
 #[tauri::command]
+pub async fn agent_set_auto_approve(sessions: State<'_, SessionState>, enabled: bool) -> Result<()> {
+    sessions.set_auto_approve(enabled).await;
+    Ok(())
+}
+
+#[tauri::command]
+pub async fn agent_get_auto_approve(sessions: State<'_, SessionState>) -> Result<bool> {
+    Ok(sessions.auto_approve())
+}
+
+#[tauri::command]
 pub async fn agent_disconnect(
     sessions: State<'_, SessionState>,
     asset_coordinator: State<'_, AssetRequestCoordinator>,
@@ -345,5 +371,22 @@ mod tests {
         let session = Session::connect(r, w, std::env::temp_dir(), "fake".into(), Arc::new(Print))
             .with_mcp_port(9999);
         assert_eq!(session.mcp_port(), Some(9999));
+    }
+
+    #[tokio::test]
+    async fn session_state_auto_approve_preserves_and_updates() {
+        let state = SessionState::default();
+        assert!(!state.auto_approve());
+
+        state.set_auto_approve(true).await;
+        assert!(state.auto_approve());
+
+        let session = fake_session();
+        state.install(session.clone(), true).await.unwrap();
+        assert!(session.auto_approve(), "session inherits auto_approve from state");
+
+        state.set_auto_approve(false).await;
+        assert!(!state.auto_approve());
+        assert!(!session.auto_approve(), "session gets updated when state is updated");
     }
 }

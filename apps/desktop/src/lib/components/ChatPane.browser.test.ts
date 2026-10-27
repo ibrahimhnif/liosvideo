@@ -123,4 +123,14 @@ describe("ChatPane", () => {
     await expect.element(screen.getByText("Skipped")).toBeVisible();
     await expect.element(skipBtn).toBeDisabled();
   });
+
+  it("toggles yolo mode and calls setAutoApprove", async () => {
+    const { screen, api } = await setup();
+    const yoloBtn = screen.getByRole("button", { name: "⚡ Yolo" });
+    await expect.element(yoloBtn).toBeVisible();
+    await yoloBtn.click();
+    expect(api.setAutoApprove).toHaveBeenCalledWith(true);
+    await yoloBtn.click();
+    expect(api.setAutoApprove).toHaveBeenCalledWith(false);
+  });
 });

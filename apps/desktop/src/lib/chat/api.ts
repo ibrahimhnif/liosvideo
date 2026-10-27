@@ -42,7 +42,7 @@ export type AgentEvent =
       models?: any;
     }
   | { type: "update"; update: any }
-  | { type: "permission"; requestId: string; toolCall: any; options: PermissionOption[] }
+  | { type: "permission"; requestId: string; toolCall: any; options: PermissionOption[]; autoApproved?: boolean; selectedOptionId?: string }
   | { type: "asset_request"; requestId: string; id: string; kind: string; description: string }
   | { type: "turn"; state: "started" | "ended"; stopReason?: string; error?: string; commit?: CommitInfo | null };
 
@@ -63,6 +63,8 @@ export interface AgentApi {
   respond(requestId: string, optionId: string | null): Promise<void>;
   resolveAssetRequest(requestId: string, filePath?: string | null): Promise<void>;
   setConfigOption(configId: string, value: any): Promise<void>;
+  setAutoApprove(enabled: boolean): Promise<void>;
+  getAutoApprove(): Promise<boolean>;
   /** Subscribes to agent events; returns an unsubscribe function. */
   on(handler: (e: AgentEvent) => void): () => void;
 }
@@ -93,6 +95,8 @@ export const tauriAgentApi: AgentApi = {
   resolveAssetRequest: (requestId, filePath) =>
     invoke("resolve_asset_request", { requestId, filePath: filePath ?? null }),
   setConfigOption: (configId, value) => invoke("agent_set_config_option", { configId, value }),
+  setAutoApprove: (enabled) => invoke("agent_set_auto_approve", { enabled }),
+  getAutoApprove: () => invoke<boolean>("agent_get_auto_approve"),
   on(handler) {
     const offs = (["status", "update", "permission", "turn", "asset_request"] as const).map((type) =>
       listen<any>(`agent://${type}`, (e) => handler({ type, ...e.payload })),

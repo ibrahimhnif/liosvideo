@@ -16,6 +16,25 @@
   let chat = $state(initialChat());
   let text = $state("");
   let list: HTMLDivElement | undefined = $state();
+  let yolo = $state(false);
+
+  $effect(() => {
+    if (typeof localStorage !== "undefined") {
+      const saved = localStorage.getItem("liosvideo:yolo") === "true";
+      if (yolo !== saved) {
+        yolo = saved;
+        api.setAutoApprove(saved).catch(() => {});
+      }
+    }
+  });
+
+  function toggleYolo() {
+    yolo = !yolo;
+    if (typeof localStorage !== "undefined") {
+      localStorage.setItem("liosvideo:yolo", String(yolo));
+    }
+    api.setAutoApprove(yolo).catch(fail);
+  }
 
   const ready = $derived(chat.connection?.state === "ready");
   const running = $derived(chat.turn === "running");
@@ -124,6 +143,14 @@
       </select>
     {/if}
     <span class="spacer"></span>
+    <button
+      class="yolo-btn"
+      class:active={yolo}
+      onclick={toggleYolo}
+      title={yolo ? "Yolo mode active: permissions are auto-approved" : "Yolo mode off: prompt for permissions"}
+    >
+      ⚡ Yolo
+    </button>
     {#if running}
       <button onclick={() => api.cancel().catch(fail)}>Cancel</button>
     {:else}
@@ -168,6 +195,22 @@
     cursor: pointer;
   }
   .model-select:disabled { opacity: 0.5; cursor: default; }
+  .yolo-btn {
+    font-size: 11px;
+    padding: 2px 7px;
+    border-radius: 4px;
+    border: 1px solid var(--border);
+    background: transparent;
+    color: var(--muted);
+    cursor: pointer;
+    transition: all 0.15s ease;
+  }
+  .yolo-btn.active {
+    background: color-mix(in srgb, #e0a100 20%, transparent);
+    border-color: #e0a100;
+    color: #e0a100;
+    font-weight: 500;
+  }
   .spacer { flex: 1; }
   .dot { width: 8px; height: 8px; border-radius: 50%; background: var(--muted); }
   .dot.ready { background: #2e9d57; }

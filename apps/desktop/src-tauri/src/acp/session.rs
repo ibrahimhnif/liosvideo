@@ -76,6 +76,7 @@ struct Bridge {
     events: Arc<dyn SessionEvents>,
     waiters: Waiters,
     next: AtomicU64,
+    auto_approve: Arc<AtomicBool>,
 }
 
 impl ClientEvents for Bridge {
@@ -84,6 +85,29 @@ impl ClientEvents for Bridge {
     }
 
     fn permission(&self, params: Value) -> BoxFuture<Value> {
+        if self.auto_approve.load(Ordering::Relaxed) {
+            let allow_option_id = params["options"].as_array().and_then(|opts| {
+                opts.iter()
+                    .find(|o| o["kind"].as_str().is_some_and(|k| k.starts_with("allow")))
+                    .or_else(|| opts.first())
+                    .and_then(|o| o["optionId"].as_str().map(str::to_string))
+            });
+            if let Some(option_id) = allow_option_id {
+                let id = format!("perm-{}", self.next.fetch_add(1, Ordering::Relaxed));
+                self.events.emit(
+                    "agent://permission",
+                    json!({
+                        "requestId": id,
+                        "toolCall": params["toolCall"],
+                        "options": params["options"],
+                        "autoApproved": true,
+                        "selectedOptionId": option_id,
+                    }),
+                );
+                return Box::pin(async move { json!({ "outcome": "selected", "optionId": option_id }) });
+            }
+        }
+
         let id = format!("perm-{}", self.next.fetch_add(1, Ordering::Relaxed));
         let (tx, rx) = oneshot::channel();
         self.waiters.lock().unwrap().insert(id.clone(), tx);
@@ -111,6 +135,7 @@ pub struct Session {
     pub child: Mutex<Option<tokio::process::Child>>,
     closing: AtomicBool,
     mcp_port: Mutex<Option<u16>>,
+    auto_approve: Arc<AtomicBool>,
 }
 
 impl Session {
@@ -136,7 +161,13 @@ impl Session {
         W: AsyncWrite + Unpin + Send + 'static,
     {
         let waiters: Waiters = Default::default();
-        let bridge = Arc::new(Bridge { events: events.clone(), waiters: waiters.clone(), next: AtomicU64::new(1) });
+        let auto_approve = Arc::new(AtomicBool::new(false));
+        let bridge = Arc::new(Bridge {
+            events: events.clone(),
+            waiters: waiters.clone(),
+            next: AtomicU64::new(1),
+            auto_approve: auto_approve.clone(),
+        });
         let handler = Arc::new(ClientHandler { root: root.clone(), events: bridge });
         let client = AcpClient::new(Connection::start(reader, writer, handler));
         Arc::new(Session {
@@ -150,7 +181,23 @@ impl Session {
             child: Mutex::new(None),
             closing: AtomicBool::new(false),
             mcp_port: Mutex::new(mcp_port),
+            auto_approve,
         })
+    }
+
+    pub fn set_auto_approve(&self, enabled: bool) {
+        self.auto_approve.store(enabled, Ordering::Relaxed);
+    }
+
+    #[allow(dead_code)]
+    pub fn auto_approve(&self) -> bool {
+        self.auto_approve.load(Ordering::Relaxed)
+    }
+
+    #[allow(dead_code)]
+    pub fn with_auto_approve(self: Arc<Self>, enabled: bool) -> Arc<Self> {
+        self.set_auto_approve(enabled);
+        self
     }
 
     pub fn set_mcp_port(&self, port: u16) {
@@ -596,6 +643,35 @@ mod tests {
         session.respond(&id, Some("allow".into()));
         let m = agent.recv().await;
         assert_eq!(m["result"], json!({"outcome": {"outcome": "selected", "optionId": "allow"}}));
+    }
+
+    #[tokio::test]
+    async fn auto_approve_immediately_selects_allow_option() {
+        let dir = project(false);
+        let root = dir.path().canonicalize().unwrap();
+        let (session, mut agent, rec) = started(&root).await;
+        session.set_auto_approve(true);
+        assert!(session.auto_approve());
+
+        let options = json!([
+            {"optionId": "reject-id", "name": "Reject", "kind": "reject_once"},
+            {"optionId": "allow-id", "name": "Allow once", "kind": "allow_once"}
+        ]);
+        agent.send(json!({
+            "jsonrpc": "2.0",
+            "id": 904,
+            "method": "session/request_permission",
+            "params": {"sessionId": "s1", "toolCall": {"toolCallId": "t1", "title": "Execute script"}, "options": options}
+        })).await;
+
+        let m = agent.recv().await;
+        assert_eq!(m["id"], 904);
+        assert_eq!(m["result"], json!({"outcome": {"outcome": "selected", "optionId": "allow-id"}}));
+
+        let perms = rec.of("agent://permission");
+        assert_eq!(perms.len(), 1);
+        assert_eq!(perms[0]["autoApproved"], true);
+        assert_eq!(perms[0]["selectedOptionId"], "allow-id");
     }
 
     #[tokio::test]
