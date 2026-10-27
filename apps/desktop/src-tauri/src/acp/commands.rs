@@ -212,7 +212,37 @@ fn reported<T>(events: &Arc<dyn SessionEvents>, agent_id: &str, r: Result<T>) ->
 async fn resolve_spec(app: &AppHandle, agent_id: &str) -> Result<LaunchSpec> {
     let path = shell_path::login_path().await;
     let settings = agents::commands::load(app)?;
-    launch_spec(agent_id, &builtin_registry(), &settings, &path, &agents::commands::adapters_dir(app)?)
+    let mut spec = launch_spec(agent_id, &builtin_registry(), &settings, &path, &agents::commands::adapters_dir(app)?)?;
+
+    // Inject API keys from Keychain / secure credentials storage if available
+    let secret_keys = [
+        "ANTHROPIC_API_KEY",
+        "OPENAI_API_KEY",
+        "GEMINI_API_KEY",
+        "ELEVENLABS_API_KEY",
+        "GOOGLE_TTS_API_KEY",
+    ];
+    for key in secret_keys {
+        if let Some(val) = crate::keychain::Keychain::get_secret(key) {
+            if !spec.env.iter().any(|(k, _)| k == key) {
+                spec.env.push((key.to_string(), val));
+            }
+        }
+    }
+
+    // Ensure HOME and USER environment variables are preserved for CLI/SDK tools
+    if let Ok(home) = std::env::var("HOME") {
+        if !spec.env.iter().any(|(k, _)| k == "HOME") {
+            spec.env.push(("HOME".to_string(), home));
+        }
+    }
+    if let Ok(user) = std::env::var("USER") {
+        if !spec.env.iter().any(|(k, _)| k == "USER") {
+            spec.env.push(("USER".to_string(), user));
+        }
+    }
+
+    Ok(spec)
 }
 
 #[tauri::command]

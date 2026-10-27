@@ -20,8 +20,13 @@ describe("SettingsModal", () => {
     });
 
     await expect.element(screen.getByText("API Keys & TTS Settings")).toBeVisible();
+    await expect.element(screen.getByLabelText("Anthropic API Key (Claude)")).toBeVisible();
     await expect.element(screen.getByLabelText("ElevenLabs API Key")).toBeVisible();
     await expect.element(screen.getByLabelText("Google Cloud TTS API Key")).toBeVisible();
+
+    const anthropicInput = screen.getByTestId("input-anthropic");
+    await anthropicInput.fill("sk-ant-test-key");
+    await expect.element(anthropicInput).toHaveValue("sk-ant-test-key");
 
     const elevenInput = screen.getByTestId("input-elevenlabs");
     await elevenInput.fill("sk_test_12345");

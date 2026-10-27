@@ -11,12 +11,16 @@
 
   let elevenKey = $state("");
   let googleKey = $state("");
+  let anthropicKey = $state("");
   let elevenConfigured = $state(false);
   let googleConfigured = $state(false);
+  let anthropicConfigured = $state(false);
   let showEleven = $state(false);
   let showGoogle = $state(false);
+  let showAnthropic = $state(false);
   let savingEleven = $state(false);
   let savingGoogle = $state(false);
+  let savingAnthropic = $state(false);
   let message = $state<{ text: string; type: "success" | "error" } | null>(null);
 
   $effect(() => {
@@ -28,6 +32,15 @@
   async function loadKeys() {
     message = null;
     try {
+      const aKey = await invoke<string | null>("get_api_key", { service: "ANTHROPIC_API_KEY" });
+      if (aKey) {
+        anthropicKey = aKey;
+        anthropicConfigured = true;
+      } else {
+        anthropicKey = "";
+        anthropicConfigured = false;
+      }
+
       const eKey = await invoke<string | null>("get_api_key", { service: "ELEVENLABS_API_KEY" });
       if (eKey) {
         elevenKey = eKey;
@@ -47,6 +60,32 @@
       }
     } catch (err) {
       // In test/mock environments or if keychain lookup fails
+    }
+  }
+
+  async function saveAnthropic() {
+    if (!anthropicKey.trim()) return;
+    savingAnthropic = true;
+    message = null;
+    try {
+      await invoke("set_api_key", { service: "ANTHROPIC_API_KEY", key: anthropicKey.trim() });
+      anthropicConfigured = true;
+      message = { text: "Anthropic API key saved securely!", type: "success" };
+    } catch (err) {
+      message = { text: `Failed to save: ${err}`, type: "error" };
+    } finally {
+      savingAnthropic = false;
+    }
+  }
+
+  async function clearAnthropic() {
+    try {
+      await invoke("delete_api_key", { service: "ANTHROPIC_API_KEY" });
+      anthropicKey = "";
+      anthropicConfigured = false;
+      message = { text: "Anthropic API key removed.", type: "success" };
+    } catch (err) {
+      message = { text: `Failed to remove: ${err}`, type: "error" };
     }
   }
 
@@ -131,6 +170,45 @@
             {message.text}
           </div>
         {/if}
+
+        <!-- Anthropic (Claude Agent) -->
+        <div class="field-group">
+          <div class="label-row">
+            <label for="anthropic-key">Anthropic API Key (Claude)</label>
+            <span class="badge" class:configured={anthropicConfigured}>
+              {anthropicConfigured ? "✓ Configured" : "Not Set"}
+            </span>
+          </div>
+          <div class="input-row">
+            <input
+              id="anthropic-key"
+              data-testid="input-anthropic"
+              type={showAnthropic ? "text" : "password"}
+              placeholder="sk-ant-api..."
+              bind:value={anthropicKey}
+            />
+            <button
+              type="button"
+              class="icon-btn"
+              onclick={() => (showAnthropic = !showAnthropic)}
+              title={showAnthropic ? "Hide key" : "Show key"}
+            >
+              {showAnthropic ? "🙈" : "👁️"}
+            </button>
+            <button
+              type="button"
+              class="save-btn"
+              disabled={savingAnthropic || !anthropicKey.trim()}
+              onclick={saveAnthropic}
+            >
+              {savingAnthropic ? "Saving..." : "Save"}
+            </button>
+            {#if anthropicConfigured}
+              <button type="button" class="clear-btn" onclick={clearAnthropic} title="Remove key">Clear</button>
+            {/if}
+          </div>
+          <p class="field-hint">Allows Claude Agent ACP to operate directly with your API key, bypassing OAuth session expiration.</p>
+        </div>
 
         <!-- ElevenLabs -->
         <div class="field-group">
