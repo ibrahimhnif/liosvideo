@@ -9,6 +9,7 @@ use tokio::io::{AsyncBufReadExt, BufReader};
 
 use super::session::{SelectionContext, Session, SessionEvents};
 use crate::agents::{self, builtin_registry, launch_spec, shell_path, LaunchSpec};
+use crate::mcp::asset_tools::AssetRequestCoordinator;
 use crate::project::{ProjectError, ProjectState};
 
 type Result<T> = std::result::Result<T, ProjectError>;
@@ -209,16 +210,23 @@ pub async fn agent_authenticate(sessions: State<'_, SessionState>, method_id: St
 }
 
 #[tauri::command]
-pub async fn agent_prompt(sessions: State<'_, SessionState>, text: String, selection: Option<SelectionContext>) -> Result<String> {
+pub async fn agent_prompt(
+    sessions: State<'_, SessionState>,
+    asset_coordinator: State<'_, AssetRequestCoordinator>,
+    text: String,
+    selection: Option<SelectionContext>,
+) -> Result<String> {
     // the lock is released before the turn runs, so cancel and permission answers get through
     let session = sessions.current().await?;
-    session.prompt(&text, selection.as_ref()).await
+    let res = session.prompt(&text, selection.as_ref()).await;
+    asset_coordinator.on_turn_end();
+    res
 }
 
 #[tauri::command]
 pub async fn agent_cancel(
     sessions: State<'_, SessionState>,
-    asset_coordinator: State<'_, crate::mcp::asset_tools::AssetRequestCoordinator>,
+    asset_coordinator: State<'_, AssetRequestCoordinator>,
 ) -> Result<()> {
     asset_coordinator.cancel_all();
     sessions.current().await?.cancel().await;
@@ -241,7 +249,11 @@ pub async fn agent_set_config_option(
 }
 
 #[tauri::command]
-pub async fn agent_disconnect(sessions: State<'_, SessionState>) -> Result<()> {
+pub async fn agent_disconnect(
+    sessions: State<'_, SessionState>,
+    asset_coordinator: State<'_, AssetRequestCoordinator>,
+) -> Result<()> {
+    asset_coordinator.cancel_all();
     sessions.close().await;
     Ok(())
 }

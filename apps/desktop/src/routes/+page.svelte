@@ -1,5 +1,6 @@
 <script lang="ts">
   import { invoke } from "@tauri-apps/api/core";
+  import { listen } from "@tauri-apps/api/event";
   import { onMount } from "svelte";
   import { tauriHistoryApi } from "$lib/history/api";
   import CompositionSwitcher from "$lib/components/CompositionSwitcher.svelte";
@@ -25,13 +26,38 @@
     entry = info.compositions.includes("long.ts") ? "long.ts" : (info.compositions[0] ?? "");
   }
 
-  onMount(async () => {
+  onMount(() => {
     tauriAgentApi
       .listAgents()
       .then((list) => devLog(`agents ${list.map((a) => `${a.id}:${a.state}`).join(" ")}`))
       .catch((e) => devLog(`agents error ${e}`));
-    const root = await invoke<string | null>("initial_project");
-    if (root) opened(await invoke<ProjectInfo>("open_project", { root }));
+    void invoke<string | null>("initial_project").then(async (root) => {
+      if (root) opened(await invoke<ProjectInfo>("open_project", { root }));
+    });
+
+    const unlistenSelection = listen<{ composition?: string; sceneId?: string; path?: string } | null>(
+      "project://selection",
+      (e) => {
+        select(
+          e.payload
+            ? {
+                composition: e.payload.composition ?? "",
+                sceneId: e.payload.sceneId ?? "",
+                path: e.payload.path,
+                startFrame: 0,
+                endFrame: 0,
+              }
+            : undefined,
+        );
+        if (e.payload?.composition && project?.compositions.includes(e.payload.composition)) {
+          entry = e.payload.composition;
+        }
+      },
+    );
+
+    return () => {
+      void unlistenSelection.then((u) => u());
+    };
   });
 
   function onKey(e: KeyboardEvent) {
