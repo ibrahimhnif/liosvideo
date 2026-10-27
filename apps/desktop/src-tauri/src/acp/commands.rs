@@ -84,7 +84,9 @@ pub async fn get_or_start_mcp_server_instance() -> Result<Arc<crate::mcp::McpSer
     let coordinator = Arc::new(crate::mcp::render_tools::FrameCaptureCoordinator::new());
     crate::mcp::render_tools::register_render_tools(&mut registry, context.clone(), coordinator);
     let asset_coordinator = Arc::new(crate::mcp::asset_tools::AssetRequestCoordinator::new());
-    crate::mcp::asset_tools::register_asset_tools(&mut registry, context, asset_coordinator);
+    crate::mcp::asset_tools::register_asset_tools(&mut registry, context.clone(), asset_coordinator);
+    let tts_provider = Arc::new(crate::audio::MockTtsProvider::new());
+    crate::mcp::audio_tools::register_audio_tools(&mut registry, context, tts_provider);
     let server = Arc::new(crate::mcp::McpServer::bind(Arc::new(registry)).map_err(|e| ProjectError::Other(format!("Couldn't start MCP server: {e}")))?);
     *guard = Some(server.clone());
     Ok(server)
@@ -115,7 +117,12 @@ pub async fn get_or_start_mcp_server(app: &AppHandle) -> Option<u16> {
         Some(c) => Arc::new(c.inner().clone()),
         None => Arc::new(crate::mcp::asset_tools::AssetRequestCoordinator::new()),
     };
-    crate::mcp::asset_tools::register_asset_tools(&mut registry, context, asset_coordinator);
+    crate::mcp::asset_tools::register_asset_tools(&mut registry, context.clone(), asset_coordinator);
+    let tts_provider = match app.try_state::<Arc<dyn crate::audio::TtsProvider>>() {
+        Some(p) => p.inner().clone(),
+        None => Arc::new(crate::audio::MockTtsProvider::new()),
+    };
+    crate::mcp::audio_tools::register_audio_tools(&mut registry, context, tts_provider);
     match crate::mcp::McpServer::bind(Arc::new(registry)) {
         Ok(server) => {
             let server_arc = Arc::new(server);
