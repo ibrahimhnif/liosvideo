@@ -21,7 +21,7 @@
     "@tauri-apps/plugin-opener": "^2",
     "esbuild-wasm": "^0.28.2",
     "liosvideo": "workspace:*",
-    "mp4-muxer": "^5.2.2",
+    "mediabunny": "^1.62.1",
     "source-map-js": "^1.2.2"
   },
   "devDependencies": {

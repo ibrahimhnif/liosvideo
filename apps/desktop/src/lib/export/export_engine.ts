@@ -1,4 +1,11 @@
-import { ArrayBufferTarget, Muxer } from "mp4-muxer";
+import {
+  AudioBufferSource,
+  BufferTarget,
+  CanvasSource,
+  Mp4OutputFormat,
+  Output,
+  Quality,
+} from "mediabunny";
 
 export interface ExportConfig {
   width: number;
@@ -9,66 +16,43 @@ export interface ExportConfig {
   audioBitrate?: number;
 }
 
-export interface WebCodecsDeps {
-  VideoEncoder?: any;
-  VideoFrame?: any;
-  AudioEncoder?: any;
-  AudioData?: any;
-  MuxerClass?: any;
+export interface ExportEngineDeps {
+  OutputClass?: typeof Output;
+  CanvasSourceClass?: typeof CanvasSource;
+  AudioBufferSourceClass?: typeof AudioBufferSource;
+  Mp4OutputFormatClass?: typeof Mp4OutputFormat;
+  BufferTargetClass?: typeof BufferTarget;
+  QualityClass?: typeof Quality;
   log?: (message: string) => void;
-}
-
-async function waitForQueueDrain(
-  encoder: any,
-  maxQueue: number,
-  isCancelled: () => boolean,
-  getError: () => any,
-  fallbackMs: number = 4,
-): Promise<void> {
-  while ((encoder?.encodeQueueSize ?? 0) > maxQueue) {
-    if (isCancelled()) throw new Error("Export cancelled");
-    const err = getError();
-    if (err) throw err;
-
-    await new Promise<void>((resolve) => {
-      let settled = false;
-      const cleanup = () => {
-        if (settled) return;
-        settled = true;
-        encoder?.removeEventListener?.("dequeue", onDequeue);
-        clearTimeout(timer);
-        resolve();
-      };
-      const onDequeue = () => cleanup();
-      encoder?.addEventListener?.("dequeue", onDequeue);
-      const timer = setTimeout(cleanup, fallbackMs);
-    });
-  }
 }
 
 export class ExportEngine {
   private cancelled = false;
-  private VideoEncoderClass: any;
-  private VideoFrameClass: any;
-  private AudioEncoderClass: any;
-  private AudioDataClass: any;
-  private MuxerClass: any;
+  private currentOutput: Output | null = null;
+  private OutputClass: typeof Output;
+  private CanvasSourceClass: typeof CanvasSource;
+  private AudioBufferSourceClass: typeof AudioBufferSource;
+  private Mp4OutputFormatClass: typeof Mp4OutputFormat;
+  private BufferTargetClass: typeof BufferTarget;
+  private QualityClass: typeof Quality;
   private log: (message: string) => void;
 
   constructor(
     private config: ExportConfig,
-    deps?: WebCodecsDeps,
+    deps?: ExportEngineDeps,
   ) {
-    this.VideoEncoderClass = deps?.VideoEncoder ?? globalThis.VideoEncoder;
-    this.VideoFrameClass = deps?.VideoFrame ?? globalThis.VideoFrame;
-    this.AudioEncoderClass = deps?.AudioEncoder ?? globalThis.AudioEncoder;
-    this.AudioDataClass = deps?.AudioData ?? globalThis.AudioData;
-    this.MuxerClass = deps?.MuxerClass ?? Muxer;
+    this.OutputClass = deps?.OutputClass ?? Output;
+    this.CanvasSourceClass = deps?.CanvasSourceClass ?? CanvasSource;
+    this.AudioBufferSourceClass = deps?.AudioBufferSourceClass ?? AudioBufferSource;
+    this.Mp4OutputFormatClass = deps?.Mp4OutputFormatClass ?? Mp4OutputFormat;
+    this.BufferTargetClass = deps?.BufferTargetClass ?? BufferTarget;
+    this.QualityClass = deps?.QualityClass ?? Quality;
     this.log = deps?.log ?? ((_m: string) => {});
   }
 
   cancel(): void {
     this.cancelled = true;
+    this.currentOutput?.cancel().catch(() => {});
   }
 
   async export(
@@ -77,191 +61,110 @@ export class ExportEngine {
     onProgress?: (percent: number, stage?: string, logLine?: string) => void,
   ): Promise<Uint8Array> {
     this.cancelled = false;
-    const target = new ArrayBufferTarget();
 
-    this.log(`export: Initializing muxer (${this.config.width}x${this.config.height} @ ${this.config.fps}fps, totalFrames=${this.config.totalFrames})`);
-    onProgress?.(0, "Initializing export...", "Initializing MP4 muxer and encoders");
+    this.log(
+      `export: Initializing Mediabunny (${this.config.width}x${this.config.height} @ ${this.config.fps}fps, totalFrames=${this.config.totalFrames})`,
+    );
+    onProgress?.(0, "Initializing export...", "Setting up Mediabunny MP4 muxer");
 
-    const muxer = new this.MuxerClass({
-      target,
-      video: {
-        codec: "avc",
-        width: this.config.width,
-        height: this.config.height,
-      },
-      audio: audioBuffer
-        ? {
-            codec: "aac",
-            numberOfChannels: audioBuffer.numberOfChannels,
-            sampleRate: audioBuffer.sampleRate,
-          }
-        : undefined,
-      fastStart: "in-memory",
-      firstTimestampBehavior: "offset",
-    });
+    // Render frame 0 first to acquire canvas element and ensure initial frame is painted
+    const firstRenderT0 = performance.now();
+    const firstCanvas = (await renderFrame(0)) as HTMLCanvasElement;
+    const firstRenderMs = Math.round(performance.now() - firstRenderT0);
 
-    if (!this.VideoEncoderClass) {
-      throw new Error("WebCodecs VideoEncoder is not available in this environment");
+    if (this.cancelled) {
+      throw new Error("Export cancelled");
     }
 
-    let encoderError: any = null;
-    let audioEncoder: any = null;
-    let videoEncoder: any = null;
+    const target = new this.BufferTargetClass();
+    const output = new this.OutputClass({
+      format: new this.Mp4OutputFormatClass({ fastStart: "in-memory" }),
+      target,
+    });
+    this.currentOutput = output;
 
-    try {
-      videoEncoder = new this.VideoEncoderClass({
-        output: (chunk: any, meta: any) => muxer.addVideoChunk(chunk, meta),
-        error: (e: any) => {
-          encoderError = e;
-        },
+    const videoSource = new this.CanvasSourceClass(firstCanvas, {
+      codec: "avc",
+      quality: new this.QualityClass({ bitrate: this.config.bitrate ?? 10_000_000 }),
+      hardwareAcceleration: "prefer-hardware",
+      keyFrameInterval: 2,
+    });
+    output.addVideoTrack(videoSource);
+
+    let audioSource: AudioBufferSource | null = null;
+    if (audioBuffer) {
+      audioSource = new this.AudioBufferSourceClass({
+        codec: "aac",
+        quality: new this.QualityClass({ bitrate: this.config.audioBitrate ?? 192_000 }),
       });
+      output.addAudioTrack(audioSource);
+    }
 
-      videoEncoder.configure({
-        codec: "avc1.640028",
-        width: this.config.width,
-        height: this.config.height,
-        bitrate: this.config.bitrate ?? 10_000_000,
-        framerate: this.config.fps,
-        hardwareAcceleration: "prefer-hardware",
-      });
+    await output.start();
 
-      // 2. Setup AudioEncoder if audioBuffer is provided
-      if (audioBuffer && this.AudioEncoderClass && this.AudioDataClass) {
-        audioEncoder = new this.AudioEncoderClass({
-          output: (chunk: any, meta: any) => muxer.addAudioChunk(chunk, meta),
-          error: (e: any) => {
-            encoderError = e;
-          },
-        });
+    // Encode audio if present
+    if (audioBuffer && audioSource) {
+      const audioDuration = audioBuffer.duration;
+      this.log(`export: Audio encoding started (${audioDuration.toFixed(1)}s)`);
+      onProgress?.(0, "Encoding audio...", `Encoding audio track (${audioDuration.toFixed(1)}s)`);
 
-        audioEncoder.configure({
-          codec: "mp4a.40.2",
-          sampleRate: audioBuffer.sampleRate,
-          numberOfChannels: audioBuffer.numberOfChannels,
-          bitrate: this.config.audioBitrate ?? 192_000,
-        });
+      await audioSource.add(audioBuffer);
 
-        const frameSize = 1024;
-        const sampleRate = audioBuffer.sampleRate;
-        const channels = audioBuffer.numberOfChannels;
-        const totalSamples = audioBuffer.length;
-        let sampleOffset = 0;
+      this.log("export: Audio encoding complete");
+      onProgress?.(0, "Audio ready", "Audio track encoded successfully");
+    }
 
-        this.log(`export: Audio encoding started, ${totalSamples} samples (${(totalSamples / sampleRate).toFixed(1)}s)`);
-        onProgress?.(0, "Encoding audio...", `Audio encoding started (${(totalSamples / sampleRate).toFixed(1)}s)`);
+    if (this.cancelled) {
+      await output.cancel();
+      throw new Error("Export cancelled");
+    }
 
-        while (sampleOffset < totalSamples) {
-          if (this.cancelled) break;
-          if (encoderError) throw encoderError;
+    // Video frames encoding loop
+    const totalFrames = this.config.totalFrames;
+    const frameDuration = 1 / this.config.fps;
 
-          await waitForQueueDrain(audioEncoder, 128, () => this.cancelled, () => encoderError, 2);
+    this.log(`export: Video encoding started for ${totalFrames} frames`);
+    onProgress?.(0, `Rendering frame 1/${totalFrames}...`, `Video encoding started (${totalFrames} frames)`);
 
-          const currentChunkSize = Math.min(frameSize, totalSamples - sampleOffset);
-          const planarData = new Float32Array(channels * currentChunkSize);
-          for (let ch = 0; ch < channels; ch++) {
-            const channelData = audioBuffer.getChannelData(ch);
-            planarData.set(channelData.subarray(sampleOffset, sampleOffset + currentChunkSize), ch * currentChunkSize);
-          }
-
-          const timestampUs = Math.round((sampleOffset / sampleRate) * 1_000_000);
-          const audioData = new this.AudioDataClass({
-            format: "f32-planar",
-            sampleRate,
-            numberOfFrames: currentChunkSize,
-            numberOfChannels: channels,
-            timestamp: timestampUs,
-            data: planarData,
-          });
-
-          audioEncoder.encode(audioData);
-          audioData.close();
-          sampleOffset += currentChunkSize;
-
-          if (sampleOffset % (frameSize * 50) === 0 || sampleOffset >= totalSamples) {
-            const audioPct = Math.round((sampleOffset / totalSamples) * 100);
-            this.log(`export: Audio encoding ${audioPct}% (${sampleOffset}/${totalSamples})`);
-            onProgress?.(0, `Encoding audio (${audioPct}%)...`, `Audio encoding: ${audioPct}%`);
-          }
-        }
-
-        this.log("export: Flushing audio encoder");
-        await audioEncoder.flush();
-        audioEncoder.close();
-        audioEncoder = null;
-        this.log("export: Audio encoding complete");
-      }
-
+    for (let f = 0; f < totalFrames; f++) {
       if (this.cancelled) {
+        await output.cancel();
         throw new Error("Export cancelled");
       }
 
-      // 3. Render and encode video frames
-      const totalFrames = this.config.totalFrames;
-      const keyFrameInterval = this.config.fps * 2;
-
-      this.log(`export: Video encoding started for ${totalFrames} frames`);
-      onProgress?.(0, `Rendering frame 1/${totalFrames}...`, `Video encoding started (${totalFrames} frames)`);
-
-      for (let f = 0; f < totalFrames; f++) {
-        if (this.cancelled) {
-          throw new Error("Export cancelled");
-        }
-        if (encoderError) {
-          throw encoderError;
-        }
-
-        const waitT0 = Date.now();
-        await waitForQueueDrain(videoEncoder, 64, () => this.cancelled, () => encoderError, 2);
-        const waitMs = Date.now() - waitT0;
-
-        const renderT0 = Date.now();
-        const canvasSource = await renderFrame(f);
-        const renderMs = Date.now() - renderT0;
-
-        const timestampUs = Math.round((f / this.config.fps) * 1_000_000);
-        const durationUs = Math.round((1 / this.config.fps) * 1_000_000);
-
-        const videoFrame = new this.VideoFrameClass(canvasSource, {
-          timestamp: timestampUs,
-          duration: durationUs,
-        });
-
-        const isKeyFrame = f % keyFrameInterval === 0;
-        videoEncoder.encode(videoFrame, { keyFrame: isKeyFrame });
-        videoFrame.close();
-
-        const pct = Math.round(((f + 1) / totalFrames) * 100);
-        const logLine = (f < 5 || f % 10 === 0 || f === totalFrames - 1 || renderMs > 150)
-          ? `Frame ${f + 1}/${totalFrames} (${pct}%) [render: ${renderMs}ms, wait: ${waitMs}ms, queue=${videoEncoder.encodeQueueSize ?? 0}]`
-          : undefined;
-
-        if (logLine) {
-          this.log(`export: ${logLine}`);
-        }
-        onProgress?.(pct, `Rendering frame ${f + 1}/${totalFrames} (${pct}%)...`, logLine);
+      let renderMs = firstRenderMs;
+      if (f > 0) {
+        const renderT0 = performance.now();
+        await renderFrame(f);
+        renderMs = Math.round(performance.now() - renderT0);
       }
 
-      this.log("export: Flushing video encoder");
-      onProgress?.(100, "Flushing video encoder...", "Flushing video encoder");
-      await videoEncoder.flush();
-      videoEncoder.close();
-      videoEncoder = null;
+      const timestamp = f * frameDuration;
+      await videoSource.add(timestamp, frameDuration);
 
-      this.log("export: Finalizing MP4 muxer");
-      onProgress?.(100, "Finalizing MP4 container...", "Finalizing MP4 container");
-      muxer.finalize();
-      this.log(`export: Muxer finalized, total size: ${target.buffer.byteLength} bytes`);
+      const pct = Math.round(((f + 1) / totalFrames) * 100);
+      const logLine =
+        f < 5 || f % 10 === 0 || f === totalFrames - 1 || renderMs > 150
+          ? `Frame ${f + 1}/${totalFrames} (${pct}%) [render: ${renderMs}ms]`
+          : undefined;
 
-      return new Uint8Array(target.buffer);
-    } catch (err: any) {
-      this.log(`export: Error encountered: ${err?.message ?? err}`);
-      try {
-        audioEncoder?.close?.();
-      } catch {}
-      try {
-        videoEncoder?.close?.();
-      } catch {}
-      throw err;
+      if (logLine) {
+        this.log(`export: ${logLine}`);
+      }
+      onProgress?.(pct, `Rendering frame ${f + 1}/${totalFrames} (${pct}%)...`, logLine);
     }
+
+    this.log("export: Finalizing MP4 container with Mediabunny...");
+    onProgress?.(100, "Finalizing MP4 container...", "Finalizing MP4 with Mediabunny");
+
+    await output.finalize();
+
+    const buffer = target.buffer;
+    if (!buffer) {
+      throw new Error("Mediabunny did not produce an output buffer");
+    }
+
+    this.log(`export: Export complete! Output size: ${buffer.byteLength} bytes`);
+    return new Uint8Array(buffer);
   }
 }

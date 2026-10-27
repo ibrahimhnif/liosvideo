@@ -74,4 +74,43 @@ describe("Export benchmark", () => {
       canvas.remove();
     }
   }, 30000);
+
+  it("encodes video with audio track", async () => {
+    const canvas = document.createElement("canvas");
+    canvas.width = 320;
+    canvas.height = 240;
+    document.body.appendChild(canvas);
+
+    // Create a 1-second stereo audio buffer with 440Hz sine wave
+    const sampleRate = 48000;
+    const audioCtx = new OfflineAudioContext(2, sampleRate, sampleRate);
+    const osc = audioCtx.createOscillator();
+    osc.frequency.value = 440;
+    osc.connect(audioCtx.destination);
+    osc.start();
+    const audioBuffer = await audioCtx.startRendering();
+
+    const engine = new ExportEngine({
+      width: 320,
+      height: 240,
+      fps: 30,
+      totalFrames: 30,
+      bitrate: 2_000_000,
+      audioBitrate: 128_000,
+    });
+
+    const ctx = canvas.getContext("2d")!;
+    const bytes = await engine.export(
+      async (f) => {
+        ctx.fillStyle = f % 2 === 0 ? "#ff0000" : "#00ff00";
+        ctx.fillRect(0, 0, 320, 240);
+        return canvas;
+      },
+      audioBuffer,
+    );
+
+    expect(bytes).toBeInstanceOf(Uint8Array);
+    expect(bytes.length).toBeGreaterThan(500);
+    canvas.remove();
+  }, 30000);
 });
