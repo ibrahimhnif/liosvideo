@@ -93,6 +93,19 @@ export abstract class Node<P extends BaseProps = BaseProps> {
     return this;
   }
 
+  /** Time ranges (seconds) in which any property animates; overlapping or touching ranges are merged. */
+  spans(): { start: number; end: number }[] {
+    const all = [...this.tracks.values()].flatMap((tr) => tr.segments().map((s) => ({ start: s.start, end: s.end })));
+    all.sort((a, b) => a.start - b.start || a.end - b.end);
+    const merged: { start: number; end: number }[] = [];
+    for (const s of all) {
+      const last = merged.at(-1);
+      if (last && s.start <= last.end) last.end = Math.max(last.end, s.end);
+      else merged.push({ ...s });
+    }
+    return merged;
+  }
+
   propsAt(t: number): P {
     const p = { ...this.base };
     for (const [key, tr] of this.tracks) (p as Record<keyof P, PropValue>)[key] = tr.valueAt(t);

@@ -13,19 +13,23 @@ function interpolate<T extends number | string | boolean>(a: T, b: T, k: number)
 
 /** Keyframe track for one property. Pure: valueAt depends only on t and the segments. */
 export class Track<T extends number | string | boolean> {
-  private segments: Segment<T>[] = [];
+  private sorted: Segment<T>[] = [];
 
   constructor(private readonly initial: T) {}
 
   add(seg: Segment<T>): void {
-    this.segments.push(seg);
+    this.sorted.push(seg);
     // stable sort keeps insertion order for equal starts
-    this.segments.sort((x, y) => x.start - y.start);
+    this.sorted.sort((x, y) => x.start - y.start);
+  }
+
+  segments(): readonly Segment<T>[] {
+    return this.sorted;
   }
 
   valueAt(t: number): T {
     let value = this.initial;
-    for (const seg of this.segments) {
+    for (const seg of this.sorted) {
       if (t < seg.start) break;
       const from = seg.from ?? value;
       if (t >= seg.end) {
