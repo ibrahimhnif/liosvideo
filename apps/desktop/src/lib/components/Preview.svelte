@@ -182,9 +182,7 @@
       devLog("[export] Step 2/3: Video & Audio encoding started");
       const bytes = await currentExportEngine.export(
         async (f) => {
-          if (f < 5 || f % 100 === 0) devLog(`[export] renderFrame(${f}) start`);
           await host.renderFrame(f);
-          if (f < 5 || f % 100 === 0) devLog(`[export] renderFrame(${f}) resolved`);
           return canvas;
         },
         audioBuffer,
