@@ -25,6 +25,36 @@ pub fn save_exported_video(
     Ok(path.to_string_lossy().into_owned())
 }
 
+#[tauri::command]
+pub fn save_voice_recording(
+    state: State<ProjectState>,
+    line_id: String,
+    duration: f64,
+    bytes: Vec<u8>,
+) -> Result<String, String> {
+    let clean_id = line_id.trim();
+    if clean_id.is_empty() || clean_id.contains("..") || clean_id.contains('/') || clean_id.contains('\\') {
+        return Err("Invalid line_id".to_string());
+    }
+    let root = state.root().map_err(|e| e.to_string())?;
+    let vo_dir = root.join("assets").join("audio").join("vo");
+    std::fs::create_dir_all(&vo_dir).map_err(|e| format!("Failed to create vo directory: {e}"))?;
+
+    let audio_file = vo_dir.join(format!("{clean_id}.mp3"));
+    std::fs::write(&audio_file, bytes).map_err(|e| format!("Failed to write audio: {e}"))?;
+
+    let timing_file = vo_dir.join(format!("{clean_id}.timing.json"));
+    let timing = serde_json::json!({
+        "lineId": clean_id,
+        "duration": duration,
+        "words": []
+    });
+    std::fs::write(&timing_file, serde_json::to_string_pretty(&timing).unwrap())
+        .map_err(|e| format!("Failed to write timing: {e}"))?;
+
+    Ok(format!("assets/audio/vo/{clean_id}.mp3"))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

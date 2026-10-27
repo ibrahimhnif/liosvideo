@@ -81,6 +81,7 @@ pub fn run() {
             project::read_project_file,
             project::asset_url_path,
             export::save_exported_video,
+            export::save_voice_recording,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

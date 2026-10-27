@@ -8,6 +8,7 @@ export type ChatItem =
   | { kind: "plan"; id: string; entries: { content: string; status: string; priority: string }[] }
   | { kind: "permission"; id: string; requestId: string; gen: number; title: string; options: PermissionOption[]; answer?: string; autoApproved?: boolean }
   | { kind: "asset"; id: string; requestId: string; assetId: string; assetKind: string; description: string; answer?: "provided" | "skipped" | "cancelled"; filePath?: string }
+  | { kind: "voice"; id: string; lineId: string; text?: string; audioPath?: string }
   | { kind: "notice"; id: string; level: "info" | "error"; text: string };
 
 export type Connection = {

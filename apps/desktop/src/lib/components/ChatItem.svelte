@@ -2,6 +2,7 @@
   import type { ChatItem } from "$lib/chat/reduce";
   import AssetCard from "./AssetCard.svelte";
   import PermissionCard from "./PermissionCard.svelte";
+  import VoiceCard from "./VoiceCard.svelte";
 
   let {
     item,
@@ -38,6 +39,8 @@
   <PermissionCard {item} onAnswer={(optionId) => onAnswer(item.requestId, optionId)} />
 {:else if item.kind === "asset"}
   <AssetCard {item} onResolve={(reqId, filePath) => onResolveAsset?.(reqId, filePath)} />
+{:else if item.kind === "voice"}
+  <VoiceCard lineId={item.lineId} text={item.text} audioPath={item.audioPath} />
 {:else if item.kind === "notice"}
   <div class="notice {item.level}">{item.text}</div>
 {/if}

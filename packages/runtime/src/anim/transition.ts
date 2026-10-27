@@ -20,20 +20,21 @@ export function applyTransition(
   height: number,
 ): void {
   const t = Math.max(0, Math.min(1, progress));
+  const anyNode = node as any;
   switch (def.type) {
     case "fade":
-      node.opacity = t;
+      anyNode.base.opacity = t;
       break;
     case "slide":
-      node.x = (1 - t) * width;
+      anyNode.base.x = (1 - t) * width;
       break;
     case "zoom":
-      node.scaleX = 0.8 + 0.2 * t;
-      node.scaleY = 0.8 + 0.2 * t;
-      node.opacity = t;
+      anyNode.base.scaleX = 0.8 + 0.2 * t;
+      anyNode.base.scaleY = 0.8 + 0.2 * t;
+      anyNode.base.opacity = t;
       break;
     case "wipe":
-      node.opacity = t;
+      anyNode.base.opacity = t;
       break;
   }
 }
