@@ -1,5 +1,6 @@
 mod acp;
 mod agents;
+pub mod audio;
 mod git;
 pub mod mcp;
 mod project;
