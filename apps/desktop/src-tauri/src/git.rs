@@ -134,6 +134,79 @@ pub fn history(root: &Path, limit: usize) -> Result<Vec<CommitInfo>> {
     walk.take(limit).map(|id| Ok(info(&repo.find_commit(id?)?))).collect()
 }
 
+#[derive(Serialize, Debug)]
+#[serde(rename_all = "camelCase")]
+pub struct FileDiff {
+    pub path: String,
+    /// "added" | "modified" | "deleted" | "renamed"
+    pub status: String,
+    pub binary: bool,
+    pub patch: String,
+    pub truncated: bool,
+}
+
+pub const MAX_PATCH_BYTES: usize = 200 * 1024;
+
+fn find_commit<'r>(repo: &'r git2::Repository, id: &str) -> Result<git2::Commit<'r>> {
+    Ok(repo.find_commit(git2::Oid::from_str(id)?)?)
+}
+
+/// Files a commit changed against its first parent (or the empty tree for the first commit).
+pub fn commit_diff(root: &Path, id: &str) -> Result<Vec<FileDiff>> {
+    let repo = git2::Repository::open(root)?;
+    let commit = find_commit(&repo, id)?;
+    let parent_tree = commit.parents().next().map(|p| p.tree()).transpose()?;
+    let mut opts = git2::DiffOptions::new();
+    opts.context_lines(3);
+    let mut diff = repo.diff_tree_to_tree(parent_tree.as_ref(), Some(&commit.tree()?), Some(&mut opts))?;
+    diff.find_similar(None)?;
+    let mut files = vec![];
+    for i in 0..diff.deltas().len() {
+        let delta = diff.get_delta(i).expect("delta index in range");
+        let status = match delta.status() {
+            git2::Delta::Added => "added",
+            git2::Delta::Deleted => "deleted",
+            git2::Delta::Renamed => "renamed",
+            _ => "modified",
+        };
+        let file = if delta.status() == git2::Delta::Deleted { delta.old_file() } else { delta.new_file() };
+        let path = file.path().map(|p| p.to_string_lossy().into_owned()).unwrap_or_default();
+        let mut patch = git2::Patch::from_diff(&diff, i)?;
+        let binary = patch.as_ref().map_or(true, |p| p.delta().flags().is_binary());
+        let mut text = match (&mut patch, binary) {
+            (Some(p), false) => String::from_utf8_lossy(p.to_buf()?.as_ref()).into_owned(),
+            _ => String::new(),
+        };
+        let truncated = text.len() > MAX_PATCH_BYTES;
+        if truncated {
+            let mut cut = MAX_PATCH_BYTES;
+            while !text.is_char_boundary(cut) {
+                cut -= 1;
+            }
+            text.truncate(cut);
+        }
+        files.push(FileDiff { path, status: status.to_string(), binary, patch: text, truncated });
+    }
+    Ok(files)
+}
+
+/// Brings back a commit's tree as a new commit on top of HEAD; pending edits are committed first.
+pub fn restore(root: &Path, id: &str) -> Result<CommitInfo> {
+    commit_all(root, MANUAL_EDIT)?;
+    let repo = git2::Repository::open(root)?;
+    let target = find_commit(&repo, id)?;
+    let tree = target.tree()?;
+    if repo.head()?.peel_to_tree()?.id() == tree.id() {
+        return Err(ProjectError::Other("Already at this version".into()));
+    }
+    repo.checkout_tree(tree.as_object(), Some(git2::build::CheckoutBuilder::new().force()))?;
+    let mut index = repo.index()?;
+    index.read_tree(&tree)?;
+    index.write()?;
+    let c = info(&target);
+    commit_tree(&repo, &tree, &format!("Restore to {}: {}", c.short_id, c.summary))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -249,5 +322,122 @@ mod tests {
         fs::write(p.join("a.ts"), "1").unwrap();
         commit_all(p, "add").unwrap().unwrap();
         assert_eq!(head_files(p), vec![".gitignore", ".liosvideo/project.json", "a.ts"]);
+    }
+
+    fn repo_with(files: &[(&str, &str)]) -> tempfile::TempDir {
+        let dir = folder();
+        enable_history(dir.path()).unwrap();
+        for (f, c) in files {
+            fs::write(dir.path().join(f), c).unwrap();
+        }
+        dir
+    }
+
+    #[test]
+    fn diff_lists_added_modified_deleted_files_with_patches() {
+        let dir = repo_with(&[("a.ts", "old\n"), ("gone.ts", "x\n")]);
+        let p = dir.path();
+        commit_all(p, "base").unwrap();
+        fs::write(p.join("a.ts"), "new\n").unwrap();
+        fs::remove_file(p.join("gone.ts")).unwrap();
+        fs::write(p.join("b.ts"), "b\n").unwrap();
+        let c = commit_all(p, "change").unwrap().unwrap();
+        let d = commit_diff(p, &c.id).unwrap();
+        let status = |path: &str| d.iter().find(|f| f.path == path).map(|f| f.status.as_str());
+        assert_eq!(status("a.ts"), Some("modified"));
+        assert_eq!(status("b.ts"), Some("added"));
+        assert_eq!(status("gone.ts"), Some("deleted"));
+        let a = d.iter().find(|f| f.path == "a.ts").unwrap();
+        assert!(a.patch.contains("-old") && a.patch.contains("+new"), "{}", a.patch);
+        assert!(!a.binary && !a.truncated);
+    }
+
+    #[test]
+    fn diff_of_root_commit_lists_all_files_as_added() {
+        let dir = folder();
+        fs::write(dir.path().join("a.ts"), "1\n").unwrap();
+        let c = enable_history(dir.path()).unwrap();
+        let d = commit_diff(dir.path(), &c.id).unwrap();
+        assert_eq!(d.len(), 3);
+        assert!(d.iter().all(|f| f.status == "added"));
+    }
+
+    #[test]
+    fn diff_marks_binary_files_without_patch() {
+        let dir = repo_with(&[]);
+        let p = dir.path();
+        fs::create_dir_all(p.join("assets/images")).unwrap();
+        fs::write(p.join("assets/images/x.png"), [0x89u8, b'P', b'N', b'G', 0, 0, 0, 13, 0, 1, 2]).unwrap();
+        let c = commit_all(p, "image").unwrap().unwrap();
+        let d = commit_diff(p, &c.id).unwrap();
+        assert_eq!(d.len(), 1);
+        assert!(d[0].binary);
+        assert_eq!(d[0].patch, "");
+    }
+
+    #[test]
+    fn diff_truncates_huge_patches() {
+        let dir = repo_with(&[]);
+        let p = dir.path();
+        fs::write(p.join("big.txt"), "line of text\n".repeat(300 * 1024 / 13)).unwrap();
+        let c = commit_all(p, "big").unwrap().unwrap();
+        let d = commit_diff(p, &c.id).unwrap();
+        assert!(d[0].truncated);
+        assert!(d[0].patch.len() <= MAX_PATCH_BYTES);
+    }
+
+    #[test]
+    fn restore_brings_back_old_tree_as_new_commit() {
+        let dir = repo_with(&[("a.ts", "1")]);
+        let p = dir.path();
+        let a = commit_all(p, "A").unwrap().unwrap();
+        fs::write(p.join("a.ts"), "2").unwrap();
+        fs::write(p.join("b.ts"), "b").unwrap();
+        commit_all(p, "B").unwrap().unwrap();
+        restore(p, &a.id).unwrap();
+        assert_eq!(fs::read_to_string(p.join("a.ts")).unwrap(), "1");
+        assert!(!p.join("b.ts").exists());
+        let summaries: Vec<String> = history(p, 10).unwrap().into_iter().map(|c| c.summary).collect();
+        assert_eq!(summaries.len(), 4);
+        assert!(summaries[0].starts_with("Restore to "), "{}", summaries[0]);
+        assert_eq!(&summaries[1..3], &["B", "A"]);
+        assert!(commit_all(p, "x").unwrap().is_none(), "index and workdir match the restored tree");
+    }
+
+    #[test]
+    fn restore_commits_pending_edits_first() {
+        let dir = repo_with(&[("a.ts", "1")]);
+        let p = dir.path();
+        let a = commit_all(p, "A").unwrap().unwrap();
+        fs::write(p.join("a.ts"), "unsaved work").unwrap();
+        restore(p, &a.id).unwrap();
+        let log = history(p, 10).unwrap();
+        assert_eq!(log[1].summary, MANUAL_EDIT);
+        let repo = git2::Repository::open(p).unwrap();
+        let tree = repo.find_commit(git2::Oid::from_str(&log[1].id).unwrap()).unwrap().tree().unwrap();
+        let blob = tree.get_name("a.ts").unwrap().to_object(&repo).unwrap().peel_to_blob().unwrap();
+        assert_eq!(blob.content(), b"unsaved work");
+    }
+
+    #[test]
+    fn restore_keeps_ignored_files() {
+        let dir = repo_with(&[("a.ts", "1")]);
+        let p = dir.path();
+        let a = commit_all(p, "A").unwrap().unwrap();
+        fs::write(p.join("a.ts"), "2").unwrap();
+        commit_all(p, "B").unwrap().unwrap();
+        fs::create_dir_all(p.join("out")).unwrap();
+        fs::write(p.join("out/video.mp4"), "v").unwrap();
+        restore(p, &a.id).unwrap();
+        assert!(p.join("out/video.mp4").exists());
+    }
+
+    #[test]
+    fn restore_to_current_tree_is_an_error() {
+        let dir = repo_with(&[("a.ts", "1")]);
+        let p = dir.path();
+        let a = commit_all(p, "A").unwrap().unwrap();
+        assert!(restore(p, &a.id).is_err());
+        assert_eq!(history(p, 10).unwrap().len(), 2);
     }
 }
