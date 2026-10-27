@@ -15,6 +15,7 @@
   import { select, selection } from "$lib/timeline/selection.svelte";
   import type { LoadedInfo } from "$lib/preview/protocol";
   import ExportModal from "$lib/components/ExportModal.svelte";
+  import SettingsModal from "$lib/components/SettingsModal.svelte";
   import { revealItemInDir } from "@tauri-apps/plugin-opener";
   import Probe from "$lib/probe/Probe.svelte";
 
@@ -22,6 +23,7 @@
   let entry = $state("");
   let showProbe = $state(false);
   let showAgents = $state(false);
+  let showSettings = $state(false);
   let showHistory = $state(false);
   let showExport = $state(false);
   let loadedInfo = $state<LoadedInfo | null>(null);
@@ -85,7 +87,10 @@
   <section class="chat">
     <header>
       liosvideo
-      <button class="toggle" aria-pressed={showAgents} onclick={() => (showAgents = !showAgents)}>Agents</button>
+      <div class="header-actions">
+        <button class="toggle-settings" aria-pressed={showSettings} onclick={() => (showSettings = !showSettings)} title="API Key & TTS Settings">⚙️</button>
+        <button class="toggle" aria-pressed={showAgents} onclick={() => (showAgents = !showAgents)}>Agents</button>
+      </div>
     </header>
     {#if showAgents}<AgentSetup api={tauriAgentApi} />{/if}
     <!-- kept mounted while the agent list is open so the conversation survives -->
@@ -157,6 +162,8 @@
   </section>
 </main>
 
+<SettingsModal open={showSettings} onClose={() => (showSettings = false)} />
+
 <style>
   :global(:root) {
     --bg: #f6f6f7; --panel: #ffffff; --raised: #f0f0f2; --border: #dcdce0; --fg: #1b1b1f; --muted: #6b6b75; --danger: #c62828;
@@ -176,7 +183,10 @@
   .right { background: var(--bg); }
   .chat-slot { flex: 1; min-height: 0; display: flex; flex-direction: column; }
   .chat-slot[hidden] { display: none; }
-  .toggle { margin-left: auto; font: inherit; font-weight: 500; padding: 3px 10px; border-radius: 6px; border: 1px solid var(--border); background: none; color: var(--fg); cursor: pointer; }
+  .header-actions { margin-left: auto; display: flex; align-items: center; gap: 6px; }
+  .toggle-settings { font: inherit; font-size: 13px; padding: 3px 6px; border-radius: 6px; border: 1px solid var(--border); background: none; color: var(--fg); cursor: pointer; line-height: 1; }
+  .toggle-settings[aria-pressed="true"] { background: var(--raised); }
+  .toggle { font: inherit; font-weight: 500; padding: 3px 10px; border-radius: 6px; border: 1px solid var(--border); background: none; color: var(--fg); cursor: pointer; }
   .toggle[aria-pressed="true"] { background: var(--raised); }
   .btn-export { font: inherit; font-weight: 500; padding: 3px 12px; border-radius: 6px; border: 1px solid #4f8cff; background: #4f8cff; color: white; cursor: pointer; }
   .btn-export:disabled { opacity: 0.5; cursor: not-allowed; }
