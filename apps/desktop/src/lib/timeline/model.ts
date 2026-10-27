@@ -76,9 +76,9 @@ export function selectionFor(row: Row, composition: string, m: TimelineManifest)
   return n ? nodeSelection(composition, scene, n) : sceneSelection(composition, scene);
 }
 
-/** Keeps a selection valid after a reload: same node if it still exists, else its scene, else nothing. */
+/** Keeps a selection valid after a reload: same node if it still exists, else its scene, else nothing. A selection in another composition is cleared. */
 export function reconcileSelection(sel: Selection | undefined, composition: string, m: TimelineManifest): Selection | undefined {
-  if (!sel || sel.composition !== composition) return sel;
+  if (!sel || sel.composition !== composition) return undefined;
   const scene = m.scenes.find((s) => s.id === sel.sceneId);
   if (!scene) return undefined;
   const n = sel.path ? findNode(scene.tree, sel.path) : undefined;

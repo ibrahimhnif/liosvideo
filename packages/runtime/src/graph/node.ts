@@ -42,6 +42,7 @@ export abstract class Node<P extends BaseProps = BaseProps> {
 
   protected constructor(readonly kind: string, defaults: P, init: NodeInit<P> = {}) {
     const { name, ...props } = init;
+    if (name?.includes("/")) throw new Error(`Node name "${name}" must not contain "/"`);
     this.requestedName = name;
     this._name = name ?? `${kind}0`;
     this.base = { ...defaults, ...(props as Partial<P>) };

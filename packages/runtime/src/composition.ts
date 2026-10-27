@@ -37,6 +37,11 @@ export function composition(c: Omit<Composition, "background"> & { background?: 
 }
 
 export function layoutComposition(c: Composition): { totalFrames: number; scenes: SceneSpan[] } {
+  const seen = new Set<string>();
+  for (const s of c.scenes) {
+    if (seen.has(s.id)) throw new Error(`Duplicate scene id "${s.id}"`);
+    seen.add(s.id);
+  }
   let frame = 0;
   const scenes = c.scenes.map((s) => {
     const startFrame = frame;

@@ -2,6 +2,12 @@ import { afterEach, describe, expect, it } from "vitest";
 import { group, image, rect, setTextMeasurer, text } from "../src/graph/kinds";
 import { apply } from "../src/math/affine";
 
+describe("Node names", () => {
+  it("rejects names containing a slash (they would collide with nested paths)", () => {
+    expect(() => rect({ name: "a/b" })).toThrow('Node name "a/b" must not contain "/"');
+  });
+});
+
 describe("Node props", () => {
   it("has spec defaults", () => {
     const p = rect().propsAt(0);

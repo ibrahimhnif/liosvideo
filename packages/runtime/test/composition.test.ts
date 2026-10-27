@@ -20,6 +20,11 @@ describe("layoutComposition", () => {
     });
   });
 
+  it("rejects duplicate scene ids", () => {
+    const c = composition({ width: 10, height: 10, fps: 30, scenes: [scene("a", { duration: 1 }, () => {}), scene("a", { duration: 1 }, () => {})] });
+    expect(() => layoutComposition(c)).toThrow('Duplicate scene id "a"');
+  });
+
   it("defaults background to black", () => {
     expect(twoScenes().background).toBe("#000000");
   });

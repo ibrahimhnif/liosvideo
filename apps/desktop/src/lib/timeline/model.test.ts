@@ -77,9 +77,9 @@ describe("selection", () => {
     expect(selectionFor(row, "long.ts", static_)).toMatchObject({ path: "a/still", startFrame: 0, endFrame: 60 });
   });
 
-  it("keeps selections of other compositions untouched", () => {
-    const sel = { composition: "short.ts", sceneId: "zzz", startFrame: 0, endFrame: 1 };
-    expect(reconcileSelection(sel, "long.ts", m)).toBe(sel);
+  it("clears selections of another composition (they could dangle unseen)", () => {
+    const sel = { composition: "short.ts", sceneId: "a", startFrame: 0, endFrame: 1 };
+    expect(reconcileSelection(sel, "long.ts", m)).toBeUndefined();
   });
 
   it("refreshes a selection whose node still exists", () => {
