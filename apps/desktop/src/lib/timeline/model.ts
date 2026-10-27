@@ -35,14 +35,15 @@ export function visibleRows(m: TimelineManifest, expanded: Set<string>): Row[] {
   }
   if (m.audioTracks && m.audioTracks.length > 0) {
     for (const track of m.audioTracks) {
+      const clips = Array.isArray(track?.clips) ? track.clips : [];
       rows.push({
         key: `audio:${track.id}`,
         sceneId: "audio",
-        label: `🎵 ${track.name}`,
+        label: `🎵 ${track.name || track.id}`,
         depth: 0,
         expandable: false,
         expanded: false,
-        spans: track.clips.map((c) => ({ startFrame: c.startFrame, endFrame: c.endFrame })),
+        spans: clips.map((c) => ({ startFrame: c.startFrame, endFrame: c.endFrame })),
         isAudio: true,
       });
     }

@@ -11,7 +11,7 @@ export async function mixdownAudio(
   options?: MixdownOptions,
 ): Promise<AudioBuffer | null> {
   const tracks = manifest.audioTracks ?? [];
-  const clips = tracks.flatMap((t) => t.clips);
+  const clips = tracks.flatMap((t) => t?.clips ?? []);
   if (!clips.length) return null;
 
   const sampleRate = options?.sampleRate ?? 48000;

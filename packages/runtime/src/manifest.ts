@@ -50,23 +50,40 @@ function describe(node: Node<any>, scene: SceneSpan, fps: number): ManifestNode 
 /** The timeline view of a composition: scenes, their object trees, and when each object animates. */
 export function buildManifest(c: Composition): TimelineManifest {
   const { totalFrames, scenes } = layoutComposition(c);
-  const audioTracks: ManifestAudioTrack[] | undefined = c.audio?.map((track) => ({
-    id: track.id,
-    name: track.name,
-    clips: track.clips.map((clip) => {
-      const startFrame = clip.startFrame ?? 0;
-      const endFrame = clip.duration !== undefined ? startFrame + Math.round(clip.duration * c.fps) : startFrame;
-      return {
-        src: clip.src,
-        startFrame,
-        endFrame,
-        duration: clip.duration,
-        startOffset: clip.startOffset,
-        volume: clip.volume,
-        ducking: clip.ducking,
-      };
-    }),
-  }));
+  const audioTracks: ManifestAudioTrack[] | undefined = c.audio?.map((track) => {
+    const clipsList: AudioClip[] = Array.isArray(track.clips)
+      ? track.clips
+      : track.src
+        ? [
+            {
+              src: track.src,
+              startFrame: track.startFrame ?? Math.round((track.startAt ?? 0) * c.fps),
+              duration: track.duration,
+              startOffset: track.startOffset,
+              volume: track.volume,
+              ducking: track.ducking,
+            },
+          ]
+        : [];
+
+    return {
+      id: track.id,
+      name: track.name ?? track.id,
+      clips: clipsList.map((clip) => {
+        const startFrame = clip.startFrame ?? Math.round((clip.startAt ?? 0) * c.fps);
+        const endFrame = clip.duration !== undefined ? startFrame + Math.round(clip.duration * c.fps) : startFrame;
+        return {
+          src: clip.src,
+          startFrame,
+          endFrame,
+          duration: clip.duration,
+          startOffset: clip.startOffset,
+          volume: clip.volume,
+          ducking: clip.ducking,
+        };
+      }),
+    };
+  });
 
   return {
     width: c.width,

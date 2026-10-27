@@ -25,6 +25,28 @@ describe("Runtime Audio Model", () => {
     expect(manifest.audioTracks?.[0].clips[0].endFrame).toBe(120);
   });
 
+  it("supports flat audio clip tracks with startAt", () => {
+    const comp = composition({
+      width: 1920,
+      height: 1080,
+      fps: 30,
+      scenes: [scene("intro", { duration: 5.0 }, () => {})],
+      audio: [
+        { id: "hook", src: "assets/audio/vo/hook.mp3", startAt: 0, volume: 1 },
+        { id: "definition", src: "assets/audio/vo/definition.mp3", startAt: 2.5, duration: 2.0, volume: 0.8 },
+      ],
+    });
+
+    const manifest = buildManifest(comp);
+    expect(manifest.audioTracks).toBeDefined();
+    expect(manifest.audioTracks?.length).toBe(2);
+    expect(manifest.audioTracks?.[0].id).toBe("hook");
+    expect(manifest.audioTracks?.[0].clips[0].startFrame).toBe(0);
+    expect(manifest.audioTracks?.[1].id).toBe("definition");
+    expect(manifest.audioTracks?.[1].clips[0].startFrame).toBe(75); // 2.5 * 30
+    expect(manifest.audioTracks?.[1].clips[0].endFrame).toBe(135); // 75 + 2.0 * 30
+  });
+
   it("calculates word timestamps with vo() helper", () => {
     const timing = {
       lineId: "line-1",

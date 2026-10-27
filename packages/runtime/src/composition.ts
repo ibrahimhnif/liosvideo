@@ -26,6 +26,8 @@ export type AudioClip = {
   src: string;
   /** Start frame in timeline (defaults to 0) */
   startFrame?: number;
+  /** Start time in seconds (alternative to startFrame) */
+  startAt?: number;
   /** duration in seconds */
   duration?: number;
   /** offset within audio asset in seconds */
@@ -33,12 +35,21 @@ export type AudioClip = {
   /** volume 0.0 - 1.0 */
   volume?: number;
   ducking?: boolean;
+  loop?: boolean;
 };
 
 export type AudioTrack = {
   id: string;
-  name: string;
-  clips: AudioClip[];
+  name?: string;
+  src?: string;
+  startAt?: number;
+  startFrame?: number;
+  duration?: number;
+  startOffset?: number;
+  volume?: number;
+  loop?: boolean;
+  ducking?: boolean;
+  clips?: AudioClip[];
 };
 
 export type Composition = {
