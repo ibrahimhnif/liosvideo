@@ -1,3 +1,6 @@
+pub mod commands;
+pub mod install;
+pub mod settings;
 pub mod shell_path;
 
 use std::path::{Path, PathBuf};
@@ -116,6 +119,49 @@ pub async fn detect(registry: &[AgentEntry], path: &str, adapters_dir: &Path) ->
     out
 }
 
+#[derive(Debug, Clone, PartialEq)]
+pub struct LaunchSpec {
+    pub command: PathBuf,
+    pub args: Vec<String>,
+    pub env: Vec<(String, String)>,
+}
+
+/// How to start an agent in ACP mode: built-in native mode, an installed adapter, or a custom command.
+pub fn launch_spec(
+    id: &str,
+    registry: &[AgentEntry],
+    settings: &settings::AgentSettings,
+    path_env: &str,
+    adapters_dir: &Path,
+) -> Result<LaunchSpec, crate::project::ProjectError> {
+    use crate::project::ProjectError;
+    let path = ("PATH".to_string(), path_env.to_string());
+    if let Some(entry) = registry.iter().find(|e| e.id == id) {
+        return match &entry.launch {
+            Launch::Native { args } => {
+                let command = entry.bins.iter().find_map(|b| find_bin(b, path_env));
+                let command = command.ok_or_else(|| ProjectError::Other(format!("{} is not installed", entry.name)))?;
+                Ok(LaunchSpec { command, args: args.clone(), env: vec![path] })
+            }
+            Launch::Adapter { bin, args, .. } => {
+                let command = adapter_bin(adapters_dir, &entry.id, bin);
+                if !command.exists() {
+                    return Err(ProjectError::Other(format!("Adapter not installed for {}", entry.name)));
+                }
+                Ok(LaunchSpec { command, args: args.clone(), env: vec![path] })
+            }
+        };
+    }
+    let custom = settings.custom.iter().find(|c| c.id == id).ok_or_else(|| ProjectError::Other(format!("Unknown agent \"{id}\"")))?;
+    let command = if custom.command.contains('/') { Some(PathBuf::from(&custom.command)) } else { find_bin(&custom.command, path_env) };
+    let command = command.ok_or_else(|| ProjectError::Other(format!("Command \"{}\" not found", custom.command)))?;
+    let mut env: Vec<(String, String)> = custom.env.iter().map(|(k, v)| (k.clone(), v.clone())).collect();
+    if !custom.env.contains_key("PATH") {
+        env.push(path);
+    }
+    Ok(LaunchSpec { command, args: custom.args.clone(), env })
+}
+
 #[cfg(test)]
 pub(crate) mod tests {
     use super::*;
@@ -172,5 +218,40 @@ pub(crate) mod tests {
         script(adapter.parent().unwrap(), "claude-agent-acp", "true");
         let list = detect(&r, &path, adapters.path()).await;
         assert_eq!(state(&list, "claude").state, AgentState::Ready);
+    }
+
+    #[test]
+    fn launch_spec_for_native_adapter_and_custom() {
+        let bin = tempfile::tempdir().unwrap();
+        let adapters = tempfile::tempdir().unwrap();
+        let gemini = script(bin.path(), "gemini", "true");
+        let path = bin.path().to_string_lossy().into_owned();
+        let r = builtin_registry();
+        let mut s = settings::AgentSettings::default();
+        let has_path = |spec: &LaunchSpec| spec.env.iter().any(|(k, v)| k == "PATH" && v == &path);
+
+        let spec = launch_spec("gemini", &r, &s, &path, adapters.path()).unwrap();
+        assert_eq!(spec.command, gemini);
+        assert_eq!(spec.args, vec!["--acp"]);
+        assert!(has_path(&spec));
+
+        assert!(launch_spec("claude", &r, &s, &path, adapters.path()).unwrap_err().to_string().contains("Adapter not installed"));
+        let adapter = adapter_bin(adapters.path(), "claude", "claude-agent-acp");
+        fs::create_dir_all(adapter.parent().unwrap()).unwrap();
+        script(adapter.parent().unwrap(), "claude-agent-acp", "true");
+        let spec = launch_spec("claude", &r, &s, &path, adapters.path()).unwrap();
+        assert_eq!(spec.command, adapter);
+        assert!(has_path(&spec));
+
+        let mut env = std::collections::BTreeMap::new();
+        env.insert("TOKEN_FILE".to_string(), "/x".to_string());
+        s.custom.push(settings::CustomAgent { id: "mine".into(), name: "Mine".into(), command: "gemini".into(), args: vec!["--acp".into(), "-v".into()], env });
+        let spec = launch_spec("mine", &r, &s, &path, adapters.path()).unwrap();
+        assert_eq!(spec.command, gemini);
+        assert_eq!(spec.args, vec!["--acp", "-v"]);
+        assert!(spec.env.contains(&("TOKEN_FILE".to_string(), "/x".to_string())));
+        assert!(has_path(&spec));
+
+        assert!(launch_spec("nope", &r, &s, &path, adapters.path()).is_err());
     }
 }

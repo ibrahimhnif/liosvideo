@@ -88,7 +88,11 @@ struct OpenProject {
 pub struct ProjectState(Mutex<Option<OpenProject>>);
 
 impl ProjectState {
-    fn root(&self) -> Result<PathBuf> {
+    pub fn root_string(&self) -> Result<String> {
+        Ok(self.root()?.to_string_lossy().into_owned())
+    }
+
+    pub fn root(&self) -> Result<PathBuf> {
         self.0.lock().unwrap().as_ref().map(|p| p.root.clone()).ok_or(ProjectError::NotOpen)
     }
 }
