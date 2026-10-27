@@ -20,12 +20,32 @@ export type SceneDef = {
   site?: string;
 };
 
+export type AudioClip = {
+  src: string;
+  /** Start frame in timeline (defaults to 0) */
+  startFrame?: number;
+  /** duration in seconds */
+  duration?: number;
+  /** offset within audio asset in seconds */
+  startOffset?: number;
+  /** volume 0.0 - 1.0 */
+  volume?: number;
+  ducking?: boolean;
+};
+
+export type AudioTrack = {
+  id: string;
+  name: string;
+  clips: AudioClip[];
+};
+
 export type Composition = {
   width: number;
   height: number;
   fps: number;
   background: string;
   scenes: SceneDef[];
+  audio?: AudioTrack[];
 };
 
 export type SceneSpan = { id: string; startFrame: number; endFrame: number };

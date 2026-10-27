@@ -10,7 +10,28 @@ export type ManifestScene = SceneSpan & {
   /** project-relative file defining the scene, filled in by the host from `site` */
   source?: string;
 };
-export type TimelineManifest = { width: number; height: number; fps: number; totalFrames: number; scenes: ManifestScene[] };
+export type ManifestAudioClip = {
+  src: string;
+  startFrame: number;
+  endFrame: number;
+  duration?: number;
+  startOffset?: number;
+  volume?: number;
+  ducking?: boolean;
+};
+export type ManifestAudioTrack = {
+  id: string;
+  name: string;
+  clips: ManifestAudioClip[];
+};
+export type TimelineManifest = {
+  width: number;
+  height: number;
+  fps: number;
+  totalFrames: number;
+  scenes: ManifestScene[];
+  audioTracks?: ManifestAudioTrack[];
+};
 
 function describe(node: Node<any>, scene: SceneSpan, fps: number): ManifestNode {
   const clamp = (f: number) => Math.min(Math.max(f, scene.startFrame), scene.endFrame);
@@ -29,11 +50,30 @@ function describe(node: Node<any>, scene: SceneSpan, fps: number): ManifestNode 
 /** The timeline view of a composition: scenes, their object trees, and when each object animates. */
 export function buildManifest(c: Composition): TimelineManifest {
   const { totalFrames, scenes } = layoutComposition(c);
+  const audioTracks: ManifestAudioTrack[] | undefined = c.audio?.map((track) => ({
+    id: track.id,
+    name: track.name,
+    clips: track.clips.map((clip) => {
+      const startFrame = clip.startFrame ?? 0;
+      const endFrame = clip.duration !== undefined ? startFrame + Math.round(clip.duration * c.fps) : startFrame;
+      return {
+        src: clip.src,
+        startFrame,
+        endFrame,
+        duration: clip.duration,
+        startOffset: clip.startOffset,
+        volume: clip.volume,
+        ducking: clip.ducking,
+      };
+    }),
+  }));
+
   return {
     width: c.width,
     height: c.height,
     fps: c.fps,
     totalFrames,
     scenes: scenes.map((span, i) => ({ ...span, tree: describe(instantiateScene(c, c.scenes[i]), span, c.fps), site: c.scenes[i].site })),
+    ...(audioTracks ? { audioTracks } : {}),
   };
 }
