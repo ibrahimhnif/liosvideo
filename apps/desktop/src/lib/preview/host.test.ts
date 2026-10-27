@@ -31,6 +31,7 @@ function fakeCanvas(): HTMLCanvasElement {
 
 const loaded = (generation: number): FromWorker => ({
   type: "loaded", generation, width: 1920, height: 1080, fps: 30, totalFrames: 90, scenes: [], assets: [],
+  manifest: { width: 1920, height: 1080, fps: 30, totalFrames: 90, scenes: [] },
 });
 
 function setup() {

@@ -49,9 +49,10 @@ async function load(code: string, generation: number) {
     if (!isComposition(c)) throw new Error("Entry file must default-export composition(...)");
     const found = runtime.collectAssets(c); // instantiates every scene, surfacing build errors now
     const { totalFrames, scenes } = runtime.layoutComposition(c);
+    const manifest = runtime.buildManifest(c);
     comp = c;
     if (renderer && !size) renderer.resize(c.width, c.height);
-    post({ type: "loaded", generation, width: c.width, height: c.height, fps: c.fps, totalFrames, scenes, assets: found });
+    post({ type: "loaded", generation, width: c.width, height: c.height, fps: c.fps, totalFrames, scenes, assets: found, manifest });
   } finally {
     URL.revokeObjectURL(url);
   }

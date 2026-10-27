@@ -134,3 +134,17 @@ describe("load ordering", () => {
     expect([...ctx.getImageData(8, 8, 1, 1).data]).toEqual([0, 0, 255, 255]);
   });
 });
+
+describe("timeline manifest", () => {
+  it("is sent with every load", async () => {
+    const info = await makeHost().load(
+      project(`L.composition({ width: 32, height: 32, fps: 30, scenes: [L.scene("s", { duration: 1 }, ({ root }) => {
+        root.add(L.group({ name: "desktop" })).add(L.rect({ name: "win" })).to({ x: 5 }, { at: 0.2, duration: 0.2 });
+      })] })`),
+    );
+    expect(info.manifest.scenes[0].tree.children[0].children[0]).toMatchObject({
+      path: "s/desktop/win",
+      spans: [{ startFrame: 6, endFrame: 12 }],
+    });
+  });
+});

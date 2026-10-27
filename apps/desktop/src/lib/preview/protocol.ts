@@ -1,4 +1,4 @@
-import type { SceneSpan } from "liosvideo";
+import type { SceneSpan, TimelineManifest } from "liosvideo";
 
 export type ToWorker =
   | { type: "init"; canvas: OffscreenCanvas }
@@ -19,6 +19,7 @@ export type FromWorker =
       scenes: SceneSpan[];
       /** collectAssets */
       assets: string[];
+      manifest: TimelineManifest;
     }
   | { type: "rendered"; id: number; frame: number }
   /** PNG of the last rendered frame */
