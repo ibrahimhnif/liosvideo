@@ -147,4 +147,24 @@ describe("AudioPlayer", () => {
     expect(mockCtx.createdSources.length).toBe(2); // new source started
     expect(mockCtx.createdSources[1].offset).toBeCloseTo(1.5);
   });
+
+  it("plays clips with undefined duration or endFrame by inferring from decoded buffer", async () => {
+    // In many composition files, duration & endFrame are omitted or 0
+    const clips: AudioClipDef[] = [
+      {
+        src: "audio/vo.mp3",
+        startFrame: 0,
+        endFrame: 0, // was 0 before buffer decode!
+      },
+    ];
+
+    await player.setClips(clips);
+    player.play(0, 30);
+
+    // Mock decodeAudioData returned duration: 5.0s
+    expect(mockCtx.createdSources.length).toBe(1);
+    const src = mockCtx.createdSources[0];
+    expect(src.startedAt).toBeCloseTo(10.0);
+    expect(src.offset).toBeCloseTo(0);
+  });
 });

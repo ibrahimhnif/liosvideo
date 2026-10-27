@@ -65,6 +65,18 @@ export class AudioPlayer {
             const raw = await this.loadBuffer(src);
             const decoded = await ctx.decodeAudioData(raw);
             this.bufferCache.set(src, decoded);
+
+            // Populate duration & endFrame for clips using this buffer if undefined
+            for (const clip of this.clips) {
+              if (clip.src === src) {
+                if (clip.duration === undefined) {
+                  clip.duration = decoded.duration;
+                }
+                if (clip.endFrame <= clip.startFrame) {
+                  clip.endFrame = clip.startFrame + Math.round(decoded.duration * this.currentFps);
+                }
+              }
+            }
           } catch (e) {
             console.warn(`[AudioPlayer] Failed to load/decode "${src}":`, e);
           }
@@ -84,7 +96,11 @@ export class AudioPlayer {
 
     const ctx = this.getContext();
     if (ctx.state === "suspended") {
-      ctx.resume().catch(() => {});
+      ctx.resume().then(() => {
+        if (this.isPlaying) {
+          this.reschedule();
+        }
+      }).catch(() => {});
     }
 
     this.reschedule();
@@ -125,12 +141,16 @@ export class AudioPlayer {
     const playheadSec = this.currentFrame / this.currentFps;
 
     for (const clip of this.clips) {
-      if (clip.endFrame <= this.currentFrame) {
-        continue;
-      }
-
       const buffer = this.bufferCache.get(clip.src);
       if (!buffer) continue;
+
+      const durationSec = clip.duration ?? buffer.duration;
+      const totalClipFrames = Math.round(durationSec * this.currentFps);
+      const effectiveEndFrame = clip.endFrame > clip.startFrame ? clip.endFrame : clip.startFrame + totalClipFrames;
+
+      if (effectiveEndFrame <= this.currentFrame) {
+        continue;
+      }
 
       const clipStartSec = clip.startFrame / this.currentFps;
       const baseOffset = clip.startOffset ?? 0;
@@ -143,16 +163,13 @@ export class AudioPlayer {
         // Scheduled in the future
         delay = clipStartSec - playheadSec;
         offset = baseOffset;
-        if (clip.duration !== undefined) {
-          duration = clip.duration;
-        }
+        duration = durationSec;
       } else {
         // Active right now, played partially
         delay = 0;
         const elapsedInClip = playheadSec - clipStartSec;
         offset = baseOffset + elapsedInClip;
-        const totalDuration = clip.duration ?? (clip.endFrame - clip.startFrame) / this.currentFps;
-        duration = Math.max(0, totalDuration - elapsedInClip);
+        duration = Math.max(0, durationSec - elapsedInClip);
       }
 
       const source = ctx.createBufferSource();
@@ -165,9 +182,9 @@ export class AudioPlayer {
       gain.connect(ctx.destination);
 
       const when = now + delay;
-      if (duration !== undefined) {
+      if (duration !== undefined && duration > 0) {
         source.start(when, offset, duration);
-      } else {
+      } else if (duration === undefined) {
         source.start(when, offset);
       }
 

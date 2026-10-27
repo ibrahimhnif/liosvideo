@@ -71,7 +71,9 @@ export function buildManifest(c: Composition): TimelineManifest {
       name: track.name ?? track.id,
       clips: clipsList.map((clip) => {
         const startFrame = clip.startFrame ?? Math.round((clip.startAt ?? 0) * c.fps);
-        const endFrame = clip.duration !== undefined ? startFrame + Math.round(clip.duration * c.fps) : startFrame;
+        const endFrame = clip.duration !== undefined
+          ? startFrame + Math.round(clip.duration * c.fps)
+          : Math.max(startFrame + 1, totalFrames);
         return {
           src: clip.src,
           startFrame,
