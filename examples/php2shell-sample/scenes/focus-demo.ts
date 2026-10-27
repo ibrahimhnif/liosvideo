@@ -25,12 +25,17 @@ export default scene("focus-demo", { duration: 6 }, ({ root, width, height }) =>
   chrome.set(back, 0);
   terminal.set(front, 0);
 
-  // focus Chrome: it rises and sharpens, the terminal sinks and blurs — then the reverse
+  // focus Chrome: it rises and sharpens, the terminal sinks and blurs — then the reverse.
+  // Both share one ease, so at the midpoint they're identical (same y, scale, blur, opacity):
+  // swapping z there is invisible, instead of the blurred window popping on top at the start.
+  const duration = 0.8;
   const swap = (up: GroupNode, down: GroupNode, at: number) => {
-    up.set({ z: 2 }, at);
-    down.set({ z: 1 }, at);
-    up.to({ ...front, z: 2 }, { at, duration: 0.6 });
-    down.to({ ...back, z: 1 }, { at, duration: 0.6 });
+    const { z: _zf, ...frontPose } = front;
+    const { z: _zb, ...backPose } = back;
+    up.to(frontPose, { at, duration, ease: "inOutCubic" });
+    down.to(backPose, { at, duration, ease: "inOutCubic" });
+    up.set({ z: 2 }, at + duration / 2);
+    down.set({ z: 1 }, at + duration / 2);
   };
   swap(chrome, terminal, 1);
   swap(terminal, chrome, 3.5);
