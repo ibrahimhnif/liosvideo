@@ -13,3 +13,4 @@ export * from "./mockups/window";
 export * from "./mockups/desktop";
 export * from "./mockups/terminal";
 export * from "./mockups/chrome";
+export * from "./mockups/editor";
