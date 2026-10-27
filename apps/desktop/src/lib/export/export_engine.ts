@@ -190,6 +190,15 @@ export class ExportEngine {
       const timestamp = f * frameDuration;
       await videoSource.add(timestamp, frameDuration);
 
+      // Periodically flush encoder every 60 frames (2 seconds) to prevent VideoToolbox lookahead
+      // memory explosion in WebKit (which causes WebProcess OOM crashes at ~2000 frames)
+      if (f > 0 && f % 60 === 0) {
+        const underlyingEncoder = (videoSource as any)._encoder?.encoder;
+        if (underlyingEncoder && typeof underlyingEncoder.flush === "function") {
+          await underlyingEncoder.flush();
+        }
+      }
+
       const pct = Math.round(((f + 1) / totalFrames) * 100);
       const logLine =
         f < 5 || f % 10 === 0 || f === totalFrames - 1 || renderMs > 150
