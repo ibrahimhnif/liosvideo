@@ -38,11 +38,18 @@ pub fn run() {
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_dialog::init())
         .manage(project::ProjectState::default())
+        .manage(acp::commands::SessionState::default())
         .invoke_handler(tauri::generate_handler![
             dev_log,
             initial_project,
             dev_snapshot_dir,
             dev_write_snapshot,
+            acp::commands::agent_connect,
+            acp::commands::agent_authenticate,
+            acp::commands::agent_prompt,
+            acp::commands::agent_cancel,
+            acp::commands::agent_permission_respond,
+            acp::commands::agent_disconnect,
             agents::commands::list_agents,
             agents::commands::rescan_agents,
             agents::commands::install_agent_adapter,

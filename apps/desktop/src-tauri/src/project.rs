@@ -126,6 +126,10 @@ pub async fn git_job<T: Send + 'static>(f: impl FnOnce() -> Result<T> + Send + '
 }
 
 async fn open_at(app: &AppHandle, state: &ProjectState, root: PathBuf) -> Result<ProjectInfo> {
+    // the agent session belongs to the previous project
+    if let Some(sessions) = app.try_state::<crate::acp::commands::SessionState>() {
+        sessions.close().await;
+    }
     let (root, history, commit) = git_job(move || prepare_open(&root)).await?;
     app.asset_protocol_scope()
         .allow_directory(&root, true)

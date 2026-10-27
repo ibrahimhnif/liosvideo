@@ -41,6 +41,11 @@ impl AcpClient {
         Self { conn, info: Default::default() }
     }
 
+    /// What the agent reported in `initialize`.
+    pub fn info(&self) -> AgentInfo {
+        self.info.lock().unwrap().clone()
+    }
+
     pub async fn initialize(&self) -> Result<AgentInfo, RpcError> {
         let params = json!({
             "protocolVersion": PROTOCOL_VERSION,
