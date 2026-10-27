@@ -5,3 +5,4 @@ build/
 .svelte-kit/
 target/
 .superpowers/
+.vitest/
