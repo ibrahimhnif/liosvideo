@@ -4,6 +4,8 @@
   import CompositionSwitcher from "$lib/components/CompositionSwitcher.svelte";
   import Preview from "$lib/components/Preview.svelte";
   import ProjectPicker, { type ProjectInfo } from "$lib/components/ProjectPicker.svelte";
+  import SelectionChip from "$lib/components/SelectionChip.svelte";
+  import { select, selection } from "$lib/timeline/selection.svelte";
   import Probe from "$lib/probe/Probe.svelte";
 
   let project = $state<ProjectInfo | null>(null);
@@ -20,6 +22,10 @@
     if (root) opened(await invoke<ProjectInfo>("open_project", { root }));
   });
 
+  function onKey(e: KeyboardEvent) {
+    if (e.key === "Escape" && !(e.target as HTMLElement).closest("input, textarea, [contenteditable]")) select(undefined);
+  }
+
   async function refreshCompositions() {
     if (!project) return;
     const compositions = await invoke<string[]>("list_compositions");
@@ -28,10 +34,14 @@
   }
 </script>
 
+<svelte:window onkeydown={onKey} />
+
 <main>
   <section class="chat">
     <header>liosvideo</header>
-    <p class="placeholder">Chat comes in the ACP plan.</p>
+    <div class="spacer"></div>
+    <SelectionChip selection={selection.current} onClear={() => select(undefined)} />
+    <p class="placeholder">Chat comes in the ACP plan. Select a scene or object on the timeline to target a revision.</p>
     <button class="dev" onclick={() => (showProbe = !showProbe)}>{showProbe ? "Hide" : "Show"} capability probe</button>
     {#if showProbe}<Probe />{/if}
   </section>
@@ -69,6 +79,7 @@
   header { display: flex; align-items: center; gap: 12px; height: 40px; padding: 0 12px; border-bottom: 1px solid var(--border); font-weight: 600; flex-shrink: 0; }
   .root { color: var(--muted); font-weight: 500; }
   .placeholder { color: var(--muted); padding: 12px; }
-  .dev { margin: auto 12px 12px; font: inherit; font-size: 11px; background: none; border: none; color: var(--muted); cursor: pointer; text-align: left; }
+  .spacer { flex: 1; }
+  .dev { margin: 0 12px 12px; font: inherit; font-size: 11px; background: none; border: none; color: var(--muted); cursor: pointer; text-align: left; }
   .right { background: var(--bg); }
 </style>

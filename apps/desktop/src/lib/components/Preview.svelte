@@ -1,16 +1,18 @@
 <script lang="ts">
   import { invoke } from "@tauri-apps/api/core";
   import { listen } from "@tauri-apps/api/event";
-  import type { SceneSpan } from "liosvideo";
   import { onMount } from "svelte";
   import { BuildCoordinator, bundleComposition, type BuildError } from "$lib/bundle/bundler";
   import { devLog, devSnapshots } from "$lib/devlog";
   import { loadProjectImage } from "$lib/preview/assets";
   import { PlaybackClock } from "$lib/preview/clock";
   import { PreviewHost, SceneError, SupersededError } from "$lib/preview/host";
-  import type { SourceLocation } from "$lib/preview/protocol";
+  import type { LoadedInfo, SourceLocation } from "$lib/preview/protocol";
+  import { reconcileSelection, visibleRows } from "$lib/timeline/model";
+  import { select, selection } from "$lib/timeline/selection.svelte";
   import { shouldRebuild, touchesRootFiles } from "$lib/preview/rebuild";
   import ErrorOverlay from "./ErrorOverlay.svelte";
+  import Timeline from "./Timeline.svelte";
   import Transport from "./Transport.svelte";
 
   let { entry, onRootFilesChanged }: { entry: string; onRootFilesChanged: () => void } = $props();
@@ -18,7 +20,7 @@
   let stage: HTMLDivElement;
   let frame = $state(0);
   let playing = $state(false);
-  let info = $state<{ width: number; height: number; fps: number; totalFrames: number; scenes: SceneSpan[] } | null>(null);
+  let info = $state<LoadedInfo | null>(null);
   let buildErrors = $state<BuildError[]>([]);
   let runtimeError = $state<{ message: string; stack?: string; location?: SourceLocation } | undefined>();
 
@@ -66,6 +68,8 @@
         info = loaded;
         runtimeError = undefined;
         clock.setLength(loaded.fps, loaded.totalFrames);
+        select(reconcileSelection(selection.current, entry, loaded.manifest));
+        devLog(`timeline ${entry} ${visibleRows(loaded.manifest, new Set(loaded.manifest.scenes.map((s) => s.id))).map((r) => "  ".repeat(r.depth) + r.label).join(" | ")}`);
         if (sizeChanged) fitCanvas();
         requested = -1;
         const f = clock.frameAt(performance.now());
@@ -154,6 +158,9 @@
     <ErrorOverlay {buildErrors} {runtimeError} />
   </div>
   <Transport {frame} totalFrames={info?.totalFrames ?? 0} fps={info?.fps ?? 30} {playing} scenes={info?.scenes ?? []} onToggle={toggle} onSeek={seek} />
+  {#if info}
+    <Timeline manifest={info.manifest} composition={entry} {frame} selected={selection.current} onSelect={select} onSeek={seek} />
+  {/if}
 </div>
 
 <style>
