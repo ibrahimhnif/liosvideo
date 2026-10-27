@@ -211,7 +211,7 @@ export class ExportEngine {
         }
 
         const waitT0 = Date.now();
-        await waitForQueueDrain(videoEncoder, 16, () => this.cancelled, () => encoderError, 2);
+        await waitForQueueDrain(videoEncoder, 64, () => this.cancelled, () => encoderError, 2);
         const waitMs = Date.now() - waitT0;
 
         const renderT0 = Date.now();
