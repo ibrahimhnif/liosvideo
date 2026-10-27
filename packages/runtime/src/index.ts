@@ -14,3 +14,5 @@ export * from "./mockups/desktop";
 export * from "./mockups/terminal";
 export * from "./mockups/chrome";
 export * from "./mockups/editor";
+export * from "./mockups/cursor";
+export * from "./mockups/focus";
