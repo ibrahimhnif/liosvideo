@@ -74,13 +74,13 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let file = dir.path().join("cfg/agents.json");
         assert_eq!(load_settings(&file), AgentSettings::default());
-        let mut s = AgentSettings { default_agent: Some("gemini".into()), ..Default::default() };
+        let mut s = AgentSettings { default_agent: Some("agy".into()), ..Default::default() };
         s.project_agents.insert("/p/a".into(), "claude".into());
         s.custom.push(custom("my", "Mine", "/bin/my-agent"));
         save_settings(&file, &s).unwrap();
         assert_eq!(load_settings(&file), s);
         assert_eq!(agent_for_project(&s, "/p/a").as_deref(), Some("claude"));
-        assert_eq!(agent_for_project(&s, "/p/b").as_deref(), Some("gemini"));
+        assert_eq!(agent_for_project(&s, "/p/b").as_deref(), Some("agy"));
         std::fs::write(&file, "{oops").unwrap();
         assert_eq!(load_settings(&file), AgentSettings::default());
     }

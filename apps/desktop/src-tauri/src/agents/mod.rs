@@ -190,27 +190,27 @@ pub(crate) mod tests {
     fn registry_parses_and_has_expected_entries() {
         let r = builtin_registry();
         let ids: Vec<&str> = r.iter().map(|e| e.id.as_str()).collect();
-        for id in ["claude", "codex", "gemini"] {
+        for id in ["claude", "codex", "agy"] {
             assert!(ids.contains(&id), "missing {id}");
         }
         let claude = r.iter().find(|e| e.id == "claude").unwrap();
         assert!(matches!(&claude.launch, Launch::Adapter { package, .. } if package == "@agentclientprotocol/claude-agent-acp"));
-        let gemini = r.iter().find(|e| e.id == "gemini").unwrap();
-        assert_eq!(gemini.launch, Launch::Native { args: vec!["--acp".into()] });
+        let agy = r.iter().find(|e| e.id == "agy").unwrap();
+        assert_eq!(agy.launch, Launch::Native { args: vec!["--acp".into()] });
     }
 
     #[tokio::test]
     async fn detect_reports_states() {
         let bin = tempfile::tempdir().unwrap();
         let adapters = tempfile::tempdir().unwrap();
-        script(bin.path(), "gemini", "echo 1.2.3");
+        script(bin.path(), "agy", "echo 1.2.3");
         script(bin.path(), "claude", "echo '1.2.3 (Claude Code)'");
         let path = bin.path().to_string_lossy().into_owned();
         let r = builtin_registry();
         let state = |list: &[AgentStatus], id: &str| list.iter().find(|s| s.id == id).unwrap().clone();
         let list = detect(&r, &path, adapters.path()).await;
-        assert_eq!(state(&list, "gemini").state, AgentState::Ready);
-        assert_eq!(state(&list, "gemini").version.as_deref(), Some("1.2.3"));
+        assert_eq!(state(&list, "agy").state, AgentState::Ready);
+        assert_eq!(state(&list, "agy").version.as_deref(), Some("1.2.3"));
         assert_eq!(state(&list, "claude").state, AgentState::Enable);
         assert_eq!(state(&list, "codex").state, AgentState::NotInstalled);
         let adapter = adapter_bin(adapters.path(), "claude", "claude-agent-acp");
@@ -224,14 +224,14 @@ pub(crate) mod tests {
     fn launch_spec_for_native_adapter_and_custom() {
         let bin = tempfile::tempdir().unwrap();
         let adapters = tempfile::tempdir().unwrap();
-        let gemini = script(bin.path(), "gemini", "true");
+        let agy = script(bin.path(), "agy", "true");
         let path = bin.path().to_string_lossy().into_owned();
         let r = builtin_registry();
         let mut s = settings::AgentSettings::default();
         let has_path = |spec: &LaunchSpec| spec.env.iter().any(|(k, v)| k == "PATH" && v == &path);
 
-        let spec = launch_spec("gemini", &r, &s, &path, adapters.path()).unwrap();
-        assert_eq!(spec.command, gemini);
+        let spec = launch_spec("agy", &r, &s, &path, adapters.path()).unwrap();
+        assert_eq!(spec.command, agy);
         assert_eq!(spec.args, vec!["--acp"]);
         assert!(has_path(&spec));
 
@@ -245,9 +245,9 @@ pub(crate) mod tests {
 
         let mut env = std::collections::BTreeMap::new();
         env.insert("TOKEN_FILE".to_string(), "/x".to_string());
-        s.custom.push(settings::CustomAgent { id: "mine".into(), name: "Mine".into(), command: "gemini".into(), args: vec!["--acp".into(), "-v".into()], env });
+        s.custom.push(settings::CustomAgent { id: "mine".into(), name: "Mine".into(), command: "agy".into(), args: vec!["--acp".into(), "-v".into()], env });
         let spec = launch_spec("mine", &r, &s, &path, adapters.path()).unwrap();
-        assert_eq!(spec.command, gemini);
+        assert_eq!(spec.command, agy);
         assert_eq!(spec.args, vec!["--acp", "-v"]);
         assert!(spec.env.contains(&("TOKEN_FILE".to_string(), "/x".to_string())));
         assert!(has_path(&spec));

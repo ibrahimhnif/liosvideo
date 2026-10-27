@@ -223,7 +223,7 @@ node.set({ fill: "#22c55e" }, 2.5);
 
 ## Editor MCP Server Tools
 
-When interacting as an AI agent via ACP (Claude Code, Gemini CLI, Codex), use the built-in Editor MCP tools:
+When interacting as an AI agent via ACP (Claude Code, Antigravity CLI, Codex), use the built-in Editor MCP tools:
 
 - `inspect_manifest`: Read current composition duration, scene list, and audio tracks.
 - `get_node_path`: Resolve element hierarchy and bounding boxes for targeted edits.

@@ -5,7 +5,7 @@ import { fakeAgentApi } from "$lib/chat/fake";
 import AgentSetup from "./AgentSetup.svelte";
 
 const agents: AgentStatus[] = [
-  { id: "gemini", name: "Gemini CLI", state: "ready", version: "0.51.0", custom: false },
+  { id: "agy", name: "Antigravity CLI", state: "ready", version: "1.4.8", custom: false },
   { id: "claude", name: "Claude Code", state: "enable", custom: false },
   { id: "goose", name: "goose", state: "not_installed", installUrl: "https://block.github.io/goose/", custom: false },
 ];
@@ -19,7 +19,7 @@ async function setup() {
 describe("AgentSetup", () => {
   it("shows a control for each state", async () => {
     const { screen } = await setup();
-    await expect.element(screen.getByRole("radio", { name: /Gemini CLI/ })).toBeVisible();
+    await expect.element(screen.getByRole("radio", { name: /Antigravity CLI/ })).toBeVisible();
     await expect.element(screen.getByRole("button", { name: "Enable Claude Code" })).toBeVisible();
     await expect.element(screen.getByRole("link", { name: "Install goose" })).toBeVisible();
   });
@@ -34,8 +34,8 @@ describe("AgentSetup", () => {
 
   it("chooses the default agent", async () => {
     const { screen, api } = await setup();
-    await screen.getByRole("radio", { name: /Gemini CLI/ }).click();
-    expect(api.setDefault).toHaveBeenCalledWith("gemini");
+    await screen.getByRole("radio", { name: /Antigravity CLI/ }).click();
+    expect(api.setDefault).toHaveBeenCalledWith("agy");
   });
 
   it("adds a custom agent with parsed args and env", async () => {
