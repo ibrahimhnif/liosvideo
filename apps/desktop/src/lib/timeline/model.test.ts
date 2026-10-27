@@ -40,6 +40,25 @@ describe("visibleRows", () => {
   it("is empty for an empty manifest", () => {
     expect(visibleRows({ width: 1, height: 1, fps: 30, totalFrames: 0, scenes: [] }, new Set())).toEqual([]);
   });
+
+  it("renders audio tracks after scenes", () => {
+    const m: TimelineManifest = {
+      ...manifest(),
+      audioTracks: [
+        {
+          id: "narration",
+          name: "Narration",
+          clips: [{ src: "assets/audio/vo/line-1.mp3", startFrame: 10, endFrame: 50 }],
+        },
+      ],
+    };
+    const rows = visibleRows(m, new Set());
+    const audioRow = rows.find((r) => r.isAudio);
+    expect(audioRow).toBeDefined();
+    expect(audioRow?.key).toBe("audio:narration");
+    expect(audioRow?.label).toBe("🎵 Narration");
+    expect(audioRow?.spans).toEqual([{ startFrame: 10, endFrame: 50 }]);
+  });
 });
 
 describe("layout", () => {

@@ -42,7 +42,7 @@
     <p class="empty">No scenes</p>
   {:else}
     {#each rows as row (row.key)}
-      <div class="row" class:selected={isSelected(row)} class:scene={row.depth === 0}>
+      <div class="row" class:selected={isSelected(row)} class:scene={row.depth === 0 && !row.isAudio} class:audio={row.isAudio}>
         <div class="head" style:padding-left="{8 + row.depth * 14}px">
           {#if row.expandable}
             <button class="disclosure" aria-label="{row.expanded ? 'Collapse' : 'Expand'} {row.label}" aria-expanded={row.expanded} onclick={() => toggle(row.key)}>
@@ -61,7 +61,7 @@
               class="bar"
               style:left="{px.x}px"
               style:width="{px.width}px"
-              aria-label="{row.label} {row.depth === 0 ? 'scene' : 'animation'} {span.startFrame}–{span.endFrame}"
+              aria-label="{row.label} {row.isAudio ? 'audio clip' : row.depth === 0 ? 'scene' : 'animation'} {span.startFrame}–{span.endFrame}"
               onclick={(e) => {
                 e.stopPropagation();
                 choose(row);
@@ -84,6 +84,8 @@
   .disclosure { width: 16px; flex-shrink: 0; border: none; background: none; color: var(--muted); cursor: pointer; padding: 0; font-size: 10px; }
   .label { flex: 1; min-width: 0; text-align: left; border: none; background: none; color: var(--fg); cursor: pointer; padding: 0 4px; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; font: inherit; }
   .row.scene .label { font-weight: 600; }
+  .row.audio .label { color: #34d399; font-weight: 500; }
+  .row.audio .bar { background: #10b981; border: 1px solid #059669; opacity: 0.85; }
   .track { position: relative; cursor: text; }
   .bar { position: absolute; top: 5px; height: 14px; border: none; border-radius: 3px; padding: 0; background: #4f8cff; opacity: 0.75; cursor: pointer; }
   .row.scene .bar { background: var(--raised); border: 1px solid var(--border); opacity: 1; }

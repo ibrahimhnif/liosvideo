@@ -15,6 +15,7 @@ export type Row = {
   expandable: boolean;
   expanded: boolean;
   spans: FrameSpan[];
+  isAudio?: boolean;
 };
 
 export function visibleRows(m: TimelineManifest, expanded: Set<string>): Row[] {
@@ -31,6 +32,20 @@ export function visibleRows(m: TimelineManifest, expanded: Set<string>): Row[] {
       spans: [{ startFrame: s.startFrame, endFrame: s.endFrame }],
     });
     if (open) s.tree.children.forEach((c) => walk(c, s.id, 1));
+  }
+  if (m.audioTracks && m.audioTracks.length > 0) {
+    for (const track of m.audioTracks) {
+      rows.push({
+        key: `audio:${track.id}`,
+        sceneId: "audio",
+        label: `🎵 ${track.name}`,
+        depth: 0,
+        expandable: false,
+        expanded: false,
+        spans: track.clips.map((c) => ({ startFrame: c.startFrame, endFrame: c.endFrame })),
+        isAudio: true,
+      });
+    }
   }
   return rows;
 }
@@ -71,6 +86,11 @@ const sceneSelection = (composition: string, s: ManifestScene): Selection => ({
 });
 
 export function selectionFor(row: Row, composition: string, m: TimelineManifest): Selection {
+  if (row.isAudio) {
+    const startFrame = row.spans.length ? Math.min(...row.spans.map((s) => s.startFrame)) : 0;
+    const endFrame = row.spans.length ? Math.max(...row.spans.map((s) => s.endFrame)) : m.totalFrames;
+    return { composition, sceneId: "audio", path: row.key, startFrame, endFrame };
+  }
   const scene = m.scenes.find((s) => s.id === row.sceneId)!;
   const n = row.path ? findNode(scene.tree, row.path) : undefined;
   return n ? nodeSelection(composition, scene, n) : sceneSelection(composition, scene);
@@ -79,6 +99,9 @@ export function selectionFor(row: Row, composition: string, m: TimelineManifest)
 /** Keeps a selection valid after a reload: same node if it still exists, else its scene, else nothing. A selection in another composition is cleared. */
 export function reconcileSelection(sel: Selection | undefined, composition: string, m: TimelineManifest): Selection | undefined {
   if (!sel || sel.composition !== composition) return undefined;
+  if (sel.sceneId === "audio") {
+    return sel;
+  }
   const scene = m.scenes.find((s) => s.id === sel.sceneId);
   if (!scene) return undefined;
   const n = sel.path ? findNode(scene.tree, sel.path) : undefined;
