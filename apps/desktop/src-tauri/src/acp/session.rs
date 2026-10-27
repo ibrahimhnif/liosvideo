@@ -110,10 +110,27 @@ pub struct Session {
     /// the agent process, when there is one (tests drive a pipe instead)
     pub child: Mutex<Option<tokio::process::Child>>,
     closing: AtomicBool,
+    mcp_port: Mutex<Option<u16>>,
 }
 
 impl Session {
     pub fn connect<R, W>(reader: R, writer: W, root: PathBuf, agent_id: String, events: Arc<dyn SessionEvents>) -> Arc<Session>
+    where
+        R: AsyncRead + Unpin + Send + 'static,
+        W: AsyncWrite + Unpin + Send + 'static,
+    {
+        Self::connect_with_mcp(reader, writer, root, agent_id, events, None)
+    }
+
+    #[allow(dead_code)]
+    pub fn connect_with_mcp<R, W>(
+        reader: R,
+        writer: W,
+        root: PathBuf,
+        agent_id: String,
+        events: Arc<dyn SessionEvents>,
+        mcp_port: Option<u16>,
+    ) -> Arc<Session>
     where
         R: AsyncRead + Unpin + Send + 'static,
         W: AsyncWrite + Unpin + Send + 'static,
@@ -132,7 +149,23 @@ impl Session {
             waiters,
             child: Mutex::new(None),
             closing: AtomicBool::new(false),
+            mcp_port: Mutex::new(mcp_port),
         })
+    }
+
+    pub fn set_mcp_port(&self, port: u16) {
+        *self.mcp_port.lock().unwrap() = Some(port);
+    }
+
+    #[allow(dead_code)]
+    pub fn with_mcp_port(self: Arc<Self>, port: u16) -> Arc<Self> {
+        self.set_mcp_port(port);
+        self
+    }
+
+    #[allow(dead_code)]
+    pub fn mcp_port(&self) -> Option<u16> {
+        *self.mcp_port.lock().unwrap()
     }
 
     /// Stops the agent on purpose (so its exit isn't reported as a crash).
@@ -160,7 +193,21 @@ impl Session {
     }
 
     async fn open_session(&self) -> Result<(), ProjectError> {
-        match self.client.new_session(&self.root, vec![]).await {
+        let mcp_servers = match *self.mcp_port.lock().unwrap() {
+            Some(port) => {
+                let command = std::env::current_exe()
+                    .unwrap_or_else(|_| PathBuf::from("desktop"))
+                    .to_string_lossy()
+                    .into_owned();
+                vec![json!({
+                    "name": "liosvideo",
+                    "command": command,
+                    "args": ["--mcp-bridge", port.to_string()],
+                })]
+            }
+            None => vec![],
+        };
+        match self.client.new_session(&self.root, mcp_servers).await {
             Ok(setup) => {
                 *self.session_id.lock().unwrap() = Some(setup.session_id);
                 let info = self.client.info();
@@ -579,5 +626,27 @@ mod tests {
         let status = rec.of("agent://status").last().unwrap().clone();
         assert_eq!(status["state"], "auth_required");
         assert_eq!(status["authMethods"][0]["id"], "login");
+    }
+
+    #[tokio::test]
+    async fn session_passes_editor_mcp_server_to_new_session() {
+        let dir = project(false);
+        let (r, w, mut agent) = pair();
+        let rec = Arc::new(Recorder::default());
+        let session = Session::connect(r, w, dir.path().canonicalize().unwrap(), "fake".into(), rec.clone())
+            .with_mcp_port(8765);
+        let s = session.clone();
+        let start = tokio::spawn(async move { s.start().await });
+        let m = agent.recv_method("initialize").await;
+        agent.reply(&m["id"], json!({"protocolVersion": 1, "authMethods": []})).await;
+        let m = agent.recv_method("session/new").await;
+        agent.reply(&m["id"], json!({"sessionId": "s1"})).await;
+        start.await.unwrap().unwrap();
+
+        let mcp_servers = &m["params"]["mcpServers"];
+        assert_eq!(mcp_servers[0]["name"], "liosvideo");
+        let args = mcp_servers[0]["args"].as_array().expect("args array");
+        assert!(args.iter().any(|a| a == "--mcp-bridge"));
+        assert!(args.iter().any(|a| a == "8765"));
     }
 }

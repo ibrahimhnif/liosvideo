@@ -4,7 +4,7 @@ use std::process::Stdio;
 use std::sync::{Arc, Mutex};
 
 use serde_json::{json, Value};
-use tauri::{AppHandle, Emitter, State};
+use tauri::{AppHandle, Emitter, Manager, State};
 use tokio::io::{AsyncBufReadExt, BufReader};
 
 use super::session::{SelectionContext, Session, SessionEvents};
@@ -52,9 +52,41 @@ impl SessionEvents for TauriEvents {
     }
 }
 
+static MCP_SERVER: tokio::sync::Mutex<Option<Arc<crate::mcp::McpServer>>> = tokio::sync::Mutex::const_new(None);
+
+pub async fn get_or_start_mcp_server_instance() -> Result<Arc<crate::mcp::McpServer>> {
+    let mut guard = MCP_SERVER.lock().await;
+    if let Some(server) = guard.as_ref() {
+        return Ok(server.clone());
+    }
+    let registry = Arc::new(crate::mcp::tools::ToolRegistry::new());
+    let server = Arc::new(crate::mcp::McpServer::bind(registry).map_err(|e| ProjectError::Other(format!("Couldn't start MCP server: {e}")))?);
+    *guard = Some(server.clone());
+    Ok(server)
+}
+
+pub async fn get_or_start_mcp_server(app: &AppHandle) -> Option<u16> {
+    if let Some(server) = app.try_state::<Arc<crate::mcp::McpServer>>() {
+        return Some(server.port());
+    }
+    match get_or_start_mcp_server_instance().await {
+        Ok(server) => Some(server.port()),
+        Err(e) => {
+            eprintln!("Failed to get or start MCP server: {e}");
+            None
+        }
+    }
+}
+
 /// Starts the agent process in the project folder and wires its stdio to a session.
 /// When the process ends on its own, an `exited` status carries the tail of its stderr.
-pub fn spawn(spec: &LaunchSpec, root: PathBuf, agent_id: String, events: Arc<dyn SessionEvents>) -> Result<Arc<Session>> {
+pub fn spawn(
+    spec: &LaunchSpec,
+    root: PathBuf,
+    agent_id: String,
+    events: Arc<dyn SessionEvents>,
+    mcp_port: Option<u16>,
+) -> Result<Arc<Session>> {
     let mut child = tokio::process::Command::new(&spec.command)
         .args(&spec.args)
         .envs(spec.env.iter().cloned())
@@ -81,6 +113,9 @@ pub fn spawn(spec: &LaunchSpec, root: PathBuf, agent_id: String, events: Arc<dyn
         }
     });
     let session = Session::connect(stdout, stdin, root, agent_id, events);
+    if let Some(port) = mcp_port {
+        session.set_mcp_port(port);
+    }
     *session.child.lock().unwrap() = Some(child);
     let watch = session.clone();
     tokio::spawn(async move {
@@ -124,7 +159,8 @@ pub async fn agent_connect(
     sessions.close().await;
     let events: Arc<dyn SessionEvents> = Arc::new(TauriEvents(app.clone()));
     let spec = reported(&events, &agent_id, resolve_spec(&app, &agent_id).await)?;
-    let session = reported(&events, &agent_id, spawn(&spec, root.clone(), agent_id.clone(), events.clone()))?;
+    let mcp_port = get_or_start_mcp_server(&app).await;
+    let session = reported(&events, &agent_id, spawn(&spec, root.clone(), agent_id.clone(), events.clone(), mcp_port))?;
     // resolving the login-shell PATH can take seconds; the project may have been switched meanwhile
     let still_current = project.root().ok().as_ref() == Some(&root);
     sessions.install(session.clone(), still_current).await?;
@@ -192,7 +228,7 @@ mod tests {
         let path = shell_path::login_path().await;
         let spec = launch_spec(&id, &builtin_registry(), &Default::default(), &path, &adapters).unwrap();
         println!("launch {} {:?}", spec.command.display(), spec.args);
-        let session = spawn(&spec, root, id, Arc::new(Print)).unwrap();
+        let session = spawn(&spec, root, id, Arc::new(Print), None).unwrap();
         tokio::time::timeout(std::time::Duration::from_secs(60), session.start()).await.expect("start timed out").unwrap();
         session.close();
     }
@@ -240,5 +276,21 @@ mod tests {
         assert!(state.install(stale.clone(), false).await.is_err());
         assert!(stale.is_closing());
         assert!(state.current().await.is_err());
+    }
+
+    #[tokio::test]
+    async fn get_or_start_mcp_server_returns_valid_port() {
+        let server = get_or_start_mcp_server_instance().await.unwrap();
+        assert!(server.port() > 0);
+        let same_server = get_or_start_mcp_server_instance().await.unwrap();
+        assert_eq!(server.port(), same_server.port());
+    }
+
+    #[tokio::test]
+    async fn session_set_mcp_port_sets_port() {
+        let (r, w, _agent) = crate::acp::fake::pair();
+        let session = Session::connect(r, w, std::env::temp_dir(), "fake".into(), Arc::new(Print))
+            .with_mcp_port(9999);
+        assert_eq!(session.mcp_port(), Some(9999));
     }
 }
