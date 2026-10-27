@@ -118,9 +118,16 @@ pub async fn get_or_start_mcp_server(app: &AppHandle) -> Option<u16> {
         None => Arc::new(crate::mcp::asset_tools::AssetRequestCoordinator::new()),
     };
     crate::mcp::asset_tools::register_asset_tools(&mut registry, context.clone(), asset_coordinator);
-    let tts_provider = match app.try_state::<Arc<dyn crate::audio::TtsProvider>>() {
+    let tts_provider: Arc<dyn crate::audio::TtsProvider> = match app.try_state::<Arc<dyn crate::audio::TtsProvider>>() {
         Some(p) => p.inner().clone(),
-        None => Arc::new(crate::audio::MockTtsProvider::new()),
+        None => {
+            let eleven = crate::audio::ElevenLabsTtsProvider::new(None);
+            if eleven.has_key() {
+                Arc::new(eleven)
+            } else {
+                Arc::new(crate::audio::MockTtsProvider::new())
+            }
+        }
     };
     crate::mcp::audio_tools::register_audio_tools(&mut registry, context, tts_provider);
     match crate::mcp::McpServer::bind(Arc::new(registry)) {
