@@ -1,5 +1,6 @@
 mod git;
 mod project;
+mod recent;
 mod scaffold;
 mod watch;
 
@@ -41,6 +42,13 @@ pub fn run() {
             dev_snapshot_dir,
             dev_write_snapshot,
             project::open_project,
+            project::create_project,
+            project::recent_projects,
+            project::enable_history,
+            project::project_history,
+            project::commit_diff,
+            project::checkpoint,
+            project::restore_commit,
             project::list_compositions,
             project::read_project_file,
             project::asset_url_path,

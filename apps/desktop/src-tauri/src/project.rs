@@ -3,7 +3,10 @@ use std::path::{Component, Path, PathBuf};
 use std::sync::Mutex;
 
 use serde::Serialize;
-use tauri::{AppHandle, Manager, State};
+use tauri::{AppHandle, Emitter, Manager, State};
+
+use crate::recent;
+use crate::git::{self, CommitInfo, FileDiff, HistoryStatus};
 
 #[derive(Debug, thiserror::Error)]
 pub enum ProjectError {
@@ -94,21 +97,93 @@ impl ProjectState {
 pub struct ProjectInfo {
     root: String,
     compositions: Vec<String>,
+    history: HistoryStatus,
 }
 
-#[tauri::command]
-pub fn open_project(app: AppHandle, state: State<ProjectState>, root: String) -> Result<ProjectInfo> {
-    let root = PathBuf::from(root).canonicalize()?;
-    if !root.is_dir() {
-        return Err(ProjectError::Other(format!("{} is not a folder", root.display())));
-    }
+fn emit_committed(app: &AppHandle, commit: &CommitInfo) {
+    let _ = app.emit("project://committed", commit);
+}
+
+fn recent_file(app: &AppHandle) -> Result<PathBuf> {
+    Ok(app.path().app_config_dir().map_err(|e| ProjectError::Other(e.to_string()))?.join("recent.json"))
+}
+
+fn open_at(app: &AppHandle, state: &ProjectState, root: &Path) -> Result<ProjectInfo> {
+    let (root, history, commit) = prepare_open(root)?;
     app.asset_protocol_scope()
         .allow_directory(&root, true)
         .map_err(|e| ProjectError::Other(e.to_string()))?;
     let watcher = crate::watch::start(app.clone(), root.clone()).map_err(|e| ProjectError::Other(e.to_string()))?;
     let compositions = list_compositions_in(&root)?;
     *state.0.lock().unwrap() = Some(OpenProject { root: root.clone(), _watcher: watcher });
-    Ok(ProjectInfo { root: root.to_string_lossy().into_owned(), compositions })
+    if let Some(c) = &commit {
+        emit_committed(app, c);
+    }
+    let root_str = root.to_string_lossy().into_owned();
+    if let Ok(file) = recent_file(app) {
+        let _ = recent::save_recent(&file, &recent::push_recent(recent::load_recent(&file), &root_str));
+    }
+    Ok(ProjectInfo { root: root_str, compositions, history })
+}
+
+#[tauri::command]
+pub fn open_project(app: AppHandle, state: State<ProjectState>, root: String) -> Result<ProjectInfo> {
+    open_at(&app, &state, Path::new(&root))
+}
+
+#[tauri::command]
+pub fn create_project(app: AppHandle, state: State<ProjectState>, parent: String, name: String) -> Result<ProjectInfo> {
+    let root = crate::scaffold::create_project_in(Path::new(&parent), &name)?;
+    open_at(&app, &state, &root)
+}
+
+#[tauri::command]
+pub fn recent_projects(app: AppHandle) -> Result<Vec<String>> {
+    Ok(recent::load_recent(&recent_file(&app)?))
+}
+
+#[tauri::command]
+pub fn enable_history(app: AppHandle, state: State<ProjectState>) -> Result<HistoryStatus> {
+    let root = state.root()?;
+    let commit = git::enable_history(&root)?;
+    emit_committed(&app, &commit);
+    Ok(git::history_status(&root))
+}
+
+/// Root of the open project, only when the app manages its history.
+fn history_root(state: &ProjectState) -> Result<PathBuf> {
+    let root = state.root()?;
+    if git::history_status(&root) != HistoryStatus::Enabled {
+        return Err(ProjectError::Other("History is not enabled for this project".into()));
+    }
+    Ok(root)
+}
+
+#[tauri::command]
+pub fn project_history(state: State<ProjectState>, limit: usize) -> Result<Vec<CommitInfo>> {
+    git::history(&history_root(&state)?, limit)
+}
+
+#[tauri::command]
+pub fn commit_diff(state: State<ProjectState>, id: String) -> Result<Vec<FileDiff>> {
+    git::commit_diff(&history_root(&state)?, &id)
+}
+
+#[tauri::command]
+pub fn checkpoint(app: AppHandle, state: State<ProjectState>, message: String) -> Result<Option<CommitInfo>> {
+    let message = if message.trim().is_empty() { "Checkpoint" } else { message.trim() };
+    let commit = git::commit_all(&history_root(&state)?, message)?;
+    if let Some(c) = &commit {
+        emit_committed(&app, c);
+    }
+    Ok(commit)
+}
+
+#[tauri::command]
+pub fn restore_commit(app: AppHandle, state: State<ProjectState>, id: String) -> Result<CommitInfo> {
+    let commit = git::restore(&history_root(&state)?, &id)?;
+    emit_committed(&app, &commit);
+    Ok(commit)
 }
 
 #[tauri::command]
@@ -125,6 +200,17 @@ pub fn read_project_file(state: State<ProjectState>, rel: String) -> Result<Stri
 #[tauri::command]
 pub fn asset_url_path(state: State<ProjectState>, rel: String) -> Result<String> {
     Ok(resolve_in_project(&state.root()?, &rel)?.to_string_lossy().into_owned())
+}
+
+/// The non-Tauri part of opening: canonical root, history status, and a "Manual edit" commit for pending changes.
+pub fn prepare_open(root: &Path) -> Result<(PathBuf, HistoryStatus, Option<CommitInfo>)> {
+    let root = root.canonicalize()?;
+    if !root.is_dir() {
+        return Err(ProjectError::Other(format!("{} is not a folder", root.display())));
+    }
+    let status = git::history_status(&root);
+    let commit = if status == HistoryStatus::Enabled { git::commit_all(&root, git::MANUAL_EDIT)? } else { None };
+    Ok((root, status, commit))
 }
 
 #[cfg(test)]
@@ -197,5 +283,26 @@ mod tests {
         assert!(is_ignored(".liosvideo/cache/a"));
         assert!(!is_ignored("scenes/a.ts"));
         assert!(!is_ignored(".liosvideo/project.json"));
+    }
+
+    #[test]
+    fn open_inits_nothing_in_plain_folder() {
+        let dir = project();
+        let (_, status, commit) = prepare_open(dir.path()).unwrap();
+        assert_eq!(status, HistoryStatus::Off);
+        assert!(commit.is_none());
+        assert!(!dir.path().join(".git").exists());
+    }
+
+    #[test]
+    fn open_commits_pending_edits_as_manual_edit() {
+        let dir = project();
+        crate::git::enable_history(dir.path()).unwrap();
+        fs::write(dir.path().join("scenes/a.ts"), "export const edited = 1;").unwrap();
+        let (_, status, commit) = prepare_open(dir.path()).unwrap();
+        assert_eq!(status, HistoryStatus::Enabled);
+        assert_eq!(commit.unwrap().summary, crate::git::MANUAL_EDIT);
+        let (_, _, again) = prepare_open(dir.path()).unwrap();
+        assert!(again.is_none());
     }
 }
