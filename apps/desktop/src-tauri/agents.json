@@ -1,0 +1,23 @@
+[
+  { "id": "claude", "name": "Claude Code", "bins": ["claude"],
+    "launch": { "adapter": { "package": "@agentclientprotocol/claude-agent-acp", "version": "0.97.0", "bin": "claude-agent-acp", "args": [] } },
+    "installUrl": "https://docs.anthropic.com/en/docs/claude-code/setup", "authNote": "Uses your Claude Code login." },
+  { "id": "codex", "name": "Codex", "bins": ["codex"],
+    "launch": { "adapter": { "package": "@agentclientprotocol/codex-acp", "version": "2.3.0", "bin": "codex-acp", "args": [] } },
+    "installUrl": "https://github.com/openai/codex", "authNote": "Uses your Codex login." },
+  { "id": "gemini", "name": "Gemini CLI", "bins": ["gemini"],
+    "launch": { "native": { "args": ["--acp"] } },
+    "installUrl": "https://geminicli.com", "authNote": "Uses your Gemini CLI login." },
+  { "id": "opencode", "name": "OpenCode", "bins": ["opencode"],
+    "launch": { "native": { "args": ["acp"] } },
+    "installUrl": "https://opencode.ai", "authNote": "Uses your OpenCode providers." },
+  { "id": "goose", "name": "goose", "bins": ["goose"],
+    "launch": { "native": { "args": ["acp"] } },
+    "installUrl": "https://block.github.io/goose/", "authNote": "Uses your goose configuration." },
+  { "id": "cursor", "name": "Cursor", "bins": ["cursor-agent"],
+    "launch": { "native": { "args": ["acp"] } },
+    "installUrl": "https://cursor.com/docs/cli/acp", "authNote": "Uses your Cursor login." },
+  { "id": "qwen", "name": "Qwen Code", "bins": ["qwen"],
+    "launch": { "native": { "args": ["--acp", "--experimental-skills"] } },
+    "installUrl": "https://qwenlm.github.io/qwen-code-docs/en/users/overview", "authNote": "Uses your Qwen Code login." }
+]
