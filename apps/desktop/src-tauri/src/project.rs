@@ -1,3 +1,4 @@
+use std::collections::HashMap;
 use std::fs;
 use std::path::{Component, Path, PathBuf};
 use std::sync::{Arc, Mutex};
@@ -129,6 +130,7 @@ pub struct ProjectState {
     playhead: Arc<Mutex<PlayheadState>>,
     errors: Arc<Mutex<EditorErrors>>,
     active_composition: Arc<Mutex<Option<String>>>,
+    manifests: Arc<Mutex<HashMap<String, serde_json::Value>>>,
 }
 
 impl ProjectState {
@@ -177,6 +179,21 @@ impl ProjectState {
 
     pub fn set_active_composition(&self, comp: Option<String>) {
         *self.active_composition.lock().unwrap() = comp;
+    }
+
+    pub fn manifest(&self, composition: Option<&str>) -> Option<serde_json::Value> {
+        let manifests = self.manifests.lock().unwrap();
+        if let Some(comp) = composition {
+            manifests.get(comp).cloned()
+        } else if let Some(active) = self.active_composition() {
+            manifests.get(&active).cloned().or_else(|| manifests.values().next().cloned())
+        } else {
+            manifests.values().next().cloned()
+        }
+    }
+
+    pub fn set_manifest(&self, composition: String, manifest: serde_json::Value) {
+        self.manifests.lock().unwrap().insert(composition, manifest);
     }
 }
 

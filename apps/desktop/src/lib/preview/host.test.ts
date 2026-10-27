@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { PreviewHost } from "./host";
+import { PreviewHost, arrayBufferToBase64 } from "./host";
 import type { FromWorker, ToWorker } from "./protocol";
 
 class FakeWorker {
@@ -177,5 +177,29 @@ describe("PreviewHost review fixes", () => {
     expect(makeWorker).toHaveBeenCalledTimes(2);
     expect(loadsOf(workers[1]).map((m) => m.code)).toEqual(["good"]);
     expect(errors).toEqual(["lost"]);
+  });
+
+  it("converts an ArrayBuffer to a base64 string", () => {
+    const text = "hello world";
+    const buf = new Uint8Array([...text].map((c) => c.charCodeAt(0))).buffer;
+    const b64 = arrayBufferToBase64(buf);
+    expect(b64).toBe(btoa("hello world"));
+  });
+
+  it("captureFrame renders the frame and requests snapshot", async () => {
+    const { host, workers } = setup();
+    const w = workers[0];
+    await loadOk(host, w);
+    const p = host.captureFrame(12);
+    const renderMsg = w.renders().find((r) => r.frame === 12)!;
+    expect(renderMsg).toBeDefined();
+    w.reply({ type: "rendered", id: renderMsg.id, frame: 12 });
+    await Promise.resolve();
+    const snapMsg = w.posted.find((m) => m.type === "snapshot") as Extract<ToWorker, { type: "snapshot" }>;
+    expect(snapMsg).toBeDefined();
+    const fakePng = new ArrayBuffer(8);
+    w.reply({ type: "snapshot", id: snapMsg.id, png: fakePng });
+    const result = await p;
+    expect(result).toBe(fakePng);
   });
 });

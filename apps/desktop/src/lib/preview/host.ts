@@ -16,6 +16,17 @@ export class SupersededError extends Error {
   }
 }
 
+export function arrayBufferToBase64(buffer: ArrayBuffer): string {
+  const bytes = new Uint8Array(buffer);
+  let binary = "";
+  const chunkSize = 8192;
+  for (let i = 0; i < bytes.length; i += chunkSize) {
+    const chunk = bytes.subarray(i, Math.min(i + chunkSize, bytes.length));
+    binary += String.fromCharCode.apply(null, chunk as unknown as number[]);
+  }
+  return btoa(binary);
+}
+
 /** A scene error, with its position in the project source when the stack could be mapped. */
 export class SceneError extends Error {
   constructor(
@@ -99,6 +110,12 @@ export class PreviewHost {
     const done = new Promise<ArrayBuffer>((resolve, reject) => this.snapshots.set(id, { resolve, reject }));
     this.post({ type: "snapshot", id });
     return done;
+  }
+
+  /** Renders the frame and captures its PNG bytes. */
+  async captureFrame(frame: number): Promise<ArrayBuffer> {
+    await this.renderFrame(frame);
+    return this.snapshot();
   }
 
   dispose(): void {

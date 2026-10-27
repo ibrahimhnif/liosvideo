@@ -7,7 +7,7 @@
   import { devLog, devSnapshots } from "$lib/devlog";
   import { loadProjectImage } from "$lib/preview/assets";
   import { PlaybackClock } from "$lib/preview/clock";
-  import { PreviewHost, SceneError, SupersededError } from "$lib/preview/host";
+  import { PreviewHost, SceneError, SupersededError, arrayBufferToBase64 } from "$lib/preview/host";
   import type { LoadedInfo, SourceLocation } from "$lib/preview/protocol";
   import { reconcileSelection, visibleRows } from "$lib/timeline/model";
   import { select, selection } from "$lib/timeline/selection.svelte";
@@ -74,6 +74,7 @@
         runtimeError = undefined;
         clock.setLength(loaded.fps, loaded.totalFrames);
         select(reconcileSelection(selection.current, entry, loaded.manifest));
+        invoke("report_timeline_manifest", { composition: entry, manifest: loaded.manifest }).catch(() => {});
         devLog(`timeline ${entry} ${visibleRows(loaded.manifest, new Set(loaded.manifest.scenes.map((s) => s.id))).map((r) => "  ".repeat(r.depth) + r.label).join(" | ")}`);
         if (sizeChanged) fitCanvas();
         requested = -1;
@@ -146,6 +147,33 @@
       }
     });
 
+    const unlistenCapture = listen<{ id: string; frame: number; composition?: string }>(
+      "editor://capture_frame",
+      async ({ payload }) => {
+        try {
+          if (!host) {
+            await invoke("report_captured_frame", { id: payload.id, data: "" });
+            return;
+          }
+          await host.renderFrame(payload.frame);
+          frame = payload.frame;
+          const buffer = await host.snapshot();
+          const data = arrayBufferToBase64(buffer);
+          await invoke("report_captured_frame", { id: payload.id, data });
+        } catch (e) {
+          devLog(`capture-frame-failed ${payload.id} ${(e as Error).message}`);
+          await invoke("report_captured_frame", { id: payload.id, data: "" }).catch(() => {});
+        }
+      },
+    );
+
+    const unlistenSeek = listen<{ frame: number; timeSeconds: number }>(
+      "preview://seek",
+      ({ payload }) => {
+        seek(payload.frame);
+      },
+    );
+
     builds.trigger();
     window.addEventListener("keydown", onKey);
     return () => {
@@ -153,6 +181,8 @@
       resize.disconnect();
       window.removeEventListener("keydown", onKey);
       void unlisten.then((u) => u());
+      void unlistenCapture.then((u) => u());
+      void unlistenSeek.then((u) => u());
       host.dispose();
     };
   });

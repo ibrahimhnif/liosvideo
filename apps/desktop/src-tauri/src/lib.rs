@@ -40,11 +40,14 @@ pub fn run() {
         .plugin(tauri_plugin_dialog::init())
         .manage(project::ProjectState::default())
         .manage(acp::commands::SessionState::default())
+        .manage(mcp::render_tools::FrameCaptureCoordinator::default())
         .invoke_handler(tauri::generate_handler![
             dev_log,
             initial_project,
             dev_snapshot_dir,
             dev_write_snapshot,
+            mcp::render_tools::report_captured_frame,
+            mcp::render_tools::report_timeline_manifest,
             acp::commands::agent_connect,
             acp::commands::agent_authenticate,
             acp::commands::agent_prompt,

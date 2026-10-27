@@ -64,7 +64,9 @@ pub async fn get_or_start_mcp_server_instance() -> Result<Arc<crate::mcp::McpSer
     let project_state = ProjectState::default();
     let emitter = Arc::new(crate::mcp::state_tools::NoopEventEmitter);
     let context = Arc::new(crate::mcp::state_tools::EditorContext::new(project_state, emitter));
-    crate::mcp::state_tools::register_state_tools(&mut registry, context);
+    crate::mcp::state_tools::register_state_tools(&mut registry, context.clone());
+    let coordinator = Arc::new(crate::mcp::render_tools::FrameCaptureCoordinator::new());
+    crate::mcp::render_tools::register_render_tools(&mut registry, context, coordinator);
     let server = Arc::new(crate::mcp::McpServer::bind(Arc::new(registry)).map_err(|e| ProjectError::Other(format!("Couldn't start MCP server: {e}")))?);
     *guard = Some(server.clone());
     Ok(server)
@@ -85,7 +87,12 @@ pub async fn get_or_start_mcp_server(app: &AppHandle) -> Option<u16> {
     };
     let emitter = Arc::new(crate::mcp::state_tools::TauriEventEmitter::new(app.clone()));
     let context = Arc::new(crate::mcp::state_tools::EditorContext::new(project_state, emitter));
-    crate::mcp::state_tools::register_state_tools(&mut registry, context);
+    crate::mcp::state_tools::register_state_tools(&mut registry, context.clone());
+    let coordinator = match app.try_state::<crate::mcp::render_tools::FrameCaptureCoordinator>() {
+        Some(c) => Arc::new(c.inner().clone()),
+        None => Arc::new(crate::mcp::render_tools::FrameCaptureCoordinator::new()),
+    };
+    crate::mcp::render_tools::register_render_tools(&mut registry, context, coordinator);
     match crate::mcp::McpServer::bind(Arc::new(registry)) {
         Ok(server) => {
             let server_arc = Arc::new(server);
