@@ -186,18 +186,17 @@ impl Session {
         self.start_within(START_TIMEOUT).await
     }
 
-    /// `start`, giving up (and stopping the agent) when it doesn't answer within `limit`.
+    /// `start`, giving up (and stopping the agent) when `initialize` isn't answered within `limit`.
+    /// `session/new` gets no limit: some agents (Command Code) take over a minute to create a
+    /// session, and Reconnect stays available meanwhile.
     pub async fn start_within(&self, limit: std::time::Duration) -> Result<(), ProjectError> {
         self.status("connecting", json!({}));
-        let handshake = async {
-            if let Err(e) = self.client.initialize().await {
+        match tokio::time::timeout(limit, self.client.initialize()).await {
+            Ok(Ok(_)) => self.open_session().await,
+            Ok(Err(e)) => {
                 self.status("error", json!({ "message": e.message }));
-                return Err(ProjectError::Other(e.message));
+                Err(ProjectError::Other(e.message))
             }
-            self.open_session().await
-        };
-        match tokio::time::timeout(limit, handshake).await {
-            Ok(result) => result,
             Err(_) => {
                 let message = format!("The agent didn't respond within {} s", limit.as_secs());
                 self.close();
@@ -374,6 +373,25 @@ mod tests {
         assert_eq!(last["state"], "error");
         assert!(last["message"].as_str().unwrap().contains("didn't respond"));
         assert!(session.is_closing());
+    }
+
+    #[tokio::test]
+    async fn start_waits_out_a_slow_session_new() {
+        // Command Code answers initialize at once but takes over a minute to create a session
+        let dir = project(false);
+        let (r, w, mut agent) = pair();
+        let rec = Arc::new(Recorder::default());
+        let session = Session::connect(r, w, dir.path().canonicalize().unwrap(), "fake".into(), rec.clone());
+        let s = session.clone();
+        let start = tokio::spawn(async move { s.start_within(std::time::Duration::from_millis(50)).await });
+        let m = agent.recv_method("initialize").await;
+        agent.reply(&m["id"], json!({"protocolVersion": 1, "authMethods": []})).await;
+        let m = agent.recv_method("session/new").await;
+        tokio::time::sleep(std::time::Duration::from_millis(200)).await;
+        agent.reply(&m["id"], json!({"sessionId": "s1"})).await;
+        start.await.unwrap().unwrap();
+        assert_eq!(rec.of("agent://status").last().unwrap()["state"], "ready");
+        assert!(!session.is_closing());
     }
 
     fn summaries(root: &std::path::Path) -> Vec<String> {

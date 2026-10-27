@@ -34,12 +34,11 @@ describe("ChatPane", () => {
     await expect.element(screen.getByText("make it blue")).toBeVisible();
   });
 
-  it("can't connect again while a connection is starting", async () => {
-    const { screen, emit } = await setup();
+  it("can reconnect while a slow connection is starting", async () => {
+    const { screen, api, emit } = await setup();
     emit({ type: "status", state: "connecting", agentId: "gemini" });
-    await expect.element(screen.getByRole("button", { name: "Reconnect" })).toBeDisabled();
-    emit(ready);
-    await expect.element(screen.getByRole("button", { name: "Reconnect" })).toBeEnabled();
+    await screen.getByRole("button", { name: "Reconnect" }).click();
+    expect(api.connect).toHaveBeenCalled();
   });
 
   it("renders streamed chunks as one message", async () => {
