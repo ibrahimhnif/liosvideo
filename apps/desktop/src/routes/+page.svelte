@@ -1,8 +1,10 @@
 <script lang="ts">
   import { invoke } from "@tauri-apps/api/core";
   import { onMount } from "svelte";
+  import { tauriHistoryApi } from "$lib/history/api";
   import CompositionSwitcher from "$lib/components/CompositionSwitcher.svelte";
   import Preview from "$lib/components/Preview.svelte";
+  import HistoryPanel from "$lib/components/HistoryPanel.svelte";
   import ProjectPicker, { type ProjectInfo } from "$lib/components/ProjectPicker.svelte";
   import SelectionChip from "$lib/components/SelectionChip.svelte";
   import { select, selection } from "$lib/timeline/selection.svelte";
@@ -11,6 +13,7 @@
   let project = $state<ProjectInfo | null>(null);
   let entry = $state("");
   let showProbe = $state(false);
+  let showHistory = $state(false);
 
   function opened(info: ProjectInfo) {
     project = info;
@@ -52,14 +55,24 @@
       <header>
         <span class="root" title={project.root}>{project.root.split("/").at(-1)}</span>
         <CompositionSwitcher compositions={project.compositions} selected={entry} onSelect={(c) => (entry = c)} />
+        <button class="toggle" aria-pressed={showHistory} onclick={() => (showHistory = !showHistory)}>History</button>
       </header>
-      {#if entry}
-        {#key entry}
-          <Preview {entry} onRootFilesChanged={refreshCompositions} />
-        {/key}
-      {:else}
-        <p class="placeholder">No composition files (*.ts) in the project root.</p>
-      {/if}
+      <div class="workspace" class:with-history={showHistory}>
+        <div class="stage">
+          {#if entry}
+            {#key entry}
+              <Preview {entry} onRootFilesChanged={refreshCompositions} />
+            {/key}
+          {:else}
+            <p class="placeholder">No composition files (*.ts) in the project root.</p>
+          {/if}
+        </div>
+        {#if showHistory}
+          {#key project.root}
+            <HistoryPanel status={project.history} api={tauriHistoryApi} onStatus={(history) => project && (project = { ...project, history })} />
+          {/key}
+        {/if}
+      </div>
     {/if}
   </section>
 </main>
@@ -82,4 +95,9 @@
   .spacer { flex: 1; }
   .dev { margin: 0 12px 12px; font: inherit; font-size: 11px; background: none; border: none; color: var(--muted); cursor: pointer; text-align: left; }
   .right { background: var(--bg); }
+  .toggle { margin-left: auto; font: inherit; font-weight: 500; padding: 3px 10px; border-radius: 6px; border: 1px solid var(--border); background: none; color: var(--fg); cursor: pointer; }
+  .toggle[aria-pressed="true"] { background: var(--raised); }
+  .workspace { flex: 1; min-height: 0; display: grid; grid-template-columns: 1fr; }
+  .workspace.with-history { grid-template-columns: 1fr 320px; }
+  .stage { display: flex; flex-direction: column; min-width: 0; min-height: 0; }
 </style>
