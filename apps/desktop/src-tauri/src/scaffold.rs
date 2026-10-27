@@ -5,7 +5,7 @@ use crate::project::ProjectError;
 
 type Result<T> = std::result::Result<T, ProjectError>;
 
-const TEMPLATES: [(&str, &str); 7] = [
+const TEMPLATES: [(&str, &str); 8] = [
     ("long.ts", include_str!("../templates/long.ts")),
     ("short.ts", include_str!("../templates/short.ts")),
     ("scenes/intro.ts", include_str!("../templates/scenes/intro.ts")),
@@ -13,6 +13,7 @@ const TEMPLATES: [(&str, &str); 7] = [
     ("AGENTS.md", include_str!("../templates/AGENTS.md")),
     (".gitignore", include_str!("../templates/gitignore")),
     (".liosvideo/project.json", include_str!("../templates/project.json")),
+    (".agents/skills/liosvideo/SKILL.md", include_str!("../templates/skills/liosvideo/SKILL.md")),
 ];
 
 const ASSET_DIRS: [&str; 5] = ["assets/images", "assets/video", "assets/fonts", "assets/audio/vo", "assets/audio/music"];
@@ -107,7 +108,7 @@ mod tests {
         assert_eq!(root, parent.path().join("php2shell").canonicalize().unwrap());
         for rel in [
             "long.ts", "short.ts", "scenes/intro.ts", "script.md", "AGENTS.md", ".gitignore",
-            ".liosvideo/project.json", "assets/images", "assets/video", "assets/fonts", "assets/audio/vo", "assets/audio/music",
+            ".liosvideo/project.json", ".agents/skills/liosvideo/SKILL.md", "assets/images", "assets/video", "assets/fonts", "assets/audio/vo", "assets/audio/music",
         ] {
             assert!(root.join(rel).exists(), "missing {rel}");
         }

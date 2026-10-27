@@ -1,79 +1,235 @@
-# liosvideo project
+# liosvideo Project Guide
 
-This folder is a video project for liosvideo. Videos are written as TypeScript code; the app renders them with WebGPU and shows a live preview that reloads whenever a file changes.
+This repository contains a **liosvideo** declarative video project. Videos are authored as deterministic TypeScript code; the liosvideo desktop application renders them in real-time with WebGPU, synchronizes high-fidelity Web Audio narration and music, and provides live hot-reloading.
 
-## Layout
+---
+
+## Directory Layout
 
 ```
-long.ts                16:9 composition (YouTube)
-short.ts               9:16 composition (Shorts / Reels / TikTok)
-scenes/                scene modules, importable by any composition
-script.md              researched script; narration lines with stable ids, one section per composition
-assets/images|video|fonts/
-assets/audio/vo/       narration clips + word timings
-assets/audio/music/
-.liosvideo/project.json  project settings (don't edit by hand)
-out/                   exports (gitignored)
+long.ts                     # 16:9 composition (YouTube / Presentation)
+short.ts                    # 9:16 composition (Shorts / Reels / TikTok)
+scenes/                     # Scene modules, reusable across compositions
+  intro.ts
+  features.ts
+  outro.ts
+script.md                   # Researched script with stable line IDs
+assets/
+  images/                   # External images (PNG, JPEG, WebP, SVG)
+  video/                    # Video clips (MP4, WebM)
+  fonts/                    # Custom web fonts (WOFF2, TTF)
+  audio/
+    vo/                     # Narration audio clips + word-level timing JSON
+    music/                  # Background music & sound effects
+.liosvideo/
+  project.json              # Project metadata & audio manifest
+out/                        # Rendered MP4 video exports (gitignored)
 ```
+
+---
 
 ## Compositions
 
-Any `*.ts` file at the project root that default-exports `composition(...)` is a renderable output:
+Any `*.ts` file at the project root default-exporting `composition(...)` is a renderable output:
 
 ```ts
-import { composition } from "liosvideo";
+import { composition, transition } from "liosvideo";
 import intro from "./scenes/intro";
+import demo from "./scenes/demo";
+import outro from "./scenes/outro";
 
-export default composition({ width: 1920, height: 1080, fps: 30, background: "#0b0d12", scenes: [intro] });
-```
-
-Scenes play in order. Scene ids must be unique within a composition.
-
-## Scenes
-
-```ts
-import { group, image, rect, scene, text } from "liosvideo";
-
-export default scene("intro", { duration: 3, background: "#0b0d12" }, ({ root, width, height, duration, random }) => {
-  const title = root.add(text({ name: "title", text: "Hello", fontSize: 96, x: width / 2, y: height / 2, anchorX: 0.5, anchorY: 0.5, opacity: 0 }));
-  title.to({ opacity: 1 }, { at: 0.2, duration: 0.6, ease: "outCubic" });
+export default composition({
+  width: 1920,
+  height: 1080,
+  fps: 30,
+  background: "#0b0d12",
+  scenes: [
+    intro,
+    demo,
+    outro
+  ],
+  transitions: [
+    transition("fade", { duration: 0.5 }),
+    transition("slide", { duration: 0.4, direction: "left" })
+  ],
+  audio: [
+    {
+      id: "bgm",
+      src: "assets/audio/music/ambient.mp3",
+      startAt: 0,
+      volume: 0.25,
+      loop: true
+    }
+  ]
 });
 ```
 
-- `build` runs once; it describes the whole scene up front. Time is in **seconds from the start of the scene**.
-- `root` is a group the size of the frame. Use `width`/`height` so a scene works in both 16:9 and 9:16.
-- `random()` is a deterministic random source seeded by the scene id.
+- **Transitions**: Supported primitives are `"fade"`, `"slide"`, `"zoom"`, and `"wipe"`.
+  - Options: `{ duration: number, direction?: "left" | "right" | "up" | "down" }`.
+- **Audio tracks**: Compositions support arbitrary audio tracks with `startAt`, `volume`, and `loop`.
 
-### Nodes
+---
 
-Create with `group(init)`, `rect(init)`, `text(init)`, `image(init)`; attach with `parent.add(child)` (returns the child). Groups nest: transforms, opacity, blur and clipping apply to the whole subtree.
+## Scenes
 
-Props every node has (defaults in brackets): `x, y` [0] position in the parent; `width, height` [0]; `anchorX, anchorY` [0] pivot as a 0–1 fraction of the size; `scaleX, scaleY` [1]; `rotation` [0] degrees clockwise; `opacity` [1]; `blur` [0] px; `z` [0] stacking order among siblings; `radius` [0] corner radius; `clip` [false] clip children to the rounded bounds.
+Each scene is a self-contained module created using `scene(id, config, builder)`:
 
-- `rect`: `fill` ["#ffffff"], `stroke` [""], `strokeWidth` [0].
-- `text`: `text`, `fontFamily` ["SF Pro Text"], `fontSize` [48], `fontWeight` [400], `color` ["#ffffff"], `lineHeight` [1.2]. With width and height left at 0, text is sized to its content.
-- `image`: `src` (project-relative path, e.g. `"assets/images/wall.jpg"`), `fit` ["fill" | "contain" | "cover"].
+```ts
+import { group, image, rect, scene, text, vo } from "liosvideo";
 
-### Animation
+export default scene(
+  "intro",
+  { duration: 4.5, background: "#0b0d12" },
+  ({ root, width, height, duration, random }) => {
+    // Background card
+    const card = root.add(
+      rect({
+        name: "card",
+        width: width * 0.8,
+        height: height * 0.6,
+        x: width / 2,
+        y: height / 2,
+        anchorX: 0.5,
+        anchorY: 0.5,
+        radius: 24,
+        fill: "#161b22",
+        stroke: "#30363d",
+        strokeWidth: 2,
+        opacity: 0
+      })
+    );
+    card.to({ opacity: 1 }, { at: 0.2, duration: 0.4, ease: "outCubic" });
 
-- `node.to(props, { at, duration, ease? })` animates from the previous value to `props`.
-- `node.set(props, at)` changes instantly.
-- Eases: `linear`, `inQuad`, `outQuad`, `inOutQuad`, `inCubic`, `outCubic`, `inOutCubic` (default), `outBack`, `inOutExpo`, or a function `(t) => number`.
+    // Title
+    const title = card.add(
+      text({
+        name: "title",
+        text: "Autonomous Video Creation",
+        fontSize: Math.min(width * 0.04, 56),
+        fontWeight: 700,
+        color: "#ffffff",
+        x: card.width / 2,
+        y: card.height / 2,
+        anchorX: 0.5,
+        anchorY: 0.5,
+        opacity: 0
+      })
+    );
+    title.to({ opacity: 1, y: card.height / 2 - 20 }, { at: 0.4, duration: 0.5, ease: "outBack" });
 
-### Names
+    // Voice-over synchronization with vo() helper
+    const narration = vo("intro-line-1");
+    if (narration.isReady) {
+      // Highlight a keyword exactly when spoken
+      const keywordTime = narration.wordTime("autonomous");
+      if (keywordTime !== undefined) {
+        title.to({ color: "#38bdf8" }, { at: keywordTime, duration: 0.2 });
+      }
+    }
+  }
+);
+```
 
-Give every meaningful node a `name`. Names form stable paths (`intro/desktop/terminal`) that the timeline shows and that the user selects to ask for revisions. Names must not contain `/`. Keep names stable when editing so selections survive.
+### Context Parameters
+- `root`: Root group matching composition resolution.
+- `width`, `height`: Dynamic dimensions (write responsive code that works in both 16:9 and 9:16).
+- `duration`: Scene duration in seconds.
+- `random()`: Seeded deterministic pseudo-random number generator (`0` to `1`).
 
-## Rules
+---
 
-- Imports: only `liosvideo` and relative paths inside this folder. No npm packages, no `../` outside the project, no dynamic `import()`.
-- Scene code runs in a sandbox: no network, file system or storage. Don't use timers, `Date.now()` or `Math.random()`; rendering must be a pure function of the frame. Use `random()` from the scene context.
-- Reference assets by project-relative path only.
+## Node Primitives
 
-## Git
+| Type | Builder | Key Properties |
+| :--- | :--- | :--- |
+| **Group** | `group(props)` | `x, y, width, height, anchorX, anchorY, scaleX, scaleY, rotation, opacity, blur, z, clip, radius` |
+| **Rect** | `rect(props)` | Group properties plus `fill, stroke, strokeWidth` |
+| **Text** | `text(props)` | Group properties plus `text, fontFamily, fontSize, fontWeight, color, lineHeight, letterSpacing` |
+| **Image** | `image(props)` | Group properties plus `src` (project-relative path), `fit ("fill" \| "contain" \| "cover")` |
 
-The app commits your changes at the end of every turn and shows them in its history panel. Don't run git commands yourself.
+### Transforms & Hierarchy
+- Hierarchy: Nodes are added with `parent.add(child)`. Parent transforms (scale, position, rotation, opacity, blur) affect all descendants.
+- Anchor Points: `anchorX` and `anchorY` range from `0` (top-left) to `0.5` (center) to `1` (bottom-right).
 
-## Revisions
+---
 
-When the user's message comes with a timeline selection (composition, scene, node path, time range), change only that scene's file and the selected nodes unless they ask for more. Don't change other scenes as a side effect.
+## Keyframing & Animation
+
+Animate properties over time with `node.to(...)` or snap instantly with `node.set(...)`:
+
+```ts
+// Smooth transition
+node.to({ opacity: 1, scaleX: 1, scaleY: 1 }, {
+  at: 1.0,           // Time in seconds from start of scene
+  duration: 0.6,     // Duration in seconds
+  ease: "outCubic"   // Easing function
+});
+
+// Instant change
+node.set({ fill: "#22c55e" }, 2.5);
+```
+
+### Supported Easings
+- `"linear"`
+- `"inQuad"`, `"outQuad"`, `"inOutQuad"`
+- `"inCubic"`, `"outCubic"`, `"inOutCubic"` (default)
+- `"outBack"` (slight overshoot, ideal for entrance animations)
+- `"inOutExpo"`
+- Custom curve: `(t: number) => number`
+
+---
+
+## Audio & Narration Workflow
+
+1. **Script (`script.md`)**: Maintain concise narration with stable identifiers:
+   ```markdown
+   <!-- vo:intro-line-1 -->
+   Welcome to liosvideo, the deterministic code-first video engine.
+   ```
+2. **Generating Audio**:
+   - Use MCP tool `tts_generate` or live ElevenLabs voice synthesis.
+   - Audio is saved to `assets/audio/vo/<id>.mp3` with word-level alignments in `.liosvideo/project.json`.
+3. **In-App Voice Recording**:
+   - Voice lines recorded directly in the app are automatically saved and transcribed with timestamps.
+4. **Timing Sync with `vo(id)`**:
+   - `vo(id).duration`: Exact audio duration in seconds.
+   - `vo(id).wordTime(word)`: Second offset when a specific word is spoken.
+
+---
+
+## Editor MCP Server Tools
+
+When interacting as an AI agent via ACP (Claude Code, Gemini CLI, Codex), use the built-in Editor MCP tools:
+
+- `inspect_manifest`: Read current composition duration, scene list, and audio tracks.
+- `get_node_path`: Resolve element hierarchy and bounding boxes for targeted edits.
+- `tts_list_voices`: List available local and cloud narration voices.
+- `tts_generate`: Synthesize speech with word-level timestamps.
+- `capture_frame`: Capture a PNG frame at timestamp `t` for visual verification.
+
+---
+
+## Screenshot & Visual Verification
+
+Before declaring an edit complete:
+1. Verify scene layout using visual snapshots:
+   - Capture a reference frame: compare current render against expected design.
+   - Check difference overlays in the desktop UI preview (`blend` or `difference` mode).
+2. Ensure no layout overflows or text wrapping collisions occur between 16:9 and 9:16 aspect ratios.
+
+---
+
+## Development Constraints & Rules
+
+1. **Pure & Deterministic**:
+   - No `Math.random()`, `Date.now()`, or asynchronous promises inside `scene` builders.
+   - Use `random()` from the scene builder callback.
+2. **Strict Import Scope**:
+   - Only import `liosvideo` and relative project files.
+   - Do not import external npm packages or use Node.js standard libraries.
+3. **Naming Consistency**:
+   - Always give meaningful `name` attributes to nodes (`card`, `title`, `badge`, `avatar`).
+   - Do not use `/` inside node names; path segments use `/` as delimiters.
+4. **Targeted Revisions**:
+   - When the user selects a node or timestamp range in the timeline, edit only the affected scene and elements.
+   - Keep unchanged scenes intact to preserve render cache.
