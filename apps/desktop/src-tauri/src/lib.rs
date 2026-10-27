@@ -1,5 +1,6 @@
 mod git;
 mod project;
+mod scaffold;
 mod watch;
 
 /// Lets the frontend write diagnostics to the terminal running `tauri dev`.
