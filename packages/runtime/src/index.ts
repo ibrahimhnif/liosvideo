@@ -9,3 +9,4 @@ export * from "./composition";
 export { collectAssets, evaluateFrame } from "./evaluate";
 export type * from "./renderlist";
 export * from "./manifest";
+export * from "./mockups/window";
