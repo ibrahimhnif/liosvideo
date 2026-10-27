@@ -172,6 +172,16 @@ export default scene(
 );
 ```
 
+### Built-In Realistic Mockups
+- `desktop`: macOS wallpaper, menu bar, and window layout.
+- `window`: macOS window with native titlebar and traffic light controls.
+- `chrome`: Tab strip, omnibox, and web content area.
+- `terminal`: Realistic terminal with prompt, command typing, and ANSI styling.
+- `editor`: VS Code-style editor window with line numbers and syntax styling.
+- `cursor`: macOS pointer with animated cursor movement and click effects.
+- `focus()`: Depth-of-field focus effect (dim/blur background, pop foreground window).
+- `phone`: Modern smartphone device frame for 9:16 mobile compositions (Shorts, Reels, TikTok).
+
 ---
 
 ## 5. Audio & Voice-Over Synchronization

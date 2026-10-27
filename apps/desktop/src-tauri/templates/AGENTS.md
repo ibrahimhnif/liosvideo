@@ -146,6 +146,7 @@ export default scene(
 | **Rect** | `rect(props)` | Group properties plus `fill, stroke, strokeWidth` |
 | **Text** | `text(props)` | Group properties plus `text, fontFamily, fontSize, fontWeight, color, lineHeight, letterSpacing` |
 | **Image** | `image(props)` | Group properties plus `src` (project-relative path), `fit ("fill" \| "contain" \| "cover")` |
+| **Phone** | `phone(props)` | Smartphone device frame for 9:16 mobile compositions with bezel, screen, dynamic island, and home indicator |
 
 ### Transforms & Hierarchy
 - Hierarchy: Nodes are added with `parent.add(child)`. Parent transforms (scale, position, rotation, opacity, blur) affect all descendants.
