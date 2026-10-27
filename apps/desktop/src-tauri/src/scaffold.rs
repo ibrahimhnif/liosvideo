@@ -34,12 +34,26 @@ pub fn validate_project_name(name: &str) -> Result<()> {
 
 /// Creates `parent/name` from the templates and makes the initial commit. Never touches an existing folder.
 pub fn create_project_in(parent: &Path, name: &str) -> Result<PathBuf> {
+    create_project_with(parent, name, crate::git::init_history)
+}
+
+/// `create_project_in` with the history step injectable; on any failure the new folder is removed.
+pub fn create_project_with(parent: &Path, name: &str, init: impl Fn(&Path) -> Result<crate::git::CommitInfo>) -> Result<PathBuf> {
     validate_project_name(name)?;
     let root = parent.join(name);
     if root.exists() {
         return Err(ProjectError::Other(format!("{} already exists", root.display())));
     }
     fs::create_dir(&root)?;
+    // only this call created `root`, so removing it on failure can't touch the user's files
+    let result = populate(&root, init);
+    if result.is_err() {
+        let _ = fs::remove_dir_all(&root);
+    }
+    result
+}
+
+fn populate(root: &Path, init: impl Fn(&Path) -> Result<crate::git::CommitInfo>) -> Result<PathBuf> {
     for (rel, content) in TEMPLATES {
         let path = root.join(rel);
         if let Some(dir) = path.parent() {
@@ -55,7 +69,7 @@ pub fn create_project_in(parent: &Path, name: &str) -> Result<PathBuf> {
         std::os::unix::fs::symlink("AGENTS.md", root.join(link))?;
     }
     let root = root.canonicalize()?;
-    crate::git::enable_history(&root)?;
+    init(&root)?;
     Ok(root)
 }
 
@@ -106,5 +120,22 @@ mod tests {
         assert_eq!(history_status(&root), HistoryStatus::Enabled);
         assert_eq!(history(&root, 10).unwrap().len(), 1);
         assert!(crate::git::commit_all(&root, "x").unwrap().is_none(), "everything is committed");
+    }
+
+    #[test]
+    fn creates_history_even_inside_another_repo() {
+        let outer = tempfile::tempdir().unwrap();
+        git2::Repository::init(outer.path()).unwrap();
+        let root = create_project_in(outer.path(), "video").unwrap();
+        assert_eq!(history_status(&root), HistoryStatus::Enabled);
+    }
+
+    #[test]
+    fn failed_create_leaves_nothing_behind() {
+        let parent = tempfile::tempdir().unwrap();
+        let failing = |_: &Path| -> Result<crate::git::CommitInfo> { Err(ProjectError::Other("boom".into())) };
+        assert!(create_project_with(parent.path(), "video", failing).is_err());
+        assert!(!parent.path().join("video").exists());
+        assert!(create_project_in(parent.path(), "video").is_ok(), "a retry works");
     }
 }

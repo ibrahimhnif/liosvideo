@@ -12,6 +12,8 @@ type Result<T> = std::result::Result<T, ProjectError>;
 pub enum HistoryStatus {
     Enabled,
     Off,
+    /// a repo the app didn't create; nothing is committed until the user opts in
+    Unmanaged,
     Nested { repo: String },
 }
 
@@ -40,30 +42,51 @@ impl From<git2::Error> for ProjectError {
     }
 }
 
-/// History is only managed for folders that are themselves a repo root; never a parent repo's subfolder.
+/// Marks a repo whose history the app manages (written by `init_history`).
+const MARKER: &str = ".liosvideo/project.json";
+
 pub fn history_status(root: &Path) -> HistoryStatus {
+    let home = std::env::var_os("HOME").map(std::path::PathBuf::from);
+    history_status_in(root, home.as_deref())
+}
+
+/// Enabled: a repo root with the app's marker. Unmanaged: someone else's repo root.
+/// Nested: inside another repo that tracks this folder (a home-folder dotfiles repo, or one that ignores it, doesn't count).
+pub fn history_status_in(root: &Path, home: Option<&Path>) -> HistoryStatus {
     if root.join(".git").exists() && git2::Repository::open(root).is_ok() {
-        return HistoryStatus::Enabled;
+        return if root.join(MARKER).is_file() { HistoryStatus::Enabled } else { HistoryStatus::Unmanaged };
     }
-    let Ok(repo) = git2::Repository::discover(root) else { return HistoryStatus::Off };
-    match repo.workdir().and_then(|w| w.canonicalize().ok()) {
-        Some(w) if root.canonicalize().map(|r| r != w).unwrap_or(true) => {
-            HistoryStatus::Nested { repo: w.to_string_lossy().into_owned() }
+    let Ok(root) = root.canonicalize() else { return HistoryStatus::Off };
+    let Ok(repo) = git2::Repository::discover(&root) else { return HistoryStatus::Off };
+    let Some(workdir) = repo.workdir().and_then(|w| w.canonicalize().ok()) else { return HistoryStatus::Off };
+    let is_home = home.and_then(|h| h.canonicalize().ok()).is_some_and(|h| h == workdir);
+    let ignored = root.strip_prefix(&workdir).is_ok_and(|rel| repo.is_path_ignored(rel).unwrap_or(false));
+    if workdir == root || is_home || ignored {
+        return HistoryStatus::Off;
+    }
+    HistoryStatus::Nested { repo: workdir.to_string_lossy().into_owned() }
+}
+
+/// Whether the app may commit on its own: a normal branch with no merge, rebase or similar in progress.
+pub fn can_auto_commit(root: &Path) -> bool {
+    git2::Repository::open(root)
+        .is_ok_and(|repo| repo.state() == git2::RepositoryState::Clean && !repo.head_detached().unwrap_or(true))
+}
+
+/// Starts tracking a folder the user chose: refuses nested folders and already-managed repos.
+pub fn enable_history(root: &Path) -> Result<CommitInfo> {
+    match history_status(root) {
+        HistoryStatus::Off | HistoryStatus::Unmanaged => init_history(root),
+        HistoryStatus::Enabled => Err(ProjectError::Other("History is already enabled".into())),
+        HistoryStatus::Nested { repo } => {
+            Err(ProjectError::Other(format!("This folder is inside another git repository ({repo})")))
         }
-        _ => HistoryStatus::Off,
     }
 }
 
-/// Starts tracking a folder: project.json, required .gitignore lines, `git init`, first commit.
-pub fn enable_history(root: &Path) -> Result<CommitInfo> {
-    match history_status(root) {
-        HistoryStatus::Off => {}
-        HistoryStatus::Enabled => return Err(ProjectError::Other("History is already enabled".into())),
-        HistoryStatus::Nested { repo } => {
-            return Err(ProjectError::Other(format!("This folder is inside another git repository ({repo})")));
-        }
-    }
-    let settings = root.join(".liosvideo/project.json");
+/// project.json (the marker), required .gitignore lines, `git init` unless a repo exists, first commit.
+pub fn init_history(root: &Path) -> Result<CommitInfo> {
+    let settings = root.join(MARKER);
     if !settings.exists() {
         fs::create_dir_all(root.join(".liosvideo"))?;
         fs::write(&settings, "{ \"version\": 1 }\n")?;
@@ -81,7 +104,9 @@ pub fn enable_history(root: &Path) -> Result<CommitInfo> {
         }
         fs::write(&ignore_path, ignore)?;
     }
-    git2::Repository::init(root)?;
+    if !root.join(".git").exists() {
+        git2::Repository::init(root)?;
+    }
     commit_all(root, "Start history")?.ok_or_else(|| ProjectError::Other("nothing to commit".into()))
 }
 
@@ -439,5 +464,73 @@ mod tests {
         let a = commit_all(p, "A").unwrap().unwrap();
         assert!(restore(p, &a.id).is_err());
         assert_eq!(history(p, 10).unwrap().len(), 2);
+    }
+
+    #[test]
+    fn status_is_unmanaged_for_repo_without_marker() {
+        let dir = folder();
+        git2::Repository::init(dir.path()).unwrap();
+        assert_eq!(history_status(dir.path()), HistoryStatus::Unmanaged);
+    }
+
+    #[test]
+    fn enable_history_adopts_unmanaged_repo_keeping_its_commits() {
+        let dir = folder();
+        let p = dir.path();
+        git2::Repository::init(p).unwrap();
+        fs::write(p.join("a.ts"), "1").unwrap();
+        fs::create_dir(p.join(".liosvideo")).unwrap();
+        fs::write(p.join(".liosvideo/project.json"), "{}").unwrap();
+        commit_all(p, "user commit").unwrap().unwrap();
+        fs::remove_file(p.join(".liosvideo/project.json")).unwrap();
+        commit_all(p, "drop marker").unwrap().unwrap();
+        assert_eq!(history_status(p), HistoryStatus::Unmanaged);
+        enable_history(p).unwrap();
+        assert_eq!(history_status(p), HistoryStatus::Enabled);
+        let summaries: Vec<String> = history(p, 10).unwrap().into_iter().map(|c| c.summary).collect();
+        assert_eq!(summaries, vec!["Start history", "drop marker", "user commit"]);
+    }
+
+    #[test]
+    fn status_is_off_when_outer_repo_ignores_folder() {
+        let dir = folder();
+        git2::Repository::init(dir.path()).unwrap();
+        fs::write(dir.path().join(".gitignore"), "*\n").unwrap();
+        fs::create_dir(dir.path().join("sub")).unwrap();
+        assert_eq!(history_status(&dir.path().join("sub")), HistoryStatus::Off);
+    }
+
+    #[test]
+    fn status_is_off_when_outer_repo_is_home() {
+        let dir = folder();
+        git2::Repository::init(dir.path()).unwrap();
+        fs::create_dir(dir.path().join("sub")).unwrap();
+        assert_eq!(history_status_in(&dir.path().join("sub"), Some(dir.path())), HistoryStatus::Off);
+    }
+
+    #[test]
+    fn auto_commit_is_skipped_while_a_merge_is_in_progress() {
+        let dir = repo_with(&[("a.ts", "1")]);
+        let p = dir.path();
+        let head = history(p, 1).unwrap()[0].id.clone();
+        fs::write(p.join(".git/MERGE_HEAD"), format!("{head}\n")).unwrap();
+        assert!(!can_auto_commit(p));
+    }
+
+    #[test]
+    fn auto_commit_is_skipped_on_detached_head() {
+        let dir = repo_with(&[("a.ts", "1")]);
+        let p = dir.path();
+        commit_all(p, "A").unwrap();
+        let repo = git2::Repository::open(p).unwrap();
+        let id = repo.head().unwrap().target().unwrap();
+        repo.set_head_detached(id).unwrap();
+        assert!(!can_auto_commit(p));
+    }
+
+    #[test]
+    fn auto_commit_is_allowed_on_a_clean_branch() {
+        let dir = repo_with(&[]);
+        assert!(can_auto_commit(dir.path()));
     }
 }

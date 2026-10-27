@@ -65,6 +65,9 @@
   {#if status.kind === "off"}
     <p class="note">History is off for this folder.</p>
     <button class="primary" onclick={enable}>Enable history</button>
+  {:else if status.kind === "unmanaged"}
+    <p class="note">This folder is already a git repository. If liosvideo manages its history, it will commit changes here on your current branch.</p>
+    <button class="primary" onclick={enable}>Manage history here</button>
   {:else if status.kind === "nested"}
     <p class="note">This folder is inside another git repository ({status.repo}). History is disabled.</p>
   {:else}

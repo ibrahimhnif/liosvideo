@@ -40,6 +40,15 @@ describe("HistoryPanel", () => {
     expect(onStatus).toHaveBeenCalledWith({ kind: "enabled" });
   });
 
+  it("asks before managing a repo the app didn't create", async () => {
+    const { screen, api, onStatus } = await setup({ kind: "unmanaged" });
+    await expect.element(screen.getByText(/already a git repository/)).toBeVisible();
+    expect(api.history).not.toHaveBeenCalled();
+    await screen.getByRole("button", { name: "Manage history here" }).click();
+    expect(api.calls).toEqual(["enable"]);
+    expect(onStatus).toHaveBeenCalledWith({ kind: "enabled" });
+  });
+
   it("explains why history is disabled inside another repo", async () => {
     const { screen } = await setup({ kind: "nested", repo: "/Users/me/code/liosvideo" });
     await expect.element(screen.getByText(/inside another git repository \(\/Users\/me\/code\/liosvideo\)/)).toBeVisible();

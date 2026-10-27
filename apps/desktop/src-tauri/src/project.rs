@@ -108,8 +108,21 @@ fn recent_file(app: &AppHandle) -> Result<PathBuf> {
     Ok(app.path().app_config_dir().map_err(|e| ProjectError::Other(e.to_string()))?.join("recent.json"))
 }
 
-fn open_at(app: &AppHandle, state: &ProjectState, root: &Path) -> Result<ProjectInfo> {
-    let (root, history, commit) = prepare_open(root)?;
+static GIT_LOCK: Mutex<()> = Mutex::new(());
+
+/// Runs git work on a blocking thread (never the main thread, which would freeze the window),
+/// one job at a time so checkpoint, restore and open can't interleave.
+pub async fn git_job<T: Send + 'static>(f: impl FnOnce() -> Result<T> + Send + 'static) -> Result<T> {
+    tauri::async_runtime::spawn_blocking(move || {
+        let _guard = GIT_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+        f()
+    })
+    .await
+    .map_err(|e| ProjectError::Other(e.to_string()))?
+}
+
+async fn open_at(app: &AppHandle, state: &ProjectState, root: PathBuf) -> Result<ProjectInfo> {
+    let (root, history, commit) = git_job(move || prepare_open(&root)).await?;
     app.asset_protocol_scope()
         .allow_directory(&root, true)
         .map_err(|e| ProjectError::Other(e.to_string()))?;
@@ -127,14 +140,14 @@ fn open_at(app: &AppHandle, state: &ProjectState, root: &Path) -> Result<Project
 }
 
 #[tauri::command]
-pub fn open_project(app: AppHandle, state: State<ProjectState>, root: String) -> Result<ProjectInfo> {
-    open_at(&app, &state, Path::new(&root))
+pub async fn open_project(app: AppHandle, state: State<'_, ProjectState>, root: String) -> Result<ProjectInfo> {
+    open_at(&app, &state, PathBuf::from(root)).await
 }
 
 #[tauri::command]
-pub fn create_project(app: AppHandle, state: State<ProjectState>, parent: String, name: String) -> Result<ProjectInfo> {
-    let root = crate::scaffold::create_project_in(Path::new(&parent), &name)?;
-    open_at(&app, &state, &root)
+pub async fn create_project(app: AppHandle, state: State<'_, ProjectState>, parent: String, name: String) -> Result<ProjectInfo> {
+    let root = git_job(move || crate::scaffold::create_project_in(Path::new(&parent), &name)).await?;
+    open_at(&app, &state, root).await
 }
 
 #[tauri::command]
@@ -143,36 +156,50 @@ pub fn recent_projects(app: AppHandle) -> Result<Vec<String>> {
 }
 
 #[tauri::command]
-pub fn enable_history(app: AppHandle, state: State<ProjectState>) -> Result<HistoryStatus> {
+pub async fn enable_history(app: AppHandle, state: State<'_, ProjectState>) -> Result<HistoryStatus> {
     let root = state.root()?;
-    let commit = git::enable_history(&root)?;
+    let (commit, status) = git_job(move || Ok((git::enable_history(&root)?, git::history_status(&root)))).await?;
     emit_committed(&app, &commit);
-    Ok(git::history_status(&root))
+    Ok(status)
 }
 
-/// Root of the open project, only when the app manages its history.
-fn history_root(state: &ProjectState) -> Result<PathBuf> {
-    let root = state.root()?;
-    if git::history_status(&root) != HistoryStatus::Enabled {
+/// Errors unless the app manages this project's history.
+fn history_root(root: &Path) -> Result<()> {
+    if git::history_status(root) != HistoryStatus::Enabled {
         return Err(ProjectError::Other("History is not enabled for this project".into()));
     }
-    Ok(root)
+    Ok(())
 }
 
 #[tauri::command]
-pub fn project_history(state: State<ProjectState>, limit: usize) -> Result<Vec<CommitInfo>> {
-    git::history(&history_root(&state)?, limit)
+pub async fn project_history(state: State<'_, ProjectState>, limit: usize) -> Result<Vec<CommitInfo>> {
+    let root = state.root()?;
+    git_job(move || {
+        history_root(&root)?;
+        git::history(&root, limit)
+    })
+    .await
 }
 
 #[tauri::command]
-pub fn commit_diff(state: State<ProjectState>, id: String) -> Result<Vec<FileDiff>> {
-    git::commit_diff(&history_root(&state)?, &id)
+pub async fn commit_diff(state: State<'_, ProjectState>, id: String) -> Result<Vec<FileDiff>> {
+    let root = state.root()?;
+    git_job(move || {
+        history_root(&root)?;
+        git::commit_diff(&root, &id)
+    })
+    .await
 }
 
 #[tauri::command]
-pub fn checkpoint(app: AppHandle, state: State<ProjectState>, message: String) -> Result<Option<CommitInfo>> {
-    let message = if message.trim().is_empty() { "Checkpoint" } else { message.trim() };
-    let commit = git::commit_all(&history_root(&state)?, message)?;
+pub async fn checkpoint(app: AppHandle, state: State<'_, ProjectState>, message: String) -> Result<Option<CommitInfo>> {
+    let root = state.root()?;
+    let message = if message.trim().is_empty() { "Checkpoint".to_string() } else { message.trim().to_string() };
+    let commit = git_job(move || {
+        history_root(&root)?;
+        git::commit_all(&root, &message)
+    })
+    .await?;
     if let Some(c) = &commit {
         emit_committed(&app, c);
     }
@@ -180,8 +207,13 @@ pub fn checkpoint(app: AppHandle, state: State<ProjectState>, message: String) -
 }
 
 #[tauri::command]
-pub fn restore_commit(app: AppHandle, state: State<ProjectState>, id: String) -> Result<CommitInfo> {
-    let commit = git::restore(&history_root(&state)?, &id)?;
+pub async fn restore_commit(app: AppHandle, state: State<'_, ProjectState>, id: String) -> Result<CommitInfo> {
+    let root = state.root()?;
+    let commit = git_job(move || {
+        history_root(&root)?;
+        git::restore(&root, &id)
+    })
+    .await?;
     emit_committed(&app, &commit);
     Ok(commit)
 }
@@ -209,7 +241,8 @@ pub fn prepare_open(root: &Path) -> Result<(PathBuf, HistoryStatus, Option<Commi
         return Err(ProjectError::Other(format!("{} is not a folder", root.display())));
     }
     let status = git::history_status(&root);
-    let commit = if status == HistoryStatus::Enabled { git::commit_all(&root, git::MANUAL_EDIT)? } else { None };
+    let auto = status == HistoryStatus::Enabled && git::can_auto_commit(&root);
+    let commit = if auto { git::commit_all(&root, git::MANUAL_EDIT)? } else { None };
     Ok((root, status, commit))
 }
 
@@ -304,5 +337,54 @@ mod tests {
         assert_eq!(commit.unwrap().summary, crate::git::MANUAL_EDIT);
         let (_, _, again) = prepare_open(dir.path()).unwrap();
         assert!(again.is_none());
+    }
+
+    #[test]
+    fn open_never_commits_into_an_unmanaged_repo() {
+        let dir = project();
+        git2::Repository::init(dir.path()).unwrap();
+        let (_, status, commit) = prepare_open(dir.path()).unwrap();
+        assert_eq!(status, HistoryStatus::Unmanaged);
+        assert!(commit.is_none());
+        assert!(git2::Repository::open(dir.path()).unwrap().head().is_err(), "still no commits");
+    }
+
+    #[test]
+    fn open_works_but_skips_commit_during_a_merge() {
+        let dir = project();
+        crate::git::enable_history(dir.path()).unwrap();
+        let head = crate::git::history(dir.path(), 1).unwrap()[0].id.clone();
+        fs::write(dir.path().join(".git/MERGE_HEAD"), format!("{head}\n")).unwrap();
+        fs::write(dir.path().join("scenes/a.ts"), "export const edited = 1;").unwrap();
+        let (_, status, commit) = prepare_open(dir.path()).unwrap();
+        assert_eq!(status, HistoryStatus::Enabled);
+        assert!(commit.is_none());
+    }
+
+    #[test]
+    fn git_jobs_run_off_the_caller_and_one_at_a_time() {
+        use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
+        use std::sync::Arc;
+        let busy = Arc::new(AtomicBool::new(false));
+        let overlaps = Arc::new(AtomicUsize::new(0));
+        let caller = std::thread::current().id();
+        let job = || {
+            let (busy, overlaps) = (busy.clone(), overlaps.clone());
+            tauri::async_runtime::spawn(git_job(move || {
+                assert_ne!(std::thread::current().id(), caller);
+                if busy.swap(true, Ordering::SeqCst) {
+                    overlaps.fetch_add(1, Ordering::SeqCst);
+                }
+                std::thread::sleep(std::time::Duration::from_millis(30));
+                busy.store(false, Ordering::SeqCst);
+                Ok(())
+            }))
+        };
+        let (a, b) = (job(), job());
+        tauri::async_runtime::block_on(async {
+            a.await.unwrap().unwrap();
+            b.await.unwrap().unwrap();
+        });
+        assert_eq!(overlaps.load(Ordering::SeqCst), 0);
     }
 }

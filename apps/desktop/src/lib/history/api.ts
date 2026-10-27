@@ -1,7 +1,7 @@
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 
-export type HistoryStatus = { kind: "enabled" } | { kind: "off" } | { kind: "nested"; repo: string };
+export type HistoryStatus = { kind: "enabled" } | { kind: "off" } | { kind: "unmanaged" } | { kind: "nested"; repo: string };
 export type CommitInfo = { id: string; shortId: string; summary: string; message: string; /** unix seconds */ time: number };
 export type FileDiff = { path: string; status: "added" | "modified" | "deleted" | "renamed"; binary: boolean; patch: string; truncated: boolean };
 
