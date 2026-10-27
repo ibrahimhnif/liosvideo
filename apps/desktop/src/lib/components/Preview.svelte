@@ -45,6 +45,9 @@
   const audioPlayer = new AudioPlayer();
   let host: PreviewHost;
   let currentExportEngine: ExportEngine | null = null;
+  let referenceOverlayUrl = $state<string | null>(null);
+  let overlayMode = $state<"blend" | "difference">("blend");
+  let overlayOpacity = $state(0.5);
   let lastFiles = new Set<string>();
   let lastBuildOk = true;
   let buildToken = 0;
@@ -247,6 +250,24 @@
       },
     );
 
+    const unlistenOverlay = listen<{ src?: string | null; mode?: "blend" | "difference"; opacity?: number }>(
+      "preview://set_overlay",
+      async ({ payload }) => {
+        if (!payload?.src) {
+          referenceOverlayUrl = null;
+          return;
+        }
+        try {
+          const path = await invoke<string>("asset_url_path", { rel: payload.src });
+          referenceOverlayUrl = convertFileSrc(path);
+          if (payload.mode) overlayMode = payload.mode;
+          if (payload.opacity !== undefined) overlayOpacity = payload.opacity;
+        } catch {
+          referenceOverlayUrl = null;
+        }
+      },
+    );
+
     builds.trigger();
     window.addEventListener("keydown", onKey);
     return () => {
@@ -256,6 +277,7 @@
       void unlisten.then((u) => u());
       void unlistenCapture.then((u) => u());
       void unlistenSeek.then((u) => u());
+      void unlistenOverlay.then((u) => u());
       audioPlayer.destroy();
       host.dispose();
     };
@@ -265,6 +287,15 @@
 <div class="preview">
   <div class="stage" bind:this={stage} style:--aspect={info ? `${info.width} / ${info.height}` : "16 / 9"}>
     <ErrorOverlay {buildErrors} {runtimeError} />
+    {#if referenceOverlayUrl}
+      <img
+        class="reference-overlay"
+        class:difference={overlayMode === "difference"}
+        src={referenceOverlayUrl}
+        style:opacity={overlayMode === "difference" ? "1" : `${overlayOpacity}`}
+        alt="Reference overlay"
+      />
+    {/if}
   </div>
   <Transport {frame} totalFrames={info?.totalFrames ?? 0} fps={info?.fps ?? 30} {playing} scenes={info?.scenes ?? []} onToggle={toggle} onSeek={seek} />
   {#if info}
@@ -276,4 +307,6 @@
   .preview { display: flex; flex-direction: column; height: 100%; min-height: 0; }
   .stage { position: relative; flex: 1; min-height: 0; display: grid; place-items: center; background: #050505; overflow: hidden; }
   .stage :global(canvas) { max-width: 100%; max-height: 100%; aspect-ratio: var(--aspect); width: auto; height: 100%; object-fit: contain; }
+  .reference-overlay { position: absolute; max-width: 100%; max-height: 100%; aspect-ratio: var(--aspect); width: auto; height: 100%; object-fit: contain; pointer-events: none; z-index: 5; }
+  .reference-overlay.difference { mix-blend-mode: difference; }
 </style>
