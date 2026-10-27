@@ -1,6 +1,6 @@
 # Realistic Mockups Implementation Plan
 
-> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
+> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [x]`) syntax for tracking.
 
 **Goal:** Build realistic macOS mockup components (`desktop`, `chrome`, `terminal`, `editor`, `cursor`, and `focus()`) in `@liosvideo/runtime` so AI agents can write technical walkthrough scenes that look identical to real macOS screenshots.
 
@@ -38,7 +38,7 @@
     - `titleText`: `TextNode` for window title.
     - `contentArea`: `GroupNode` with `clip: true` for window body content.
 
-- [ ] **Step 1: Write failing unit test for `WindowNode`**
+- [x] **Step 1: Write failing unit test for `WindowNode`**
 
 Create `packages/runtime/test/mockups/window.test.ts`:
 ```typescript
@@ -59,23 +59,23 @@ describe("WindowNode", () => {
 });
 ```
 
-- [ ] **Step 2: Run test to verify it fails**
+- [x] **Step 2: Run test to verify it fails**
 
 Run: `pnpm --filter liosvideo test test/mockups/window.test.ts`
 Expected: FAIL (module not found).
 
-- [ ] **Step 3: Implement `WindowNode`**
+- [x] **Step 3: Implement `WindowNode`**
 
 Create `packages/runtime/src/mockups/window.ts` with:
 - Standard macOS styling (light/dark colors, 10px radius, 38px titlebar height, 12px traffic light buttons spaced 8px apart starting at x=12, y=13).
 - Expose `contentArea` for adding child nodes.
 
-- [ ] **Step 4: Run test to verify it passes**
+- [x] **Step 4: Run test to verify it passes**
 
 Run: `pnpm --filter liosvideo test test/mockups/window.test.ts`
 Expected: PASS.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add packages/runtime/src/mockups/window.ts packages/runtime/test/mockups/window.test.ts
@@ -101,7 +101,7 @@ git commit -m "feat(runtime): base macOS WindowNode with titlebar and traffic li
     - Windows root container: `GroupNode`.
     - Methods: `.add(node)`, `.window(...)`.
 
-- [ ] **Step 1: Write failing unit test for `DesktopNode`**
+- [x] **Step 1: Write failing unit test for `DesktopNode`**
 
 Create `packages/runtime/test/mockups/desktop.test.ts`:
 ```typescript
@@ -124,23 +124,23 @@ describe("desktop", () => {
 });
 ```
 
-- [ ] **Step 2: Run test to verify it fails**
+- [x] **Step 2: Run test to verify it fails**
 
 Run: `pnpm --filter liosvideo test test/mockups/desktop.test.ts`
 Expected: FAIL.
 
-- [ ] **Step 3: Implement `DesktopNode` and `desktop()` helper**
+- [x] **Step 3: Implement `DesktopNode` and `desktop()` helper**
 
 Create `packages/runtime/src/mockups/desktop.ts`.
 - Support Monterey/Sonoma dark wallpaper styling.
 - Menu bar with translucent blur and clock.
 
-- [ ] **Step 4: Run test to verify it passes**
+- [x] **Step 4: Run test to verify it passes**
 
 Run: `pnpm --filter liosvideo test test/mockups/desktop.test.ts`
 Expected: PASS.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add packages/runtime/src/mockups/desktop.ts packages/runtime/test/mockups/desktop.test.ts
@@ -168,7 +168,7 @@ git commit -m "feat(runtime): desktop mockup with wallpaper and menu bar"
     - `.writeln(text: string, at: number): this`: Appends an output line at time `at`.
     - `.clear(at: number): this`: Clears the terminal screen at time `at`.
 
-- [ ] **Step 1: Write failing unit test for `TerminalNode`**
+- [x] **Step 1: Write failing unit test for `TerminalNode`**
 
 Create `packages/runtime/test/mockups/terminal.test.ts`:
 ```typescript
@@ -192,21 +192,21 @@ describe("terminal", () => {
 });
 ```
 
-- [ ] **Step 2: Run test to verify it fails**
+- [x] **Step 2: Run test to verify it fails**
 
 Run: `pnpm --filter liosvideo test test/mockups/terminal.test.ts`
 Expected: FAIL.
 
-- [ ] **Step 3: Implement `TerminalNode` and `terminal()`**
+- [x] **Step 3: Implement `TerminalNode` and `terminal()`**
 
 Create `packages/runtime/src/mockups/terminal.ts` with typing interpolation and text buffer rendering.
 
-- [ ] **Step 4: Run test to verify it passes**
+- [x] **Step 4: Run test to verify it passes**
 
 Run: `pnpm --filter liosvideo test test/mockups/terminal.test.ts`
 Expected: PASS.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add packages/runtime/src/mockups/terminal.ts packages/runtime/test/mockups/terminal.test.ts
@@ -232,7 +232,7 @@ git commit -m "feat(runtime): realistic terminal mockup with command typing and 
     - Omnibox object with `.type(url: string, opts: { at: number; duration: number })`.
     - Page content area: slot for rendering page mockups, screenshots (`ImageNode`), or child nodes.
 
-- [ ] **Step 1: Write failing unit test for `ChromeNode`**
+- [x] **Step 1: Write failing unit test for `ChromeNode`**
 
 Create `packages/runtime/test/mockups/chrome.test.ts`:
 ```typescript
@@ -253,21 +253,21 @@ describe("chrome", () => {
 });
 ```
 
-- [ ] **Step 2: Run test to verify it fails**
+- [x] **Step 2: Run test to verify it fails**
 
 Run: `pnpm --filter liosvideo test test/mockups/chrome.test.ts`
 Expected: FAIL.
 
-- [ ] **Step 3: Implement `ChromeNode` and `chrome()`**
+- [x] **Step 3: Implement `ChromeNode` and `chrome()`**
 
 Create `packages/runtime/src/mockups/chrome.ts`.
 
-- [ ] **Step 4: Run test to verify it passes**
+- [x] **Step 4: Run test to verify it passes**
 
 Run: `pnpm --filter liosvideo test test/mockups/chrome.test.ts`
 Expected: PASS.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add packages/runtime/src/mockups/chrome.ts packages/runtime/test/mockups/chrome.test.ts
@@ -295,7 +295,7 @@ git commit -m "feat(runtime): chrome browser mockup with tabs and omnibox typing
       - `.typeCode(code: string, opts: { at: number; duration: number }): this`
       - `.highlightLine(line: number, opts: { at: number; duration?: number }): this`
 
-- [ ] **Step 1: Write failing unit test for `EditorNode`**
+- [x] **Step 1: Write failing unit test for `EditorNode`**
 
 Create `packages/runtime/test/mockups/editor.test.ts`:
 ```typescript
@@ -314,21 +314,21 @@ describe("editor", () => {
 });
 ```
 
-- [ ] **Step 2: Run test to verify it fails**
+- [x] **Step 2: Run test to verify it fails**
 
 Run: `pnpm --filter liosvideo test test/mockups/editor.test.ts`
 Expected: FAIL.
 
-- [ ] **Step 3: Implement `EditorNode` and `editor()`**
+- [x] **Step 3: Implement `EditorNode` and `editor()`**
 
 Create `packages/runtime/src/mockups/editor.ts`.
 
-- [ ] **Step 4: Run test to verify it passes**
+- [x] **Step 4: Run test to verify it passes**
 
 Run: `pnpm --filter liosvideo test test/mockups/editor.test.ts`
 Expected: PASS.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add packages/runtime/src/mockups/editor.ts packages/runtime/test/mockups/editor.test.ts
@@ -354,7 +354,7 @@ git commit -m "feat(runtime): code editor mockup with tabs, line numbers and hig
     - Brings `node` to front (`z`), scales up to `scale` (default 1.02), sharpens (`blur: 0`).
     - Dims and blurs sibling windows on the same desktop.
 
-- [ ] **Step 1: Write failing unit test for `cursor` and `focus`**
+- [x] **Step 1: Write failing unit test for `cursor` and `focus`**
 
 Create `packages/runtime/test/mockups/cursor_focus.test.ts`:
 ```typescript
@@ -386,23 +386,23 @@ describe("cursor & focus", () => {
 });
 ```
 
-- [ ] **Step 2: Run test to verify it fails**
+- [x] **Step 2: Run test to verify it fails**
 
 Run: `pnpm --filter liosvideo test test/mockups/cursor_focus.test.ts`
 Expected: FAIL.
 
-- [ ] **Step 3: Implement `CursorNode`, `cursor()`, and `focus()`**
+- [x] **Step 3: Implement `CursorNode`, `cursor()`, and `focus()`**
 
 Create `packages/runtime/src/mockups/cursor.ts` and `packages/runtime/src/mockups/focus.ts`.
 Export all from `packages/runtime/src/index.ts`.
 
-- [ ] **Step 4: Run test to verify it passes**
+- [x] **Step 4: Run test to verify it passes**
 
 Run: `pnpm --filter liosvideo test test/mockups/cursor_focus.test.ts`
 Run all tests: `pnpm --filter liosvideo test`
 Expected: PASS with 100% green.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add packages/runtime/src/mockups/cursor.ts packages/runtime/src/mockups/focus.ts packages/runtime/src/index.ts packages/runtime/test/mockups
