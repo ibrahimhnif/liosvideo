@@ -43,6 +43,7 @@ export type AgentEvent =
     }
   | { type: "update"; update: any }
   | { type: "permission"; requestId: string; toolCall: any; options: PermissionOption[] }
+  | { type: "asset_request"; requestId: string; id: string; kind: string; description: string }
   | { type: "turn"; state: "started" | "ended"; stopReason?: string; error?: string; commit?: CommitInfo | null };
 
 export interface AgentApi {
@@ -60,6 +61,7 @@ export interface AgentApi {
   prompt(text: string, selection?: SelectionContext): Promise<string>;
   cancel(): Promise<void>;
   respond(requestId: string, optionId: string | null): Promise<void>;
+  resolveAssetRequest(requestId: string, filePath?: string | null): Promise<void>;
   setConfigOption(configId: string, value: any): Promise<void>;
   /** Subscribes to agent events; returns an unsubscribe function. */
   on(handler: (e: AgentEvent) => void): () => void;
@@ -88,9 +90,11 @@ export const tauriAgentApi: AgentApi = {
   prompt: (text, selection) => invoke("agent_prompt", { text, selection: selection ?? null }),
   cancel: () => invoke("agent_cancel"),
   respond: (requestId, optionId) => invoke("agent_permission_respond", { requestId, optionId }),
+  resolveAssetRequest: (requestId, filePath) =>
+    invoke("resolve_asset_request", { requestId, filePath: filePath ?? null }),
   setConfigOption: (configId, value) => invoke("agent_set_config_option", { configId, value }),
   on(handler) {
-    const offs = (["status", "update", "permission", "turn"] as const).map((type) =>
+    const offs = (["status", "update", "permission", "turn", "asset_request"] as const).map((type) =>
       listen<any>(`agent://${type}`, (e) => handler({ type, ...e.payload })),
     );
     return () => offs.forEach((off) => void off.then((f) => f()));

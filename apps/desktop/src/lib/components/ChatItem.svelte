@@ -1,8 +1,17 @@
 <script lang="ts">
   import type { ChatItem } from "$lib/chat/reduce";
+  import AssetCard from "./AssetCard.svelte";
   import PermissionCard from "./PermissionCard.svelte";
 
-  let { item, onAnswer }: { item: ChatItem; onAnswer: (requestId: string, optionId: string) => void } = $props();
+  let {
+    item,
+    onAnswer,
+    onResolveAsset,
+  }: {
+    item: ChatItem;
+    onAnswer: (requestId: string, optionId: string) => void;
+    onResolveAsset?: (requestId: string, filePath?: string | null) => void;
+  } = $props();
 </script>
 
 {#if item.kind === "user"}
@@ -27,6 +36,8 @@
   </div>
 {:else if item.kind === "permission"}
   <PermissionCard {item} onAnswer={(optionId) => onAnswer(item.requestId, optionId)} />
+{:else if item.kind === "asset"}
+  <AssetCard {item} onResolve={(reqId, filePath) => onResolveAsset?.(reqId, filePath)} />
 {:else if item.kind === "notice"}
   <div class="notice {item.level}">{item.text}</div>
 {/if}

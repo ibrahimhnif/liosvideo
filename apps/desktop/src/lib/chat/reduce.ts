@@ -7,6 +7,7 @@ export type ChatItem =
   | { kind: "tool"; id: string; toolCallId: string; gen: number; title: string; toolKind: string; status: string; locations: string[]; content: string[] }
   | { kind: "plan"; id: string; entries: { content: string; status: string; priority: string }[] }
   | { kind: "permission"; id: string; requestId: string; gen: number; title: string; options: PermissionOption[]; answer?: string }
+  | { kind: "asset"; id: string; requestId: string; assetId: string; assetKind: string; description: string; answer?: "provided" | "skipped" | "cancelled"; filePath?: string }
   | { kind: "notice"; id: string; level: "info" | "error"; text: string };
 
 export type Connection = {
@@ -21,7 +22,11 @@ export type Connection = {
 export type ChatState = { items: ChatItem[]; turn: "idle" | "running"; connection?: Connection; nextId: number; gen: number };
 
 /** Events the UI adds on its own, next to the agent's. */
-export type ChatEvent = AgentEvent | { type: "user"; text: string; selection?: string } | { type: "answered"; requestId: string; optionId: string | null };
+export type ChatEvent =
+  | AgentEvent
+  | { type: "user"; text: string; selection?: string }
+  | { type: "answered"; requestId: string; optionId: string | null }
+  | { type: "asset_resolved"; requestId: string; answer: "provided" | "skipped" | "cancelled"; filePath?: string };
 
 export const initialChat = (): ChatState => ({ items: [], turn: "idle", nextId: 1, gen: 0 });
 
@@ -38,7 +43,11 @@ function toolContent(content: any[] | undefined): string[] | undefined {
 }
 
 const cancelOpen = (items: ChatItem[]): ChatItem[] =>
-  items.map((x) => (x.kind === "permission" && x.answer === undefined ? { ...x, answer: "cancelled" } : x));
+  items.map((x) => {
+    if (x.kind === "permission" && x.answer === undefined) return { ...x, answer: "cancelled" };
+    if (x.kind === "asset" && x.answer === undefined) return { ...x, answer: "cancelled" };
+    return x;
+  });
 
 function notice(s: ChatState, level: "info" | "error", text: string): ChatState {
   return { ...s, items: [...s.items, { kind: "notice", id: `n${s.nextId}`, level, text }], nextId: s.nextId + 1 };
@@ -110,6 +119,32 @@ export function applyEvent(s: ChatState, e: ChatEvent): ChatState {
         ...s,
         items: [...s.items, { kind: "permission", id: `k${s.nextId}`, requestId: e.requestId, gen: s.gen, title: e.toolCall?.title ?? "The agent asks for permission", options: e.options }],
         nextId: s.nextId + 1,
+      };
+    case "asset_request":
+      return {
+        ...s,
+        items: [
+          ...s.items,
+          {
+            kind: "asset",
+            id: `a${s.nextId}`,
+            requestId: e.requestId,
+            assetId: e.id,
+            assetKind: e.kind,
+            description: e.description,
+            answer: undefined,
+          },
+        ],
+        nextId: s.nextId + 1,
+      };
+    case "asset_resolved":
+      return {
+        ...s,
+        items: s.items.map((x) =>
+          x.kind === "asset" && x.requestId === e.requestId
+            ? { ...x, answer: e.answer, filePath: e.filePath }
+            : x,
+        ),
       };
     case "answered":
       return { ...s, items: s.items.map((x) => (x.kind === "permission" && x.requestId === e.requestId && x.gen === s.gen ? { ...x, answer: e.optionId ?? "cancelled" } : x)) };

@@ -94,6 +94,16 @@
     push({ type: "answered", requestId, optionId });
     api.respond(requestId, optionId).catch(fail);
   }
+
+  function resolveAsset(requestId: string, filePath?: string | null) {
+    push({
+      type: "asset_resolved",
+      requestId,
+      answer: filePath ? "provided" : "skipped",
+      filePath: filePath ?? undefined,
+    });
+    api.resolveAssetRequest(requestId, filePath).catch(fail);
+  }
 </script>
 
 <div class="chat">
@@ -130,7 +140,7 @@
   {/if}
   <div class="items" bind:this={list}>
     {#each chat.items as item (item.id)}
-      <ChatItem {item} onAnswer={answer} />
+      <ChatItem {item} onAnswer={answer} onResolveAsset={resolveAsset} />
     {/each}
     {#if running}<div class="working">Working…</div>{/if}
   </div>

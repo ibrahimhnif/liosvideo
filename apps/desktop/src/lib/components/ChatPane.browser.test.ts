@@ -103,4 +103,24 @@ describe("ChatPane", () => {
     await userEvent.selectOptions(select, "gpt-5-codex");
     expect(api.setConfigOption).toHaveBeenCalledWith("model", "gpt-5-codex");
   });
+
+  it("renders asset request card and resolves via skip", async () => {
+    const { screen, api, emit } = await setup();
+    emit(ready);
+    emit({
+      type: "asset_request",
+      requestId: "asset-req-42",
+      id: "brand-logo",
+      kind: "image",
+      description: "Company transparent logo",
+    });
+    await expect.element(screen.getByText("brand-logo")).toBeVisible();
+    await expect.element(screen.getByText("Company transparent logo")).toBeVisible();
+    const skipBtn = screen.getByRole("button", { name: "Skip" });
+    await expect.element(skipBtn).toBeVisible();
+    await skipBtn.click();
+    expect(api.resolveAssetRequest).toHaveBeenCalledWith("asset-req-42", null);
+    await expect.element(screen.getByText("Skipped")).toBeVisible();
+    await expect.element(skipBtn).toBeDisabled();
+  });
 });

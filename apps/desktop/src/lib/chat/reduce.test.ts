@@ -124,4 +124,58 @@ describe("applyEvent", () => {
     ]);
     expect(s.connection?.configOptions?.[0].currentValue).toBe("gpt-5-codex");
   });
+
+  it("handles asset_request and asset_resolved events", () => {
+    let s = run([
+      {
+        type: "asset_request" as any,
+        requestId: "req-1",
+        id: "logo",
+        kind: "image",
+        description: "Company logo PNG",
+      },
+    ]);
+    expect(s.items).toHaveLength(1);
+    expect(s.items[0]).toMatchObject({
+      kind: "asset",
+      requestId: "req-1",
+      assetId: "logo",
+      assetKind: "image",
+      description: "Company logo PNG",
+      answer: undefined,
+    });
+
+    s = run(
+      [
+        {
+          type: "asset_resolved" as any,
+          requestId: "req-1",
+          answer: "provided",
+          filePath: "assets/logo.png",
+        },
+      ],
+      s,
+    );
+    expect(s.items[0]).toMatchObject({
+      kind: "asset",
+      answer: "provided",
+      filePath: "assets/logo.png",
+    });
+  });
+
+  it("cancels unanswered asset requests when a turn ends", () => {
+    let s = run([
+      { type: "turn", state: "started" },
+      {
+        type: "asset_request" as any,
+        requestId: "req-2",
+        id: "bg-audio",
+        kind: "audio",
+        description: "Background music",
+      },
+    ]);
+    expect(s.items[0]).toMatchObject({ kind: "asset", answer: undefined });
+    s = run([{ type: "turn", state: "ended", stopReason: "cancelled" }], s);
+    expect(s.items[0]).toMatchObject({ kind: "asset", answer: "cancelled" });
+  });
 });
