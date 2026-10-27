@@ -94,4 +94,34 @@ describe("applyEvent", () => {
   it("ignores unknown update variants", () => {
     expect(run([{ type: "update", update: { sessionUpdate: "available_commands_update", availableCommands: [] } }]).items).toEqual([]);
   });
+
+  it("updates config option when config_option_update is received", () => {
+    const s = run([
+      {
+        type: "status",
+        state: "ready",
+        agentId: "codex",
+        configOptions: [
+          {
+            id: "model",
+            name: "Model",
+            currentValue: "gpt-6-sol",
+            options: [
+              { value: "gpt-6-sol", name: "GPT-6 Sol" },
+              { value: "gpt-5-codex", name: "GPT-5 Codex" },
+            ],
+          },
+        ],
+      },
+      {
+        type: "update",
+        update: {
+          sessionUpdate: "config_option_update",
+          configId: "model",
+          value: "gpt-5-codex",
+        },
+      },
+    ]);
+    expect(s.connection?.configOptions?.[0].currentValue).toBe("gpt-5-codex");
+  });
 });

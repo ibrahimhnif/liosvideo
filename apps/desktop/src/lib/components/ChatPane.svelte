@@ -21,6 +21,41 @@
   const running = $derived(chat.turn === "running");
   const agentName = $derived(chat.connection?.agentInfo?.title ?? chat.connection?.agentInfo?.name ?? chat.connection?.agentId ?? "No agent");
 
+  const modelOption = $derived.by(() => {
+    const opts = chat.connection?.configOptions;
+    if (Array.isArray(opts)) {
+      const found = opts.find((o) => o.id === "model" || o.category === "model");
+      if (found) return found;
+    }
+    const m = chat.connection?.models;
+    if (m?.availableModels && Array.isArray(m.availableModels)) {
+      return {
+        id: "model",
+        name: "Model",
+        currentValue: m.currentModelId,
+        options: m.availableModels.map((x: any) => ({
+          value: x.id ?? x.value,
+          name: x.name ?? x.id,
+          description: x.description,
+        })),
+      };
+    }
+    return undefined;
+  });
+
+  function changeModel(val: string) {
+    if (!val) return;
+    push({
+      type: "update",
+      update: {
+        sessionUpdate: "config_option_update",
+        configId: "model",
+        value: val,
+      },
+    });
+    api.setConfigOption("model", val).catch(fail);
+  }
+
   async function push(e: ChatEvent) {
     const atBottom = !list || list.scrollHeight - list.scrollTop - list.clientHeight < 40;
     chat = applyEvent(chat, e);
@@ -65,6 +100,19 @@
   <div class="bar">
     <span class="dot {chat.connection?.state ?? 'none'}" title={chat.connection?.state ?? "disconnected"}></span>
     <span class="name">{agentName}</span>
+    {#if modelOption && modelOption.options && modelOption.options.length > 0}
+      <select
+        class="model-select"
+        value={modelOption.currentValue ?? ""}
+        disabled={running || !ready}
+        onchange={(e) => changeModel(e.currentTarget.value)}
+        title="Active Model"
+      >
+        {#each modelOption.options as opt (opt.value)}
+          <option value={opt.value} title={opt.description ?? ""}>{opt.name ?? opt.value}</option>
+        {/each}
+      </select>
+    {/if}
     <span class="spacer"></span>
     {#if running}
       <button onclick={() => api.cancel().catch(fail)}>Cancel</button>
@@ -97,6 +145,19 @@
   .chat { display: flex; flex-direction: column; flex: 1; min-height: 0; }
   .bar { display: flex; align-items: center; gap: 8px; padding: 6px 12px; border-bottom: 1px solid var(--border); }
   .name { font-weight: 500; }
+  .model-select {
+    font: inherit;
+    font-size: 11px;
+    padding: 2px 6px;
+    border-radius: 4px;
+    border: 1px solid var(--border);
+    background: var(--bg);
+    color: var(--fg);
+    max-width: 150px;
+    outline: none;
+    cursor: pointer;
+  }
+  .model-select:disabled { opacity: 0.5; cursor: default; }
   .spacer { flex: 1; }
   .dot { width: 8px; height: 8px; border-radius: 50%; background: var(--muted); }
   .dot.ready { background: #2e9d57; }

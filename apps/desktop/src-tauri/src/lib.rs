@@ -50,6 +50,7 @@ pub fn run() {
             acp::commands::agent_prompt,
             acp::commands::agent_cancel,
             acp::commands::agent_permission_respond,
+            acp::commands::agent_set_config_option,
             acp::commands::agent_disconnect,
             agents::commands::list_agents,
             agents::commands::rescan_agents,

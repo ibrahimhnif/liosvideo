@@ -78,4 +78,29 @@ describe("ChatPane", () => {
     emit({ type: "status", state: "exited", agentId: "gemini", message: "Error: not logged in" });
     await expect.element(screen.getByText("Error: not logged in")).toBeVisible();
   });
+
+  it("renders model dropdown and allows selecting a different model", async () => {
+    const { screen, api, emit } = await setup();
+    emit({
+      type: "status",
+      state: "ready",
+      agentId: "codex",
+      configOptions: [
+        {
+          id: "model",
+          name: "Model",
+          category: "model",
+          currentValue: "gpt-6-sol",
+          options: [
+            { value: "gpt-6-sol", name: "GPT-6 Sol" },
+            { value: "gpt-5-codex", name: "GPT-5 Codex" },
+          ],
+        },
+      ],
+    });
+    const select = screen.getByRole("combobox");
+    await expect.element(select).toBeVisible();
+    await userEvent.selectOptions(select, "gpt-5-codex");
+    expect(api.setConfigOption).toHaveBeenCalledWith("model", "gpt-5-codex");
+  });
 });

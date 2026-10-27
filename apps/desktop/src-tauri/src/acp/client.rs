@@ -1,6 +1,7 @@
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
+use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 
 use super::rpc::{BoxFuture, Connection, Handler, RpcError, INVALID_PARAMS, METHOD_NOT_FOUND};
@@ -28,6 +29,15 @@ pub trait ClientEvents: Send + Sync + 'static {
     fn update(&self, update: Value);
     /// Resolves to an ACP outcome object: `{"outcome": "selected", "optionId": ..}` or `{"outcome": "cancelled"}`.
     fn permission(&self, params: Value) -> BoxFuture<Value>;
+}
+
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SessionSetup {
+    pub session_id: String,
+    pub config_options: Vec<Value>,
+    pub models: Option<Value>,
+    pub raw: Value,
 }
 
 #[derive(Clone)]
@@ -65,12 +75,47 @@ impl AcpClient {
         Ok(info)
     }
 
-    pub async fn new_session(&self, cwd: &Path, mcp_servers: Vec<Value>) -> Result<String, SessionError> {
+    pub async fn new_session(&self, cwd: &Path, mcp_servers: Vec<Value>) -> Result<SessionSetup, SessionError> {
         let params = json!({ "cwd": cwd, "mcpServers": mcp_servers });
         match self.conn.request("session/new", params).await {
-            Ok(r) => r["sessionId"].as_str().map(str::to_string).ok_or_else(|| SessionError::Rpc(RpcError::new(-32603, "session/new returned no sessionId"))),
+            Ok(r) => {
+                let session_id = r["sessionId"]
+                    .as_str()
+                    .map(str::to_string)
+                    .ok_or_else(|| SessionError::Rpc(RpcError::new(-32603, "session/new returned no sessionId")))?;
+                let config_options = r["configOptions"].as_array().cloned().unwrap_or_default();
+                let models = if r.get("models").is_some() && !r["models"].is_null() {
+                    Some(r["models"].clone())
+                } else {
+                    None
+                };
+                Ok(SessionSetup {
+                    session_id,
+                    config_options,
+                    models,
+                    raw: r,
+                })
+            }
             Err(e) if e.code == AUTH_REQUIRED => Err(SessionError::AuthRequired(self.info.lock().unwrap().auth_methods.clone())),
             Err(e) => Err(SessionError::Rpc(e)),
+        }
+    }
+
+    pub async fn set_config_option(&self, session_id: &str, config_id: &str, value: Value) -> Result<Value, RpcError> {
+        match self.conn.request("session/set_config_option", json!({
+            "sessionId": session_id,
+            "configId": config_id,
+            "value": value,
+        })).await {
+            Ok(r) => Ok(r),
+            Err(e) if e.code == METHOD_NOT_FOUND && config_id == "model" => {
+                let model_id = value.as_str().unwrap_or_default();
+                self.conn.request("session/set_model", json!({
+                    "sessionId": session_id,
+                    "modelId": model_id,
+                })).await
+            }
+            Err(e) => Err(e),
         }
     }
 
@@ -237,6 +282,23 @@ pub(crate) mod tests {
             Err(SessionError::AuthRequired(methods)) => assert_eq!(methods[0]["id"], "oauth"),
             other => panic!("expected auth required, got {other:?}"),
         }
+    }
+
+    #[tokio::test]
+    async fn set_config_option_sends_session_set_config_option() {
+        let dir = project();
+        let (client, mut agent, _) = connect(dir.path());
+        let c = client.clone();
+        let t = tokio::spawn(async move {
+            c.set_config_option("s1", "model", json!("gpt-4.1")).await
+        });
+        let m = agent.recv_method("session/set_config_option").await;
+        assert_eq!(m["params"]["sessionId"], "s1");
+        assert_eq!(m["params"]["configId"], "model");
+        assert_eq!(m["params"]["value"], "gpt-4.1");
+        agent.reply(&m["id"], json!({"status": "ok"})).await;
+        let res = t.await.unwrap().unwrap();
+        assert_eq!(res["status"], "ok");
     }
 
     #[tokio::test]

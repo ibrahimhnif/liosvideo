@@ -22,6 +22,7 @@ export function fakeAgentApi(agents: AgentStatus[] = []) {
     prompt: vi.fn(async () => "end_turn"),
     cancel: vi.fn(async () => {}),
     respond: vi.fn(async () => {}),
+    setConfigOption: vi.fn(async () => {}),
     on: (h: (e: AgentEvent) => void) => {
       handler = h;
       return () => (handler = undefined);

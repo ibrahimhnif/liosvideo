@@ -156,6 +156,15 @@ pub async fn agent_permission_respond(sessions: State<'_, SessionState>, request
 }
 
 #[tauri::command]
+pub async fn agent_set_config_option(
+    sessions: State<'_, SessionState>,
+    config_id: String,
+    value: serde_json::Value,
+) -> Result<serde_json::Value> {
+    sessions.current().await?.set_config_option(&config_id, value).await
+}
+
+#[tauri::command]
 pub async fn agent_disconnect(sessions: State<'_, SessionState>) -> Result<()> {
     sessions.close().await;
     Ok(())

@@ -161,12 +161,14 @@ impl Session {
 
     async fn open_session(&self) -> Result<(), ProjectError> {
         match self.client.new_session(&self.root, vec![]).await {
-            Ok(id) => {
-                *self.session_id.lock().unwrap() = Some(id);
+            Ok(setup) => {
+                *self.session_id.lock().unwrap() = Some(setup.session_id);
                 let info = self.client.info();
                 self.status("ready", json!({
                     "agentInfo": info.raw["agentInfo"],
                     "capabilities": { "loadSession": info.load_session, "image": info.image, "embeddedContext": info.embedded_context },
+                    "configOptions": setup.config_options,
+                    "models": setup.models,
                 }));
                 Ok(())
             }
@@ -179,6 +181,11 @@ impl Session {
                 Err(ProjectError::Other(e.message))
             }
         }
+    }
+
+    pub async fn set_config_option(&self, config_id: &str, value: Value) -> Result<Value, ProjectError> {
+        let session_id = self.session_id.lock().unwrap().clone().ok_or_else(|| ProjectError::Other("The agent isn't ready".into()))?;
+        self.client.set_config_option(&session_id, config_id, value).await.map_err(|e| ProjectError::Other(e.message))
     }
 
     /// `initialize` + `session/new`; reports ready, auth_required or error through status events.
@@ -392,6 +399,44 @@ mod tests {
         start.await.unwrap().unwrap();
         assert_eq!(rec.of("agent://status").last().unwrap()["state"], "ready");
         assert!(!session.is_closing());
+    }
+
+    #[tokio::test]
+    async fn open_session_emits_config_options_and_sets_option() {
+        let dir = project(false);
+        let (r, w, mut agent) = pair();
+        let rec = Arc::new(Recorder::default());
+        let session = Session::connect(r, w, dir.path().canonicalize().unwrap(), "fake".into(), rec.clone());
+        let s = session.clone();
+        let start = tokio::spawn(async move { s.start().await });
+        let m = agent.recv_method("initialize").await;
+        agent.reply(&m["id"], json!({"protocolVersion": 1, "authMethods": []})).await;
+        let m = agent.recv_method("session/new").await;
+        agent.reply(&m["id"], json!({
+            "sessionId": "s1",
+            "configOptions": [{
+                "id": "model",
+                "name": "Model",
+                "category": "model",
+                "currentValue": "gpt-5",
+                "options": [{"value": "gpt-5", "name": "GPT-5"}, {"value": "gpt-4.1", "name": "GPT-4.1"}]
+            }]
+        })).await;
+        start.await.unwrap().unwrap();
+        let last_status = rec.of("agent://status").last().unwrap().clone();
+        assert_eq!(last_status["state"], "ready");
+        assert_eq!(last_status["configOptions"][0]["id"], "model");
+        assert_eq!(last_status["configOptions"][0]["currentValue"], "gpt-5");
+
+        let s2 = session.clone();
+        let set_fut = tokio::spawn(async move {
+            s2.set_config_option("model", json!("gpt-4.1")).await
+        });
+        let m = agent.recv_method("session/set_config_option").await;
+        assert_eq!(m["params"]["value"], "gpt-4.1");
+        agent.reply(&m["id"], json!({"status": "ok"})).await;
+        let res = set_fut.await.unwrap().unwrap();
+        assert_eq!(res["status"], "ok");
     }
 
     fn summaries(root: &std::path::Path) -> Vec<String> {

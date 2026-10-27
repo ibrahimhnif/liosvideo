@@ -1,4 +1,4 @@
-import type { AgentEvent, AuthMethod, ConnectionState, PermissionOption } from "./api";
+import type { AgentEvent, AuthMethod, ConfigOption, ConnectionState, PermissionOption } from "./api";
 
 export type ChatItem =
   | { kind: "user"; id: string; text: string; selection?: string }
@@ -12,6 +12,8 @@ export type ChatItem =
 export type Connection = {
   state: ConnectionState; agentId: string; message?: string; authMethods?: AuthMethod[];
   agentInfo?: { name?: string; title?: string; version?: string } | null;
+  configOptions?: ConfigOption[];
+  models?: any;
 };
 
 /** `id` keys an item in the list and is never reused; agents' own ids (tool calls, permission
@@ -76,6 +78,20 @@ function applyUpdate(s: ChatState, u: any): ChatState {
       const entries = (u.entries ?? []).map((e: any) => ({ content: String(e.content ?? ""), status: String(e.status ?? "pending"), priority: String(e.priority ?? "medium") }));
       const items = s.items.filter((x) => x.kind !== "plan");
       return { ...s, items: [...items, { kind: "plan", id: "plan", entries }] };
+    }
+    case "config_option_update": {
+      if (!s.connection?.configOptions) return s;
+      const updated = s.connection.configOptions.map((opt) => {
+        if (opt.id === u.configId || opt.id === u.configOption?.id) {
+          return {
+            ...opt,
+            ...(u.configOption ?? {}),
+            currentValue: u.value !== undefined ? u.value : (u.configOption?.currentValue ?? opt.currentValue),
+          };
+        }
+        return opt;
+      });
+      return { ...s, connection: { ...s.connection, configOptions: updated } };
     }
     default:
       return s;
