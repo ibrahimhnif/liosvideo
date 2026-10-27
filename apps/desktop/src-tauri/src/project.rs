@@ -247,9 +247,55 @@ async fn open_at(app: &AppHandle, state: &ProjectState, root: PathBuf) -> Result
     Ok(ProjectInfo { root: root_str, compositions, history })
 }
 
+fn percent_decode(input: &str) -> String {
+    let mut out = String::with_capacity(input.len());
+    let mut bytes = input.bytes();
+    while let Some(b) = bytes.next() {
+        if b == b'%' {
+            let h1 = bytes.next();
+            let h2 = bytes.next();
+            if let (Some(h1), Some(h2)) = (h1, h2) {
+                if let Ok(hex_str) = std::str::from_utf8(&[h1, h2]) {
+                    if let Ok(byte_val) = u8::from_str_radix(hex_str, 16) {
+                        out.push(byte_val as char);
+                        continue;
+                    }
+                }
+                out.push('%');
+                out.push(h1 as char);
+                out.push(h2 as char);
+            } else {
+                out.push('%');
+                if let Some(h1) = h1 {
+                    out.push(h1 as char);
+                }
+            }
+        } else {
+            out.push(b as char);
+        }
+    }
+    out
+}
+
+pub fn normalize_project_path(raw: &str) -> PathBuf {
+    let mut cleaned = raw.trim().to_string();
+    if cleaned.starts_with("file://") {
+        cleaned = cleaned[7..].to_string();
+    }
+    if cleaned.contains('%') {
+        cleaned = percent_decode(&cleaned);
+    }
+    #[cfg(unix)]
+    if !cleaned.starts_with('/') && (cleaned.starts_with("Users/") || cleaned.starts_with("home/")) {
+        cleaned = format!("/{cleaned}");
+    }
+    PathBuf::from(cleaned)
+}
+
 #[tauri::command]
 pub async fn open_project(app: AppHandle, state: State<'_, ProjectState>, root: String) -> Result<ProjectInfo> {
-    open_at(&app, &state, PathBuf::from(root)).await
+    let root = normalize_project_path(&root);
+    open_at(&app, &state, root).await
 }
 
 #[tauri::command]
@@ -383,6 +429,15 @@ pub fn prepare_open(root: &Path) -> Result<(PathBuf, HistoryStatus, Option<Commi
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn test_normalize_project_path() {
+        let p1 = normalize_project_path("Users/hanif/Labs/personal/Perkenalan%20Product%20LiosVideo");
+        assert_eq!(p1, PathBuf::from("/Users/hanif/Labs/personal/Perkenalan Product LiosVideo"));
+
+        let p2 = normalize_project_path("file:///Users/hanif/Labs/test%20folder");
+        assert_eq!(p2, PathBuf::from("/Users/hanif/Labs/test folder"));
+    }
     use std::fs;
 
     fn project() -> tempfile::TempDir {

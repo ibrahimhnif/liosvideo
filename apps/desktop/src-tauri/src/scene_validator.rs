@@ -350,4 +350,17 @@ export default scene("intro", { duration: 3.0 }, ({ root }) => {
         assert!(res.valid); // warning, not error
         assert!(res.issues.iter().any(|i| i.severity == "warning" && i.message.contains("starts after scene duration")));
     }
+
+    #[test]
+    fn test_validate_perkenalan_product() {
+        let p = Path::new("/Users/hanif/Labs/personal/Perkenalan Product LiosVideo");
+        if p.exists() {
+            let res = validate_scenes_in_project(p, None);
+            println!("Validation for Perkenalan Product: {:?}", res);
+            assert!(!res.is_empty());
+            for r in &res {
+                println!("File: {}, valid: {}, issues: {:?}", r.file, r.valid, r.issues);
+            }
+        }
+    }
 }

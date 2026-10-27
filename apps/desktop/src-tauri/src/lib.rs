@@ -20,7 +20,10 @@ fn dev_log(message: String) {
 /// Project folder to open at startup (`LIOSVIDEO_PROJECT`), for development.
 #[tauri::command]
 fn initial_project() -> Option<String> {
-    std::env::var("LIOSVIDEO_PROJECT").ok().filter(|p| !p.is_empty())
+    std::env::var("LIOSVIDEO_PROJECT")
+        .ok()
+        .filter(|p| !p.is_empty())
+        .map(|p| project::normalize_project_path(&p).to_string_lossy().into_owned())
 }
 
 /// Folder for development frame snapshots (`LIOSVIDEO_SNAPSHOT_DIR`).
