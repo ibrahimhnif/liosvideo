@@ -38,9 +38,15 @@ importers:
       '@tauri-apps/cli':
         specifier: ^2
         version: 2.12.4
+      '@vitest/browser-playwright':
+        specifier: ^5.0.5
+        version: 5.0.5(playwright@1.64.1)(vite@8.3.5)(vitest@5.0.5)
       '@webgpu/types':
         specifier: ^0.1.74
         version: 0.1.74
+      playwright:
+        specifier: ^1.64.1
+        version: 1.64.1
       svelte:
         specifier: ^5.56.3
         version: 5.57.3
