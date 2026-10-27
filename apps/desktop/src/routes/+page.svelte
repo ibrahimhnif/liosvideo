@@ -1,5 +1,6 @@
 <script lang="ts">
   import { invoke } from "@tauri-apps/api/core";
+  import { open } from "@tauri-apps/plugin-dialog";
   import { listen } from "@tauri-apps/api/event";
   import { onMount } from "svelte";
   import { tauriHistoryApi } from "$lib/history/api";
@@ -16,6 +17,7 @@
   import type { LoadedInfo } from "$lib/preview/protocol";
   import ExportModal from "$lib/components/ExportModal.svelte";
   import SettingsModal from "$lib/components/SettingsModal.svelte";
+  import ValidationModal from "$lib/components/ValidationModal.svelte";
   import { revealItemInDir } from "@tauri-apps/plugin-opener";
   import Probe from "$lib/probe/Probe.svelte";
 
@@ -24,6 +26,7 @@
   let showProbe = $state(false);
   let showAgents = $state(false);
   let showSettings = $state(false);
+  let showValidation = $state(false);
   let showHistory = $state(false);
   let showExport = $state(false);
   let loadedInfo = $state<LoadedInfo | null>(null);
@@ -32,6 +35,36 @@
   function opened(info: ProjectInfo) {
     project = info;
     entry = info.compositions.includes("long.ts") ? "long.ts" : (info.compositions[0] ?? "");
+  }
+
+  async function openProjectDialog() {
+    try {
+      const dir = await open({ directory: true, multiple: false, title: "Open project folder" });
+      if (typeof dir === "string") {
+        const info = await invoke<ProjectInfo>("open_project", { root: dir });
+        opened(info);
+      }
+    } catch (e) {
+      devLog(`open-project-failed ${e}`);
+    }
+  }
+
+  async function closeProject() {
+    try {
+      await invoke("close_project");
+    } catch (e) {
+      devLog(`close-project-failed ${e}`);
+    } finally {
+      project = null;
+      entry = "";
+      loadedInfo = null;
+      select(undefined);
+    }
+  }
+
+  async function refreshProject() {
+    await refreshCompositions();
+    previewInstance?.reload?.();
   }
 
   onMount(() => {
@@ -111,10 +144,18 @@
       <ProjectPicker onOpen={opened} />
     {:else}
       <header>
-        <span class="root" title={project.root}>{project.root.split("/").at(-1)}</span>
-        <CompositionSwitcher compositions={project.compositions} selected={entry} onSelect={(c) => (entry = c)} />
-        <button class="btn-export" onclick={() => (showExport = true)} disabled={!loadedInfo}>Export</button>
-        <button class="toggle" aria-pressed={showHistory} onclick={() => (showHistory = !showHistory)}>History</button>
+        <div class="project-info">
+          <span class="root" title={project.root}>{project.root.split("/").at(-1)}</span>
+          <CompositionSwitcher compositions={project.compositions} selected={entry} onSelect={(c) => (entry = c)} />
+        </div>
+        <div class="project-actions">
+          <button class="nav-btn" onclick={openProjectDialog} title="Open another project folder">📂 Open</button>
+          <button class="nav-btn" onclick={refreshProject} title="Reload compositions and preview">🔄 Refresh</button>
+          <button class="nav-btn" onclick={() => (showValidation = true)} title="Validate scene code & constraints">✓ Validate</button>
+          <button class="btn-export" onclick={() => (showExport = true)} disabled={!loadedInfo}>Export</button>
+          <button class="toggle" aria-pressed={showHistory} onclick={() => (showHistory = !showHistory)}>History</button>
+          <button class="nav-btn close-project-btn" onclick={closeProject} title="Close current project">✕ Close</button>
+        </div>
       </header>
       <div class="workspace" class:with-history={showHistory}>
         <div class="stage">
@@ -163,6 +204,7 @@
 </main>
 
 <SettingsModal open={showSettings} onClose={() => (showSettings = false)} />
+<ValidationModal open={showValidation} onClose={() => (showValidation = false)} />
 
 <style>
   :global(:root) {
@@ -177,6 +219,12 @@
   section { display: flex; flex-direction: column; min-width: 0; min-height: 0; }
   .chat { border-right: 1px solid var(--border); background: var(--panel); }
   header { display: flex; align-items: center; gap: 12px; height: 40px; padding: 0 12px; border-bottom: 1px solid var(--border); font-weight: 600; flex-shrink: 0; }
+  .project-info { display: flex; align-items: center; gap: 8px; min-width: 0; }
+  .project-actions { margin-left: auto; display: flex; align-items: center; gap: 6px; }
+  .nav-btn { font: inherit; font-size: 12px; font-weight: 500; padding: 3px 8px; border-radius: 6px; border: 1px solid var(--border); background: var(--panel); color: var(--fg); cursor: pointer; display: flex; align-items: center; gap: 4px; }
+  .nav-btn:hover { background: var(--raised); }
+  .close-project-btn { color: var(--muted); }
+  .close-project-btn:hover { color: var(--danger); border-color: var(--danger); background: rgba(239, 68, 68, 0.1); }
   .root { color: var(--muted); font-weight: 500; }
   .placeholder { color: var(--muted); padding: 12px; }
   .dev { margin: 0 12px 12px; font: inherit; font-size: 11px; background: none; border: none; color: var(--muted); cursor: pointer; text-align: left; }

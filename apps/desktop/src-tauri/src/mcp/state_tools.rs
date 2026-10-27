@@ -326,11 +326,58 @@ impl Tool for CheckpointTool {
     }
 }
 
+pub struct ValidateSceneTool {
+    context: Arc<EditorContext>,
+}
+
+impl ValidateSceneTool {
+    pub fn new(context: Arc<EditorContext>) -> Self {
+        Self { context }
+    }
+}
+
+impl Tool for ValidateSceneTool {
+    fn name(&self) -> &'static str {
+        "validate_scene"
+    }
+
+    fn description(&self) -> &'static str {
+        "Validates scene TypeScript code against liosvideo deterministic rendering rules, illegal imports, and node naming constraints."
+    }
+
+    fn input_schema(&self) -> Value {
+        json!({
+            "type": "object",
+            "properties": {
+                "path": {
+                    "type": "string",
+                    "description": "Optional relative path to a scene file (e.g. 'scenes/intro.ts'). If omitted, validates all scenes under scenes/."
+                }
+            }
+        })
+    }
+
+    fn call(&self, args: Value) -> BoxFuture<Result<Value, String>> {
+        let context = Arc::clone(&self.context);
+        Box::pin(async move {
+            let root = context.project_state.root().map_err(|e| e.to_string())?;
+            let path_opt = args.get("path").and_then(|v| v.as_str());
+            let results = crate::scene_validator::validate_scenes_in_project(&root, path_opt);
+            let all_valid = results.iter().all(|r| r.valid);
+            Ok(json!({
+                "valid": all_valid,
+                "scenes": results,
+            }))
+        })
+    }
+}
+
 pub fn register_state_tools(registry: &mut ToolRegistry, context: Arc<EditorContext>) {
     registry.register(Arc::new(GetProjectStateTool::new(context.clone())));
     registry.register(Arc::new(SetSelectionTool::new(context.clone())));
     registry.register(Arc::new(SeekTool::new(context.clone())));
-    registry.register(Arc::new(CheckpointTool::new(context)));
+    registry.register(Arc::new(CheckpointTool::new(context.clone())));
+    registry.register(Arc::new(ValidateSceneTool::new(context)));
 }
 
 #[cfg(test)]

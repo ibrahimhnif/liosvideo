@@ -249,6 +249,7 @@ When operating as an AI agent connected via ACP:
 - `tts_list_voices`: Query available local and cloud TTS voices.
 - `tts_generate`: Synthesize speech clips with automatic word alignment data.
 - `capture_frame`: Capture a PNG snapshot at any timestamp for visual inspection.
+- `validate_scene`: Validate scene TypeScript code against deterministic rendering rules, illegal imports, node naming constraints, and asset existence.
 
 ---
 

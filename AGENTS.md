@@ -230,6 +230,7 @@ When interacting as an AI agent via ACP (Claude Code, Gemini CLI, Codex), use th
 - `tts_list_voices`: List available local and cloud narration voices.
 - `tts_generate`: Synthesize speech with word-level timestamps.
 - `capture_frame`: Capture a PNG frame at timestamp `t` for visual verification.
+- `validate_scene`: Validate scene TypeScript code against deterministic rendering rules, illegal imports, node naming constraints, and asset existence.
 
 ---
 

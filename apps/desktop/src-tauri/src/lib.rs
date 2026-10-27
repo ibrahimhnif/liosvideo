@@ -7,6 +7,7 @@ pub mod keychain;
 pub mod mcp;
 mod project;
 mod recent;
+pub mod scene_validator;
 mod scaffold;
 mod watch;
 
@@ -71,6 +72,7 @@ pub fn run() {
             agents::commands::add_custom_agent,
             agents::commands::remove_custom_agent,
             project::open_project,
+            project::close_project,
             project::create_project,
             project::recent_projects,
             project::enable_history,
@@ -82,6 +84,7 @@ pub fn run() {
             project::list_compositions,
             project::read_project_file,
             project::asset_url_path,
+            scene_validator::validate_scenes,
             export::save_exported_video,
             export::save_voice_recording,
             keychain::get_api_key,

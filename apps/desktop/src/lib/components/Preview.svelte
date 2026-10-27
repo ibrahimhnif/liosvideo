@@ -191,6 +191,10 @@
     currentExportEngine?.cancel();
   }
 
+  export function reload() {
+    builds.trigger();
+  }
+
   onMount(() => {
     canvas = document.createElement("canvas");
     stage.appendChild(canvas);

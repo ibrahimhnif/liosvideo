@@ -253,6 +253,20 @@ pub async fn open_project(app: AppHandle, state: State<'_, ProjectState>, root: 
 }
 
 #[tauri::command]
+pub async fn close_project(app: AppHandle, state: State<'_, ProjectState>) -> Result<()> {
+    if let Some(sessions) = app.try_state::<crate::acp::commands::SessionState>() {
+        sessions.close().await;
+    }
+    *state.inner.lock().unwrap() = None;
+    *state.selection.lock().unwrap() = None;
+    *state.errors.lock().unwrap() = Default::default();
+    *state.active_composition.lock().unwrap() = None;
+    state.manifests.lock().unwrap().clear();
+    let _ = app.emit("project://closed", ());
+    Ok(())
+}
+
+#[tauri::command]
 pub async fn create_project(app: AppHandle, state: State<'_, ProjectState>, parent: String, name: String) -> Result<ProjectInfo> {
     let root = git_job(move || crate::scaffold::create_project_in(Path::new(&parent), &name)).await?;
     open_at(&app, &state, root).await
