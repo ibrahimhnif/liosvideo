@@ -1,12 +1,48 @@
 use std::fs;
 use std::path::{Component, Path, PathBuf};
-use std::sync::Mutex;
+use std::sync::{Arc, Mutex};
 
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use tauri::{AppHandle, Emitter, Manager, State};
 
 use crate::recent;
 use crate::git::{self, CommitInfo, FileDiff, HistoryStatus};
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Default)]
+#[serde(rename_all = "camelCase")]
+pub struct EditorSelection {
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub composition: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub scene_id: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub object_path: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[serde(rename_all = "camelCase")]
+pub struct PlayheadState {
+    pub frame: u32,
+    pub fps: f64,
+    pub time_seconds: f64,
+}
+
+impl Default for PlayheadState {
+    fn default() -> Self {
+        Self {
+            frame: 0,
+            fps: 30.0,
+            time_seconds: 0.0,
+        }
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Default)]
+#[serde(rename_all = "camelCase")]
+pub struct EditorErrors {
+    pub compile: Vec<String>,
+    pub runtime: Vec<String>,
+}
 
 #[derive(Debug, thiserror::Error)]
 pub enum ProjectError {
@@ -83,11 +119,17 @@ pub fn is_ignored(rel: &str) -> bool {
 
 struct OpenProject {
     root: PathBuf,
-    _watcher: crate::watch::Watcher,
+    _watcher: Option<crate::watch::Watcher>,
 }
 
-#[derive(Default)]
-pub struct ProjectState(Mutex<Option<OpenProject>>);
+#[derive(Default, Clone)]
+pub struct ProjectState {
+    inner: Arc<Mutex<Option<OpenProject>>>,
+    selection: Arc<Mutex<Option<EditorSelection>>>,
+    playhead: Arc<Mutex<PlayheadState>>,
+    errors: Arc<Mutex<EditorErrors>>,
+    active_composition: Arc<Mutex<Option<String>>>,
+}
 
 impl ProjectState {
     pub fn root_string(&self) -> Result<String> {
@@ -95,7 +137,46 @@ impl ProjectState {
     }
 
     pub fn root(&self) -> Result<PathBuf> {
-        self.0.lock().unwrap().as_ref().map(|p| p.root.clone()).ok_or(ProjectError::NotOpen)
+        self.inner.lock().unwrap().as_ref().map(|p| p.root.clone()).ok_or(ProjectError::NotOpen)
+    }
+
+    pub fn open_for_test(&self, root: PathBuf) {
+        *self.inner.lock().unwrap() = Some(OpenProject {
+            root,
+            _watcher: None,
+        });
+    }
+
+    pub fn selection(&self) -> Option<EditorSelection> {
+        self.selection.lock().unwrap().clone()
+    }
+
+    pub fn set_selection(&self, sel: Option<EditorSelection>) {
+        *self.selection.lock().unwrap() = sel;
+    }
+
+    pub fn playhead(&self) -> PlayheadState {
+        self.playhead.lock().unwrap().clone()
+    }
+
+    pub fn set_playhead(&self, playhead: PlayheadState) {
+        *self.playhead.lock().unwrap() = playhead;
+    }
+
+    pub fn errors(&self) -> EditorErrors {
+        self.errors.lock().unwrap().clone()
+    }
+
+    pub fn set_errors(&self, errors: EditorErrors) {
+        *self.errors.lock().unwrap() = errors;
+    }
+
+    pub fn active_composition(&self) -> Option<String> {
+        self.active_composition.lock().unwrap().clone()
+    }
+
+    pub fn set_active_composition(&self, comp: Option<String>) {
+        *self.active_composition.lock().unwrap() = comp;
     }
 }
 
@@ -138,7 +219,7 @@ async fn open_at(app: &AppHandle, state: &ProjectState, root: PathBuf) -> Result
         .map_err(|e| ProjectError::Other(e.to_string()))?;
     let watcher = crate::watch::start(app.clone(), root.clone()).map_err(|e| ProjectError::Other(e.to_string()))?;
     let compositions = list_compositions_in(&root)?;
-    *state.0.lock().unwrap() = Some(OpenProject { root: root.clone(), _watcher: watcher });
+    *state.inner.lock().unwrap() = Some(OpenProject { root: root.clone(), _watcher: Some(watcher) });
     if let Some(c) = &commit {
         emit_committed(app, c);
     }

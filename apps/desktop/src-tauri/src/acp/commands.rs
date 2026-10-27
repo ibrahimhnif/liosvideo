@@ -54,13 +54,18 @@ impl SessionEvents for TauriEvents {
 
 static MCP_SERVER: tokio::sync::Mutex<Option<Arc<crate::mcp::McpServer>>> = tokio::sync::Mutex::const_new(None);
 
+#[allow(dead_code)]
 pub async fn get_or_start_mcp_server_instance() -> Result<Arc<crate::mcp::McpServer>> {
     let mut guard = MCP_SERVER.lock().await;
     if let Some(server) = guard.as_ref() {
         return Ok(server.clone());
     }
-    let registry = Arc::new(crate::mcp::tools::ToolRegistry::new());
-    let server = Arc::new(crate::mcp::McpServer::bind(registry).map_err(|e| ProjectError::Other(format!("Couldn't start MCP server: {e}")))?);
+    let mut registry = crate::mcp::tools::ToolRegistry::new();
+    let project_state = ProjectState::default();
+    let emitter = Arc::new(crate::mcp::state_tools::NoopEventEmitter);
+    let context = Arc::new(crate::mcp::state_tools::EditorContext::new(project_state, emitter));
+    crate::mcp::state_tools::register_state_tools(&mut registry, context);
+    let server = Arc::new(crate::mcp::McpServer::bind(Arc::new(registry)).map_err(|e| ProjectError::Other(format!("Couldn't start MCP server: {e}")))?);
     *guard = Some(server.clone());
     Ok(server)
 }
@@ -69,8 +74,25 @@ pub async fn get_or_start_mcp_server(app: &AppHandle) -> Option<u16> {
     if let Some(server) = app.try_state::<Arc<crate::mcp::McpServer>>() {
         return Some(server.port());
     }
-    match get_or_start_mcp_server_instance().await {
-        Ok(server) => Some(server.port()),
+    let mut guard = MCP_SERVER.lock().await;
+    if let Some(server) = guard.as_ref() {
+        return Some(server.port());
+    }
+    let mut registry = crate::mcp::tools::ToolRegistry::new();
+    let project_state = match app.try_state::<ProjectState>() {
+        Some(s) => s.inner().clone(),
+        None => ProjectState::default(),
+    };
+    let emitter = Arc::new(crate::mcp::state_tools::TauriEventEmitter::new(app.clone()));
+    let context = Arc::new(crate::mcp::state_tools::EditorContext::new(project_state, emitter));
+    crate::mcp::state_tools::register_state_tools(&mut registry, context);
+    match crate::mcp::McpServer::bind(Arc::new(registry)) {
+        Ok(server) => {
+            let server_arc = Arc::new(server);
+            let port = server_arc.port();
+            *guard = Some(server_arc);
+            Some(port)
+        }
         Err(e) => {
             eprintln!("Failed to get or start MCP server: {e}");
             None

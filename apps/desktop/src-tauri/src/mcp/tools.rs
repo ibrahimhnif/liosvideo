@@ -43,6 +43,14 @@ impl ToolRegistry {
         self.tools.get(name).cloned()
     }
 
+    pub fn is_empty(&self) -> bool {
+        self.tools.is_empty()
+    }
+
+    pub fn len(&self) -> usize {
+        self.tools.len()
+    }
+
     pub fn list(&self) -> Vec<ToolDefinition> {
         let mut list: Vec<ToolDefinition> = self
             .tools
