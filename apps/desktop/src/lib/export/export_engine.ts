@@ -210,7 +210,9 @@ export class ExportEngine {
           throw encoderError;
         }
 
+        const waitT0 = Date.now();
         await waitForQueueDrain(videoEncoder, 16, () => this.cancelled, () => encoderError, 2);
+        const waitMs = Date.now() - waitT0;
 
         const renderT0 = Date.now();
         const canvasSource = await renderFrame(f);
@@ -229,8 +231,8 @@ export class ExportEngine {
         videoFrame.close();
 
         const pct = Math.round(((f + 1) / totalFrames) * 100);
-        const logLine = (f % 15 === 0 || f === totalFrames - 1 || renderMs > 150)
-          ? `Frame ${f + 1}/${totalFrames} (${pct}%) [rendered in ${renderMs}ms, queue=${videoEncoder.encodeQueueSize ?? 0}]`
+        const logLine = (f < 5 || f % 10 === 0 || f === totalFrames - 1 || renderMs > 150)
+          ? `Frame ${f + 1}/${totalFrames} (${pct}%) [render: ${renderMs}ms, wait: ${waitMs}ms, queue=${videoEncoder.encodeQueueSize ?? 0}]`
           : undefined;
 
         if (logLine) {
