@@ -1,6 +1,6 @@
 import { multiply, type Affine } from "../math/affine";
 import { parseColor } from "../math/color";
-import type { ImageItem, LayerItem, RenderItem, RenderList, TextItem } from "../renderlist";
+import type { ImageItem, LayerItem, RenderItem, RenderList, TextItem, VideoItem } from "../renderlist";
 import blurSrc from "./shaders/blur.wgsl?raw";
 import commonSrc from "./shaders/common.wgsl?raw";
 import compositeSrc from "./shaders/composite.wgsl?raw";
@@ -325,30 +325,31 @@ export async function createRenderer(
       w = raster.width;
       h = raster.height;
     } else {
-      const img = leaf as ImageItem;
-      const bitmap = assets.get(img.src);
+      const media = leaf as ImageItem | VideoItem;
+      const bitmap = assets.get(media.src);
       if (!bitmap) {
-        if (!warned.has(img.src)) console.warn(`[liosvideo] missing image asset "${img.src}"`);
-        warned.add(img.src);
-        w = img.width || 100;
-        h = img.height || 100;
+        const kindLabel = leaf.kind === "video" ? "video" : "image";
+        if (!warned.has(media.src)) console.warn(`[liosvideo] missing ${kindLabel} asset "${media.src}"`);
+        warned.add(media.src);
+        w = media.width || 100;
+        h = media.height || 100;
         color = [1, 0, 1, 1];
-        params = [0, 0, img.opacity, MODE_SOLID];
+        params = [0, 0, media.opacity, MODE_SOLID];
       } else {
         let tex = imageTextures.get(bitmap);
         if (!tex) imageTextures.set(bitmap, (tex = uploadSource(bitmap)));
         texture = tex;
-        w = img.width || bitmap.width;
-        h = img.height || bitmap.height;
+        w = media.width || bitmap.width;
+        h = media.height || bitmap.height;
         const boxAspect = w / h;
         const imgAspect = bitmap.width / bitmap.height;
-        if (img.fit === "contain") {
+        if (media.fit === "contain") {
           const cw = imgAspect > boxAspect ? w : h * imgAspect;
           const ch = imgAspect > boxAspect ? w / imgAspect : h;
           [e, f] = [e + a * ((w - cw) / 2) + c * ((h - ch) / 2), f + b * ((w - cw) / 2) + d * ((h - ch) / 2)];
           w = cw;
           h = ch;
-        } else if (img.fit === "cover") {
+        } else if (media.fit === "cover") {
           if (imgAspect > boxAspect) {
             const k = boxAspect / imgAspect;
             uv = [(1 - k) / 2, 0, (1 + k) / 2, 1];
