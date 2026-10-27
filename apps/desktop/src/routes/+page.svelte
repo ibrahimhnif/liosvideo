@@ -6,13 +6,18 @@
   import Preview from "$lib/components/Preview.svelte";
   import HistoryPanel from "$lib/components/HistoryPanel.svelte";
   import ProjectPicker, { type ProjectInfo } from "$lib/components/ProjectPicker.svelte";
-  import SelectionChip from "$lib/components/SelectionChip.svelte";
+  import AgentSetup from "$lib/components/AgentSetup.svelte";
+  import ChatPane from "$lib/components/ChatPane.svelte";
+  import { tauriAgentApi } from "$lib/chat/api";
+  import { devLog } from "$lib/devlog";
+  import { playhead } from "$lib/playhead.svelte";
   import { select, selection } from "$lib/timeline/selection.svelte";
   import Probe from "$lib/probe/Probe.svelte";
 
   let project = $state<ProjectInfo | null>(null);
   let entry = $state("");
   let showProbe = $state(false);
+  let showAgents = $state(false);
   let showHistory = $state(false);
 
   function opened(info: ProjectInfo) {
@@ -21,6 +26,10 @@
   }
 
   onMount(async () => {
+    tauriAgentApi
+      .listAgents()
+      .then((list) => devLog(`agents ${list.map((a) => `${a.id}:${a.state}`).join(" ")}`))
+      .catch((e) => devLog(`agents error ${e}`));
     const root = await invoke<string | null>("initial_project");
     if (root) opened(await invoke<ProjectInfo>("open_project", { root }));
   });
@@ -41,10 +50,21 @@
 
 <main>
   <section class="chat">
-    <header>liosvideo</header>
-    <div class="spacer"></div>
-    <SelectionChip selection={selection.current} onClear={() => select(undefined)} />
-    <p class="placeholder">Chat comes in the ACP plan. Select a scene or object on the timeline to target a revision.</p>
+    <header>
+      liosvideo
+      <button class="toggle" aria-pressed={showAgents} onclick={() => (showAgents = !showAgents)}>Agents</button>
+    </header>
+    {#if showAgents}<AgentSetup api={tauriAgentApi} />{/if}
+    <!-- kept mounted while the agent list is open so the conversation survives -->
+    <div class="chat-slot" hidden={showAgents}>
+      {#if project}
+        {#key project.root}
+          <ChatPane api={tauriAgentApi} selection={selection.current} {playhead} onClearSelection={() => select(undefined)} />
+        {/key}
+      {:else}
+        <p class="placeholder">Open a project to chat with an agent.</p>
+      {/if}
+    </div>
     <button class="dev" onclick={() => (showProbe = !showProbe)}>{showProbe ? "Hide" : "Show"} capability probe</button>
     {#if showProbe}<Probe />{/if}
   </section>
@@ -92,9 +112,10 @@
   header { display: flex; align-items: center; gap: 12px; height: 40px; padding: 0 12px; border-bottom: 1px solid var(--border); font-weight: 600; flex-shrink: 0; }
   .root { color: var(--muted); font-weight: 500; }
   .placeholder { color: var(--muted); padding: 12px; }
-  .spacer { flex: 1; }
   .dev { margin: 0 12px 12px; font: inherit; font-size: 11px; background: none; border: none; color: var(--muted); cursor: pointer; text-align: left; }
   .right { background: var(--bg); }
+  .chat-slot { flex: 1; min-height: 0; display: flex; flex-direction: column; }
+  .chat-slot[hidden] { display: none; }
   .toggle { margin-left: auto; font: inherit; font-weight: 500; padding: 3px 10px; border-radius: 6px; border: 1px solid var(--border); background: none; color: var(--fg); cursor: pointer; }
   .toggle[aria-pressed="true"] { background: var(--raised); }
   .workspace { flex: 1; min-height: 0; display: grid; grid-template-columns: 1fr; }

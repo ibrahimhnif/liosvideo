@@ -1,0 +1,31 @@
+import { vi } from "vitest";
+import type { AgentApi, AgentEvent, AgentSettings, AgentStatus } from "./api";
+
+/** An AgentApi for component tests: records calls, lets the test push events. */
+export function fakeAgentApi(agents: AgentStatus[] = []) {
+  let handler: ((e: AgentEvent) => void) | undefined;
+  const settings: AgentSettings = { projectAgents: {}, custom: [] };
+  const api = {
+    listAgents: vi.fn(async () => agents),
+    rescan: vi.fn(async () => agents),
+    install: vi.fn(async (_id: string, onLine: (l: string) => void) => {
+      onLine("fetching adapter");
+      onLine("added 12 packages");
+    }),
+    settings: vi.fn(async () => settings),
+    setDefault: vi.fn(async (id: string) => ({ ...settings, defaultAgent: id })),
+    setProjectAgent: vi.fn(async () => settings),
+    addCustom: vi.fn(async () => settings),
+    removeCustom: vi.fn(async () => settings),
+    connect: vi.fn(async () => {}),
+    authenticate: vi.fn(async () => {}),
+    prompt: vi.fn(async () => "end_turn"),
+    cancel: vi.fn(async () => {}),
+    respond: vi.fn(async () => {}),
+    on: (h: (e: AgentEvent) => void) => {
+      handler = h;
+      return () => (handler = undefined);
+    },
+  } satisfies AgentApi;
+  return { api, emit: (e: AgentEvent) => handler?.(e) };
+}
