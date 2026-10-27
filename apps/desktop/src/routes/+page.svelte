@@ -35,15 +35,16 @@
       if (root) opened(await invoke<ProjectInfo>("open_project", { root }));
     });
 
-    const unlistenSelection = listen<{ composition?: string; sceneId?: string; path?: string } | null>(
+    const unlistenSelection = listen<{ composition?: string; sceneId?: string; objectPath?: string; path?: string } | null>(
       "project://selection",
       (e) => {
+        const objPath = e.payload?.objectPath ?? e.payload?.path;
         select(
           e.payload
             ? {
                 composition: e.payload.composition ?? "",
                 sceneId: e.payload.sceneId ?? "",
-                path: e.payload.path,
+                path: objPath,
                 startFrame: 0,
                 endFrame: 0,
               }
@@ -56,7 +57,7 @@
     );
 
     return () => {
-      void unlistenSelection.then((u) => u());
+      void unlistenSelection.then((u) => u()).catch(() => {});
     };
   });
 
