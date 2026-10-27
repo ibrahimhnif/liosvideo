@@ -23,7 +23,9 @@ export type FromWorker =
   | { type: "rendered"; id: number; frame: number }
   /** PNG of the last rendered frame */
   | { type: "snapshot"; id: number; png?: ArrayBuffer; error?: string }
-  | { type: "error"; phase: "load" | "render"; message: string; stack?: string; generation?: number };
+  /** phase "lost": the GPU device is gone and the worker must be replaced */
+  | { type: "error"; phase: "load" | "render" | "lost"; message: string; stack?: string; generation?: number };
 
 export type LoadedInfo = Omit<Extract<FromWorker, { type: "loaded" }>, "type">;
-export type PreviewError = { phase: "load" | "render" | "timeout"; message: string; stack?: string };
+export type SourceLocation = { file: string; line: number; column: number };
+export type PreviewError = { phase: "load" | "render" | "timeout" | "lost"; message: string; stack?: string; location?: SourceLocation };

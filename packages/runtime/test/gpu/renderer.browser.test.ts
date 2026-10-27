@@ -139,3 +139,47 @@ describe("renderer", () => {
     expect(await r.readPixels()).toEqual(direct);
   });
 });
+
+describe("renderer GPU failures", () => {
+  it("reports device loss", async () => {
+    const device = await (await navigator.gpu.requestAdapter())!.requestDevice();
+    const lost: string[] = [];
+    const r = await createRenderer(document.createElement("canvas"), { device, onLost: (m) => lost.push(m) });
+    device.destroy();
+    await new Promise((res) => setTimeout(res, 50));
+    expect(lost).toHaveLength(1);
+    r.destroy();
+  });
+
+  it("reports validation errors instead of failing silently", async () => {
+    const device = await (await navigator.gpu.requestAdapter())!.requestDevice();
+    const errors: string[] = [];
+    const r = await createRenderer(document.createElement("canvas"), { device, onError: (m) => errors.push(m) });
+    // a storage binding on a format that doesn't support it is a validation error, not an exception
+    device.createTexture({ size: [4, 4], format: "rgba8unorm-srgb", usage: GPUTextureUsage.STORAGE_BINDING });
+    await device.queue.onSubmittedWorkDone();
+    await new Promise((res) => setTimeout(res, 100));
+    expect(errors.length).toBeGreaterThan(0);
+    r.destroy();
+  });
+});
+
+describe("text cache", () => {
+  it("draws every text item when one frame needs more rasters than the cache holds", async () => {
+    const r = await make();
+    const items: RenderItem[] = [];
+    for (let i = 0; i < 600; i++) {
+      const x = (i % 30) * 8;
+      const y = Math.floor(i / 30) * 12;
+      items.push({ kind: "text", path: `t${i}`, matrix: at(x, y), text: `${i}`, fontFamily: "SF Pro Text", fontSize: 10, fontWeight: 400, color: "#ffffff", lineHeight: 1, opacity: 1 });
+    }
+    r.render(list(items), new Map());
+    const pixels = await r.readPixels();
+    const litIn = (x0: number, y0: number) => {
+      for (let y = y0; y < y0 + 10; y++) for (let x = x0; x < x0 + 8; x++) if (lum(px(pixels, x, y)) > 100) return true;
+      return false;
+    };
+    expect(litIn(0, 0)).toBe(true);
+    expect(litIn((599 % 30) * 8, Math.floor(599 / 30) * 12)).toBe(true);
+  });
+});

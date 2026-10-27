@@ -7,7 +7,9 @@
   import { devLog, devSnapshots } from "$lib/devlog";
   import { loadProjectImage } from "$lib/preview/assets";
   import { PlaybackClock } from "$lib/preview/clock";
-  import { PreviewHost } from "$lib/preview/host";
+  import { PreviewHost, SceneError, SupersededError } from "$lib/preview/host";
+  import type { SourceLocation } from "$lib/preview/protocol";
+  import { shouldRebuild, touchesRootFiles } from "$lib/preview/rebuild";
   import ErrorOverlay from "./ErrorOverlay.svelte";
   import Transport from "./Transport.svelte";
 
@@ -18,11 +20,13 @@
   let playing = $state(false);
   let info = $state<{ width: number; height: number; fps: number; totalFrames: number; scenes: SceneSpan[] } | null>(null);
   let buildErrors = $state<BuildError[]>([]);
-  let runtimeError = $state<{ message: string; stack?: string } | undefined>();
+  let runtimeError = $state<{ message: string; stack?: string; location?: SourceLocation } | undefined>();
 
   const clock = new PlaybackClock(30, 0);
   let host: PreviewHost;
   let lastFiles = new Set<string>();
+  let lastBuildOk = true;
+  let buildToken = 0;
   let requested = -1;
   let loadCount = 0;
 
@@ -46,6 +50,8 @@
   const builds = new BuildCoordinator(
     () => bundleComposition(entry, readFile),
     async (result) => {
+      const token = ++buildToken;
+      lastBuildOk = result.ok;
       if (!result.ok) {
         devLog(`build-error ${entry} ${JSON.stringify(result.errors)}`);
         buildErrors = result.errors;
@@ -55,6 +61,7 @@
       lastFiles = new Set(result.files);
       try {
         const loaded = await host.load(result.code);
+        if (token !== buildToken) return;
         const sizeChanged = !info || info.width !== loaded.width || info.height !== loaded.height;
         info = loaded;
         runtimeError = undefined;
@@ -70,8 +77,9 @@
         await devSnapshots(`${entry.replace(/\.ts$/, "")}-${++loadCount}`, probes, (p) => host.renderFrame(p), () => host.snapshot());
         await host.renderFrame(frame);
       } catch (e) {
+        if (e instanceof SupersededError || token !== buildToken) return;
         devLog(`load-failed ${entry} ${(e as Error).message}`);
-        runtimeError ??= { message: (e as Error).message };
+        runtimeError = { message: (e as Error).message, location: e instanceof SceneError ? e.location : undefined };
       }
     },
   );
@@ -106,8 +114,8 @@
     stage.appendChild(canvas);
     host = new PreviewHost(canvas, loadProjectImage);
     host.onError((e) => {
-      devLog(`preview-error ${e.phase} ${e.message}`);
-      runtimeError = { message: e.message, stack: e.stack };
+      devLog(`preview-error ${e.phase} ${e.message}${e.location ? ` at ${e.location.file}:${e.location.line}` : ""}`);
+      runtimeError = { message: e.message, stack: e.stack, location: e.location };
     });
 
     const resize = new ResizeObserver(fitCanvas);
@@ -122,9 +130,8 @@
     raf = requestAnimationFrame(tick);
 
     const unlisten = listen<{ paths: string[] }>("project://changed", ({ payload }) => {
-      const rootTs = payload.paths.some((p) => !p.includes("/") && p.endsWith(".ts"));
-      if (rootTs) onRootFilesChanged();
-      if (rootTs || payload.paths.some((p) => lastFiles.has(p))) {
+      if (touchesRootFiles(payload.paths)) onRootFilesChanged();
+      if (shouldRebuild(payload.paths, lastFiles, lastBuildOk)) {
         devLog(`changed ${payload.paths.join(",")}`);
         builds.trigger();
       }

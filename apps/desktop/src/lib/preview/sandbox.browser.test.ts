@@ -89,3 +89,48 @@ describe("text layout in the worker", () => {
     expect(Math.abs(center - 128)).toBeLessThan(4);
   });
 });
+
+describe("scene error locations", () => {
+  it("reports the project file and line of a throw in scene code", async () => {
+    const { bundleComposition } = await import("../bundle/bundler");
+    const files: Record<string, string> = {
+      "long.ts": `import { composition } from "liosvideo";\nimport x from "./scenes/x";\nexport default composition({ width: 64, height: 64, fps: 30, scenes: [x] });\n`,
+      "scenes/x.ts": `import { scene } from "liosvideo";\nexport default scene("x", { duration: 1 }, () => {\n  throw new Error("boom");\n});\n`,
+    };
+    const r = await bundleComposition("long.ts", async (rel) => files[rel]);
+    if (!r.ok) throw new Error(JSON.stringify(r.errors));
+    const err = await makeHost().load(r.code).catch((e) => e);
+    expect(err.message).toBe("boom");
+    expect(err.location).toMatchObject({ file: "scenes/x.ts", line: 3 });
+  });
+});
+
+describe("more network paths are blocked", () => {
+  for (const [name, call] of [
+    ["FontFace", `new FontFace("x", "url(https://example.com/x.woff2)")`],
+    ["WebTransport", `new WebTransport("https://example.com")`],
+    ["fonts", `self.fonts.add`],
+  ]) {
+    it(`blocks ${name}`, async () => {
+      const code = project(`L.composition({ width: 32, height: 32, fps: 30, scenes: [L.scene("s", { duration: 1 }, () => { ${call}; })] })`);
+      await expect(makeHost().load(code)).rejects.toThrow(`${name} is not available in scenes`);
+    });
+  }
+});
+
+describe("load ordering", () => {
+  it("applies back-to-back loads in the order they were sent", async () => {
+    const h = makeHost();
+    h.resize(16, 16);
+    const slow = project(`L.composition({ width: 16, height: 16, fps: 30, scenes: [L.scene("s", { duration: 1, background: "#ff0000" }, () => { const t = performance.now(); while (performance.now() - t < 300) {} })] })`);
+    const fast = project(`L.composition({ width: 16, height: 16, fps: 30, scenes: [L.scene("s", { duration: 1, background: "#0000ff" }, () => {})] })`);
+    const a = h.load(slow).catch(() => {});
+    await h.load(fast);
+    await a;
+    await h.renderFrame(0);
+    const bmp = await createImageBitmap(new Blob([await h.snapshot()]));
+    const ctx = new OffscreenCanvas(16, 16).getContext("2d")!;
+    ctx.drawImage(bmp, 0, 0);
+    expect([...ctx.getImageData(8, 8, 1, 1).data]).toEqual([0, 0, 255, 255]);
+  });
+});

@@ -8,7 +8,11 @@ declare const self: DedicatedWorkerGlobalScope;
 const post = (msg: FromWorker) => self.postMessage(msg);
 
 // Scene code gets the runtime and nothing that reaches the network or storage.
-const BLOCKED = ["fetch", "XMLHttpRequest", "WebSocket", "EventSource", "importScripts", "indexedDB", "caches", "BroadcastChannel", "Worker"];
+// Dynamic import() can't be blocked here; the bundler rejects it.
+const BLOCKED = [
+  "fetch", "XMLHttpRequest", "WebSocket", "WebTransport", "EventSource", "importScripts", "indexedDB", "caches",
+  "BroadcastChannel", "Worker", "FontFace", "fonts",
+];
 for (const name of BLOCKED) {
   Object.defineProperty(globalThis, name, {
     configurable: false,
@@ -25,6 +29,7 @@ let rendererReady: Promise<Renderer> | undefined;
 let size: { width: number; height: number } | undefined;
 let comp: runtime.Composition | undefined;
 const assets: AssetMap = new Map();
+let loading: Promise<void> = Promise.resolve();
 
 function isComposition(v: unknown): v is runtime.Composition {
   const c = v as runtime.Composition;
@@ -73,7 +78,10 @@ self.onmessage = async (e: MessageEvent<ToWorker>) => {
   const msg = e.data;
   switch (msg.type) {
     case "init":
-      rendererReady = createRenderer(msg.canvas).then((r) => (renderer = r));
+      rendererReady = createRenderer(msg.canvas, {
+        onError: (message) => post({ type: "error", phase: "render", message: `GPU error: ${message}` }),
+        onLost: (message) => post({ type: "error", phase: "lost", message }),
+      }).then((r) => (renderer = r));
       return;
     case "resize":
       size = { width: msg.width, height: msg.height };
@@ -83,11 +91,14 @@ self.onmessage = async (e: MessageEvent<ToWorker>) => {
       for (const [src, bitmap] of msg.bitmaps) assets.set(src, bitmap);
       return;
     case "load":
-      try {
-        await load(msg.code, msg.generation);
-      } catch (err) {
-        post({ type: "error", phase: "load", generation: msg.generation, ...errorOf(err) });
-      }
+      // loads are applied strictly in the order they were sent
+      loading = loading.then(async () => {
+        try {
+          await load(msg.code, msg.generation);
+        } catch (err) {
+          post({ type: "error", phase: "load", generation: msg.generation, ...errorOf(err) });
+        }
+      });
       return;
     case "snapshot":
       try {

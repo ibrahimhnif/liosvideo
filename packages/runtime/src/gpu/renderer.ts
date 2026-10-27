@@ -22,6 +22,8 @@ export interface Renderer {
 const LAYER_FORMAT: GPUTextureFormat = "rgba8unorm";
 const INST_FLOATS = 24;
 const MAX_BLUR_RADIUS = 64;
+/** text rasters kept across frames; anything unused in the latest frame is evicted beyond this */
+const TEXT_CACHE_LIMIT = 512;
 const MODE_RECT = 0;
 const MODE_TEXTURE = 1;
 const MODE_SOLID = 2;
@@ -41,11 +43,22 @@ function invert(m: Affine): Affine {
 
 export async function createRenderer(
   canvas: HTMLCanvasElement | OffscreenCanvas,
-  opts: { device?: GPUDevice } = {},
+  opts: {
+    device?: GPUDevice;
+    /** WebGPU validation/out-of-memory errors, which are not thrown */
+    onError?: (message: string) => void;
+    /** the device is gone; the renderer is unusable and must be recreated */
+    onLost?: (message: string) => void;
+  } = {},
 ): Promise<Renderer> {
   const adapter = opts.device ? undefined : await navigator.gpu.requestAdapter();
   if (!opts.device && !adapter) throw new Error("WebGPU is not available");
   const device = opts.device ?? (await adapter!.requestDevice());
+  let destroyed = false;
+  device.addEventListener("uncapturederror", (e) => opts.onError?.((e as GPUUncapturedErrorEvent).error.message));
+  void device.lost.then((info) => {
+    if (!destroyed) opts.onLost?.(info.message || `GPU device lost (${info.reason})`);
+  });
   const context = canvas.getContext("webgpu") as GPUCanvasContext;
   // rgba8unorm is valid for every canvas; bgra8unorm canvases fail in headless Chromium.
   const canvasFormat: GPUTextureFormat = "rgba8unorm";
@@ -100,7 +113,8 @@ export async function createRenderer(
   };
 
   const text = new TextRasterizer();
-  const textTextures = new Map<OffscreenCanvas, GPUTexture>();
+  const textTextures = new Map<string, GPUTexture>();
+  const textUsed = new Set<string>();
   const imageTextures = new WeakMap<ImageBitmap, GPUTexture>();
   const warned = new Set<string>();
 
@@ -265,6 +279,20 @@ export async function createRenderer(
     device.queue.submit([encoder.finish()]);
     frameBuffers.forEach((buf) => buf.destroy());
     pool.push(...inUse);
+    evictText();
+  }
+
+  /** After submit: drop text rasters the frame didn't use, once the cache is over its limit. */
+  function evictText() {
+    if (textTextures.size > TEXT_CACHE_LIMIT) {
+      for (const [key, tex] of textTextures) {
+        if (textUsed.has(key)) continue;
+        tex.destroy();
+        textTextures.delete(key);
+      }
+    }
+    if (text.size > TEXT_CACHE_LIMIT) text.retain(textUsed);
+    textUsed.clear();
   }
 
   function writeInstance(data: Float32Array, index: number, leaf: Leaf, assets: AssetMap, sx: number): GPUTexture {
@@ -287,14 +315,11 @@ export async function createRenderer(
     } else if (leaf.kind === "text") {
       const scale = Math.round(Math.sqrt(Math.abs(a * d - b * c)) * sx * 100) / 100 || 1;
       const raster = text.raster(leaf as TextItem, scale);
-      let tex = textTextures.get(raster.canvas);
+      textUsed.add(raster.key);
+      let tex = textTextures.get(raster.key);
       if (!tex) {
-        if (textTextures.size > 512) {
-          textTextures.forEach((t) => t.destroy());
-          textTextures.clear();
-        }
         tex = uploadSource(raster.canvas);
-        textTextures.set(raster.canvas, tex);
+        textTextures.set(raster.key, tex);
       }
       texture = tex;
       w = raster.width;
@@ -355,6 +380,7 @@ export async function createRenderer(
   }
 
   function destroy() {
+    destroyed = true;
     target?.destroy();
     pool.forEach((t) => t.destroy());
     textTextures.forEach((t) => t.destroy());

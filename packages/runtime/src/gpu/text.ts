@@ -24,6 +24,8 @@ export function measureText(s: TextStyle): { width: number; height: number } {
 }
 
 export type RasterizedText = {
+  /** cache key: identical keys produce identical rasters */
+  key: string;
   canvas: OffscreenCanvas;
   /** size in the item's local units (canvas pixels / scale) */
   width: number;
@@ -34,11 +36,19 @@ export type RasterizedText = {
 export class TextRasterizer {
   private cache = new Map<string, RasterizedText>();
 
+  get size(): number {
+    return this.cache.size;
+  }
+
+  /** Drops every cached raster whose key is not in `keep`. Call between frames only. */
+  retain(keep: Set<string>): void {
+    for (const key of this.cache.keys()) if (!keep.has(key)) this.cache.delete(key);
+  }
+
   raster(item: TextItem, scale: number): RasterizedText {
     const key = JSON.stringify([item.text, item.fontFamily, item.fontSize, item.fontWeight, item.color, item.lineHeight, scale]);
     let hit = this.cache.get(key);
     if (hit) return hit;
-    if (this.cache.size > 512) this.cache.clear();
 
     const box = layout(item, scale);
     const { lines, metrics, lineHeight } = box;
@@ -56,7 +66,7 @@ export class TextRasterizer {
       const descent = m.fontBoundingBoxDescent;
       ctx.fillText(line, 0, i * lineHeight + (lineHeight - (ascent + descent)) / 2 + ascent);
     });
-    hit = { canvas, width: width / scale, height: height / scale };
+    hit = { key, canvas, width: width / scale, height: height / scale };
     this.cache.set(key, hit);
     return hit;
   }

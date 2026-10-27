@@ -14,3 +14,8 @@ App run with `LIOSVIDEO_PROJECT=<copy of examples/php2shell-sample> LIOSVIDEO_SN
 | `while(true){}` → "Scene code timed out", recovers | ⚠️ timeout + recovery work, but fired after ~22 s, not 5 s. The window was hidden (`document.hidden = true`) and WebKit throttles long timers on hidden pages (a plain 5 s timer fired on time, a 15 s one never fired). Re-check with the window visible. The 5 s logic is covered by the fake-timer unit test. |
 
 Found and fixed during verification: anchored text wasn't centered because text nodes had no size. Fixed with `setTextMeasurer` (Canvas2D in the worker).
+
+## After the final-review fix pass
+
+- Runtime throw in `scenes/outro.ts` → in-app error reported as `boom at scenes/outro.ts:3` (WKWebView/JSC stack mapped through the inline source map).
+- App loads and renders after the fixes; full suite green (runtime 48 + 12 GPU, desktop 33 + 12 browser, cargo 8).

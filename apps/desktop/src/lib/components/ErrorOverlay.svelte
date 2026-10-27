@@ -1,7 +1,12 @@
 <script lang="ts">
   import type { BuildError } from "$lib/bundle/bundler";
 
-  let { buildErrors = [], runtimeError }: { buildErrors?: BuildError[]; runtimeError?: { message: string; stack?: string } } = $props();
+  import type { SourceLocation } from "$lib/preview/protocol";
+
+  let {
+    buildErrors = [],
+    runtimeError,
+  }: { buildErrors?: BuildError[]; runtimeError?: { message: string; stack?: string; location?: SourceLocation } } = $props();
 </script>
 
 {#if buildErrors.length || runtimeError}
@@ -10,7 +15,10 @@
       <div class="err"><span class="loc">{e.file}:{e.line}:{e.column}</span> {e.message}</div>
     {/each}
     {#if runtimeError}
-      <div class="err">{runtimeError.message}</div>
+      <div class="err">
+        {#if runtimeError.location}<span class="loc">{runtimeError.location.file}:{runtimeError.location.line}:{runtimeError.location.column}</span>{/if}
+        {runtimeError.message}
+      </div>
       {#if runtimeError.stack}<pre>{runtimeError.stack}</pre>{/if}
     {/if}
   </div>

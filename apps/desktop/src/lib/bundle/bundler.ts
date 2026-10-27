@@ -13,14 +13,33 @@ function init(): Promise<void> {
   return ready;
 }
 
-function normalize(path: string): string {
+/** Normalizes a project-relative path; undefined if it climbs above the project root. */
+function normalize(path: string): string | undefined {
   const out: string[] = [];
   for (const part of path.split("/")) {
     if (part === "" || part === ".") continue;
-    if (part === "..") out.pop();
-    else out.push(part);
+    if (part === "..") {
+      if (!out.length) return undefined;
+      out.pop();
+    } else out.push(part);
   }
   return out.join("/");
+}
+
+const DYNAMIC_IMPORT = /\bimport\s*\(/g;
+
+/** Location of the first dynamic import() in a source file, if any. */
+function findDynamicImport(file: string, source: string): esbuild.PartialMessage | undefined {
+  for (const m of source.matchAll(DYNAMIC_IMPORT)) {
+    const before = source.slice(0, m.index);
+    const line = before.split("\n").length;
+    const lineStart = before.lastIndexOf("\n") + 1;
+    return {
+      text: "Dynamic import() is not allowed in scenes",
+      location: { file: `${PROJECT}:${file}`, line, column: m.index! - lineStart, lineText: source.slice(lineStart).split("\n")[0] },
+    };
+  }
+  return undefined;
 }
 
 const dirname = (p: string) => p.split("/").slice(0, -1).join("/");
@@ -51,12 +70,17 @@ export async function bundleComposition(entry: string, readFile: (rel: string) =
     name: "liosvideo-project",
     setup(build) {
       build.onResolve({ filter: /.*/ }, async (args) => {
-        if (args.kind === "entry-point") return { path: normalize(args.path), namespace: PROJECT };
+        if (args.kind === "entry-point") {
+          const entryPath = normalize(args.path);
+          if (entryPath === undefined) return { errors: [{ text: `Entry "${args.path}" is outside the project` }] };
+          return { path: entryPath, namespace: PROJECT };
+        }
         if (args.path === "liosvideo") return { path: "liosvideo", namespace: RUNTIME };
         if (!args.path.startsWith(".")) {
           return { errors: [{ text: "Only 'liosvideo' and relative imports are allowed" }] };
         }
         const base = normalize(`${dirname(args.importer)}/${args.path}`);
+        if (base === undefined) return { errors: [{ text: `Import "${args.path}" is outside the project` }] };
         for (const candidate of [base, `${base}.ts`, `${base}/index.ts`]) {
           if (/\.ts$/.test(candidate) && (await exists(candidate))) return { path: candidate, namespace: PROJECT };
         }
@@ -64,7 +88,10 @@ export async function bundleComposition(entry: string, readFile: (rel: string) =
       });
       build.onLoad({ filter: /.*/, namespace: PROJECT }, async (args) => {
         files.add(args.path);
-        return { contents: await readFile(args.path), loader: "ts" };
+        const contents = await readFile(args.path);
+        const dynamic = findDynamicImport(args.path, contents);
+        if (dynamic) return { errors: [dynamic] };
+        return { contents, loader: "ts" };
       });
       build.onLoad({ filter: /.*/, namespace: RUNTIME }, () => ({
         contents: "module.exports = globalThis.__liosvideo",

@@ -8,6 +8,9 @@ const files: Record<string, string> = {
   "missing.ts": `import x from "./nope";\nexport default x;\n`,
   "node.ts": `import fs from "fs";\nexport default fs;\n`,
   "syntax.ts": `export default {\n  oops: ,\n};\n`,
+  "escape.ts": `import x from "../shared/x";\nexport default x;\n`,
+  "shared/x.ts": `export default 1;\n`,
+  "dynamic.ts": `const url = "https://example.com/x.js";\nexport default await import(url);\n`,
 };
 const readFile = async (rel: string) => {
   if (!(rel in files)) throw new Error(`not found: ${rel}`);
@@ -47,6 +50,24 @@ describe("bundleComposition", () => {
     expect(r.ok).toBe(false);
     if (r.ok) return;
     expect(r.errors[0]).toMatchObject({ file: "syntax.ts", line: 2 });
+  });
+});
+
+describe("bundleComposition sandbox rules", () => {
+  it("rejects imports that climb out of the project instead of clamping them", async () => {
+    const r = await bundleComposition("escape.ts", readFile);
+    expect(r.ok).toBe(false);
+    if (r.ok) return;
+    expect(r.errors[0]).toMatchObject({ file: "escape.ts", line: 1 });
+    expect(r.errors[0].message).toContain("outside the project");
+  });
+
+  it("rejects dynamic import() with its location", async () => {
+    const r = await bundleComposition("dynamic.ts", readFile);
+    expect(r.ok).toBe(false);
+    if (r.ok) return;
+    expect(r.errors[0]).toMatchObject({ file: "dynamic.ts", line: 2 });
+    expect(r.errors[0].message).toContain("Dynamic import() is not allowed in scenes");
   });
 });
 

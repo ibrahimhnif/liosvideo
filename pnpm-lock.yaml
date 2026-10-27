@@ -25,6 +25,9 @@ importers:
       liosvideo:
         specifier: workspace:*
         version: link:../../packages/runtime
+      source-map-js:
+        specifier: ^1.2.2
+        version: 1.2.2
     devDependencies:
       '@sveltejs/adapter-static':
         specifier: ^3.0.10
