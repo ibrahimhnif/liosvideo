@@ -1,6 +1,7 @@
 mod acp;
 mod agents;
 mod git;
+pub mod mcp;
 mod project;
 mod recent;
 mod scaffold;
