@@ -111,4 +111,43 @@ describe("ExportEngine", () => {
 
     await expect(exportPromise).rejects.toThrow("Export cancelled");
   });
+
+  it("applies backpressure when encodeQueueSize exceeds threshold", async () => {
+    let dequeueListener: (() => void) | null = null;
+    let queueSize = 6;
+    let drained = false;
+
+    class QueueMockVideoEncoder extends MockVideoEncoder {
+      get encodeQueueSize() {
+        return queueSize;
+      }
+      addEventListener(event: string, listener: () => void) {
+        if (event === "dequeue") {
+          dequeueListener = listener;
+          // Simulate queue draining asynchronously
+          setTimeout(() => {
+            queueSize = 2;
+            drained = true;
+            listener();
+          }, 20);
+        }
+      }
+      removeEventListener(event: string, listener: () => void) {
+        if (dequeueListener === listener) {
+          dequeueListener = null;
+        }
+      }
+    }
+
+    const backpressureEngine = new ExportEngine(config, {
+      VideoEncoder: QueueMockVideoEncoder as any,
+      VideoFrame: MockVideoFrame as any,
+      MuxerClass: class extends MockMuxer {} as any,
+    });
+
+    const fakeCanvas = {} as CanvasImageSource;
+    await backpressureEngine.export(async () => fakeCanvas, null);
+
+    expect(drained).toBe(true);
+  });
 });

@@ -89,6 +89,7 @@ pub fn run() {
             project::asset_url_path,
             scene_validator::validate_scenes,
             export::save_exported_video,
+            export::save_exported_video_chunk,
             export::save_voice_recording,
             keychain::get_api_key,
             keychain::set_api_key,

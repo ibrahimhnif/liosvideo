@@ -15,6 +15,7 @@
   import { shouldRebuild, touchesRootFiles } from "$lib/preview/rebuild";
   import { ExportEngine, type ExportConfig } from "$lib/export/export_engine";
   import { mixdownAudio } from "$lib/export/audio_mixdown";
+  import { saveExportedVideoChunks } from "$lib/export/save_video";
   import ErrorOverlay from "./ErrorOverlay.svelte";
   import Timeline from "./Timeline.svelte";
   import Transport from "./Transport.svelte";
@@ -175,10 +176,7 @@
 
       const timestamp = new Date().toISOString().replace(/[:.]/g, "-");
       const filename = `${entry.replace(/\.ts$/, "")}-${timestamp}.mp4`;
-      const filePath = await invoke<string>("save_exported_video", {
-        filename,
-        bytes: Array.from(bytes),
-      });
+      const filePath = await saveExportedVideoChunks(filename, bytes);
       return filePath;
     } finally {
       currentExportEngine = null;

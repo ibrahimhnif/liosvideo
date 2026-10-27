@@ -1,4 +1,4 @@
-import { instantiateScene, layoutComposition, type Composition, type SceneSpan } from "./composition";
+import { instantiateScene, layoutComposition, type AudioClip, type Composition, type SceneSpan } from "./composition";
 import type { Node } from "./graph/node";
 
 export type FrameSpan = { startFrame: number; endFrame: number };
