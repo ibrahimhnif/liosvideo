@@ -1,8 +1,34 @@
+# Dependencies
 node_modules/
+
+# OS and IDE files
 .DS_Store
+Thumbs.db
+*.swp
+*.swo
+.idea/
+.vscode/
+
+# Build and output artifacts
 dist/
 build/
-.svelte-kit/
 target/
-.superpowers/
+.svelte-kit/
 .vitest/
+out/
+*.mp4
+*.log
+
+# Project caches and environment files
+.liosvideo/cache/
+.commandcode/
+.superpowers/
+.env
+.env.*
+!.env.example
+
+# Certificates and keys
+*.pem
+*.key
+*.p12
+*.cert
