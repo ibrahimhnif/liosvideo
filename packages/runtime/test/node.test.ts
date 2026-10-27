@@ -1,5 +1,5 @@
-import { describe, expect, it } from "vitest";
-import { group, image, rect, text } from "../src/graph/kinds";
+import { afterEach, describe, expect, it } from "vitest";
+import { group, image, rect, setTextMeasurer, text } from "../src/graph/kinds";
 import { apply } from "../src/math/affine";
 
 describe("Node props", () => {
@@ -72,5 +72,30 @@ describe("Node paths", () => {
     expect(w.add(text({ name: "urlbar" })).path()).toBe("desktop/chrome/urlbar");
     expect(w.parent).toBe(d);
     expect(d.children).toEqual([w]);
+  });
+});
+
+describe("text measurement", () => {
+  afterEach(() => setTextMeasurer(undefined));
+
+  it("sizes text with the installed measurer so anchors center it", () => {
+    setTextMeasurer((p) => ({ width: p.text.length * 10, height: p.fontSize }));
+    const t = text({ text: "abcd", fontSize: 20, x: 100, y: 50, anchorX: 0.5, anchorY: 0.5 });
+    expect(t.propsAt(0)).toMatchObject({ width: 40, height: 20 });
+    const [x, y] = apply(t.localMatrix(0), 20, 10);
+    expect(x).toBeCloseTo(100);
+    expect(y).toBeCloseTo(50);
+  });
+
+  it("keeps an explicit size", () => {
+    setTextMeasurer(() => ({ width: 1, height: 1 }));
+    expect(text({ text: "x", width: 300, height: 40 }).propsAt(0)).toMatchObject({ width: 300, height: 40 });
+  });
+
+  it("follows animated text content", () => {
+    setTextMeasurer((p) => ({ width: p.text.length, height: 1 }));
+    const t = text({ text: "ab" }).set({ text: "abcdef" }, 1);
+    expect(t.propsAt(0).width).toBe(2);
+    expect(t.propsAt(1).width).toBe(6);
   });
 });

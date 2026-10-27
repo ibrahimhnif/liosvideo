@@ -1,6 +1,6 @@
 /// <reference lib="webworker" />
 import * as runtime from "liosvideo";
-import { createRenderer, type AssetMap, type Renderer } from "liosvideo/gpu";
+import { createRenderer, measureText, type AssetMap, type Renderer } from "liosvideo/gpu";
 import type { FromWorker, ToWorker } from "./protocol";
 
 declare const self: DedicatedWorkerGlobalScope;
@@ -18,6 +18,7 @@ for (const name of BLOCKED) {
   });
 }
 (globalThis as unknown as { __liosvideo: typeof runtime }).__liosvideo = runtime;
+runtime.setTextMeasurer(measureText);
 
 let renderer: Renderer | undefined;
 let rendererReady: Promise<Renderer> | undefined;
@@ -57,6 +58,17 @@ async function render(frame: number, id: number) {
   post({ type: "rendered", id, frame });
 }
 
+async function snapshot(id: number) {
+  const r = await rendererReady;
+  if (!r) throw new Error("Renderer not initialized");
+  const pixels = await r.readPixels();
+  const { width, height } = size ?? { width: comp?.width ?? 1, height: comp?.height ?? 1 };
+  const canvas = new OffscreenCanvas(width, height);
+  canvas.getContext("2d")!.putImageData(new ImageData(new Uint8ClampedArray(pixels.buffer as ArrayBuffer), width, height), 0, 0);
+  const png = await (await canvas.convertToBlob({ type: "image/png" })).arrayBuffer();
+  self.postMessage({ type: "snapshot", id, png } satisfies FromWorker, [png]);
+}
+
 self.onmessage = async (e: MessageEvent<ToWorker>) => {
   const msg = e.data;
   switch (msg.type) {
@@ -75,6 +87,13 @@ self.onmessage = async (e: MessageEvent<ToWorker>) => {
         await load(msg.code, msg.generation);
       } catch (err) {
         post({ type: "error", phase: "load", generation: msg.generation, ...errorOf(err) });
+      }
+      return;
+    case "snapshot":
+      try {
+        await snapshot(msg.id);
+      } catch (err) {
+        post({ type: "snapshot", id: msg.id, error: errorOf(err).message });
       }
       return;
     case "render":

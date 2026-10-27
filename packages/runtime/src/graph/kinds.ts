@@ -34,6 +34,15 @@ export class RectNode extends Node<RectProps> {
   }
 }
 
+export type TextMeasurer = (p: TextProps) => { width: number; height: number };
+
+let measurer: TextMeasurer | undefined;
+
+/** Installs how text is measured (the render worker uses Canvas2D). Text without an explicit size is sized by it. */
+export function setTextMeasurer(m: TextMeasurer | undefined): void {
+  measurer = m;
+}
+
 export class TextNode extends Node<TextProps> {
   constructor(init?: NodeInit<TextProps>) {
     super(
@@ -41,6 +50,12 @@ export class TextNode extends Node<TextProps> {
       { ...BASE_DEFAULTS, text: "", fontFamily: "SF Pro Text", fontSize: 48, fontWeight: 400, color: "#ffffff", lineHeight: 1.2 },
       init,
     );
+  }
+
+  override propsAt(t: number): TextProps {
+    const p = super.propsAt(t);
+    if (measurer && p.width === 0 && p.height === 0) Object.assign(p, measurer(p));
+    return p;
   }
 }
 

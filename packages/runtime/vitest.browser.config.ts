@@ -7,8 +7,8 @@ export default defineConfig({
     browser: {
       enabled: true,
       headless: true,
-      // headless Chromium on macOS uses Metal
-      provider: playwright({ launchOptions: { args: ["--enable-unsafe-webgpu"] } }),
+      // full Chromium ("new headless"): the headless shell breaks WebGPU after a worker presents a frame
+      provider: playwright({ launchOptions: { channel: "chromium", args: ["--enable-unsafe-webgpu"] } }),
       instances: [{ browser: "chromium" }],
     },
   },

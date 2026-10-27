@@ -14,6 +14,7 @@ export class PreviewHost {
   private loads = new Map<number, Pending<LoadedInfo>>();
   private inFlight: { id: number; frame: number } | undefined;
   private pendingFrame: number | undefined;
+  private snapshots = new Map<number, Pending<ArrayBuffer>>();
   private frameWaiters: { frame: number; resolve: () => void }[] = [];
   private watchdog: ReturnType<typeof setTimeout> | undefined;
   private errorListeners: ((e: PreviewError) => void)[] = [];
@@ -69,6 +70,14 @@ export class PreviewHost {
     });
   }
 
+  /** PNG bytes of the most recently rendered frame. */
+  snapshot(): Promise<ArrayBuffer> {
+    const id = ++this.nextId;
+    const done = new Promise<ArrayBuffer>((resolve, reject) => this.snapshots.set(id, { resolve, reject }));
+    this.post({ type: "snapshot", id });
+    return done;
+  }
+
   dispose(): void {
     this.disposed = true;
     clearTimeout(this.watchdog);
@@ -107,6 +116,8 @@ export class PreviewHost {
     const err = new Error("Scene code timed out");
     this.loads.forEach((p) => p.reject(err));
     this.loads.clear();
+    this.snapshots.forEach((p) => p.reject(err));
+    this.snapshots.clear();
     this.inFlight = undefined;
     this.pendingFrame = undefined;
     this.frameWaiters.splice(0).forEach((w) => w.resolve());
@@ -145,6 +156,11 @@ export class PreviewHost {
         void this.sendAssets(msg.assets).then(() => pending?.resolve(info));
         return;
       }
+      case "snapshot":
+        if (msg.png) this.snapshots.get(msg.id)?.resolve(msg.png);
+        else this.snapshots.get(msg.id)?.reject(new Error(msg.error ?? "Snapshot failed"));
+        this.snapshots.delete(msg.id);
+        return;
       case "rendered":
         this.finishFrame(msg.frame);
         this.arm();

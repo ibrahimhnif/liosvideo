@@ -7,6 +7,8 @@ import compositeSrc from "./shaders/composite.wgsl?raw";
 import quadSrc from "./shaders/quad.wgsl?raw";
 import { TextRasterizer } from "./text";
 
+export { measureText } from "./text";
+
 export type AssetMap = Map<string, ImageBitmap>;
 
 export interface Renderer {
@@ -41,7 +43,9 @@ export async function createRenderer(
   canvas: HTMLCanvasElement | OffscreenCanvas,
   opts: { device?: GPUDevice } = {},
 ): Promise<Renderer> {
-  const device = opts.device ?? (await (await navigator.gpu.requestAdapter())!.requestDevice());
+  const adapter = opts.device ? undefined : await navigator.gpu.requestAdapter();
+  if (!opts.device && !adapter) throw new Error("WebGPU is not available");
+  const device = opts.device ?? (await adapter!.requestDevice());
   const context = canvas.getContext("webgpu") as GPUCanvasContext;
   // rgba8unorm is valid for every canvas; bgra8unorm canvases fail in headless Chromium.
   const canvasFormat: GPUTextureFormat = "rgba8unorm";

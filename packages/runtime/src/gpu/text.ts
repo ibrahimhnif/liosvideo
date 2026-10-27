@@ -1,4 +1,27 @@
+import type { TextProps } from "../graph/kinds";
 import type { TextItem } from "../renderlist";
+
+type TextStyle = Pick<TextProps, "text" | "fontFamily" | "fontSize" | "fontWeight" | "lineHeight">;
+
+const fontOf = (s: TextStyle, scale: number) => `${s.fontWeight} ${s.fontSize * scale}px "${s.fontFamily}", system-ui`;
+
+let measureCtx: OffscreenCanvasRenderingContext2D | undefined;
+
+/** Layout box of a text block at `scale` (device pixels per unit). Shared by measurement and rasterization. */
+function layout(s: TextStyle, scale: number) {
+  measureCtx ??= new OffscreenCanvas(1, 1).getContext("2d")!;
+  measureCtx.font = fontOf(s, scale);
+  const lines = s.text.split("\n");
+  const metrics = lines.map((l) => measureCtx!.measureText(l));
+  const lineHeight = s.fontSize * s.lineHeight * scale;
+  return { lines, metrics, lineHeight, width: Math.max(0, ...metrics.map((m) => m.width)), height: lineHeight * lines.length };
+}
+
+/** Text size in layout units, for setTextMeasurer(). */
+export function measureText(s: TextStyle): { width: number; height: number } {
+  const { width, height } = layout(s, 1);
+  return { width, height };
+}
 
 export type RasterizedText = {
   canvas: OffscreenCanvas;
@@ -17,18 +40,14 @@ export class TextRasterizer {
     if (hit) return hit;
     if (this.cache.size > 512) this.cache.clear();
 
-    const font = `${item.fontWeight} ${item.fontSize * scale}px "${item.fontFamily}", system-ui`;
-    const lines = item.text.split("\n");
-    const lineHeight = item.fontSize * item.lineHeight * scale;
-    const measure = new OffscreenCanvas(1, 1).getContext("2d")!;
-    measure.font = font;
-    const metrics = lines.map((l) => measure.measureText(l));
-    const width = Math.max(1, Math.ceil(Math.max(0, ...metrics.map((m) => m.width))));
-    const height = Math.max(1, Math.ceil(lineHeight * lines.length));
+    const box = layout(item, scale);
+    const { lines, metrics, lineHeight } = box;
+    const width = Math.max(1, Math.ceil(box.width));
+    const height = Math.max(1, Math.ceil(box.height));
 
     const canvas = new OffscreenCanvas(width, height);
     const ctx = canvas.getContext("2d")!;
-    ctx.font = font;
+    ctx.font = fontOf(item, scale);
     ctx.fillStyle = item.color;
     ctx.textBaseline = "alphabetic";
     lines.forEach((line, i) => {

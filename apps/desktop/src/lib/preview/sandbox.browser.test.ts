@@ -53,3 +53,39 @@ describe("render worker sandbox", () => {
     expect(errors).toEqual([]);
   });
 });
+
+describe("snapshot", () => {
+  it("returns a PNG of the last rendered frame", async () => {
+    const h = makeHost();
+    h.resize(64, 64);
+    await h.load(project(`L.composition({ width: 64, height: 64, fps: 30, scenes: [L.scene("s", { duration: 1, background: "#ff0000" }, () => {})] })`));
+    await h.renderFrame(0);
+    const png = new Uint8Array(await h.snapshot());
+    expect([...png.slice(1, 4)].map((c) => String.fromCharCode(c)).join("")).toBe("PNG");
+    const bmp = await createImageBitmap(new Blob([png]));
+    const ctx = new OffscreenCanvas(64, 64).getContext("2d")!;
+    ctx.drawImage(bmp, 0, 0);
+    expect([...ctx.getImageData(10, 10, 1, 1).data]).toEqual([255, 0, 0, 255]);
+  });
+});
+
+describe("text layout in the worker", () => {
+  it("centers anchored text using measured size", async () => {
+    const h = makeHost();
+    h.resize(256, 64);
+    await h.load(
+      project(`L.composition({ width: 256, height: 64, fps: 30, scenes: [L.scene("s", { duration: 1 }, ({ root }) => {
+        root.add(L.text({ text: "MMMMMM", fontSize: 24, x: 128, y: 32, anchorX: 0.5, anchorY: 0.5 }));
+      })] })`),
+    );
+    await h.renderFrame(0);
+    const bmp = await createImageBitmap(new Blob([await h.snapshot()]));
+    const ctx = new OffscreenCanvas(256, 64).getContext("2d")!;
+    ctx.drawImage(bmp, 0, 0);
+    const data = ctx.getImageData(0, 0, 256, 64).data;
+    const lit: number[] = [];
+    for (let x = 0; x < 256; x++) for (let y = 0; y < 64; y++) if (data[(y * 256 + x) * 4] > 128) lit.push(x);
+    const center = (Math.min(...lit) + Math.max(...lit)) / 2;
+    expect(Math.abs(center - 128)).toBeLessThan(4);
+  });
+});

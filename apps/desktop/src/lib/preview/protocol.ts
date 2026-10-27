@@ -5,7 +5,8 @@ export type ToWorker =
   | { type: "resize"; width: number; height: number }
   | { type: "load"; code: string; generation: number }
   | { type: "render"; frame: number; id: number }
-  | { type: "assets"; bitmaps: [string, ImageBitmap][] };
+  | { type: "assets"; bitmaps: [string, ImageBitmap][] }
+  | { type: "snapshot"; id: number };
 
 export type FromWorker =
   | {
@@ -20,6 +21,8 @@ export type FromWorker =
       assets: string[];
     }
   | { type: "rendered"; id: number; frame: number }
+  /** PNG of the last rendered frame */
+  | { type: "snapshot"; id: number; png?: ArrayBuffer; error?: string }
   | { type: "error"; phase: "load" | "render"; message: string; stack?: string; generation?: number };
 
 export type LoadedInfo = Omit<Extract<FromWorker, { type: "loaded" }>, "type">;
