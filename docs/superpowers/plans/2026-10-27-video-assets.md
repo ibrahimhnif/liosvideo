@@ -1,6 +1,6 @@
 # External Video Asset Support Implementation Plan
 
-> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
+> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [x]`) syntax for tracking.
 
 **Goal:** Enable external video assets (MP4, WebM, screen recordings) in `@liosvideo/runtime` and the desktop preview so users and ACP agents can place and play video recordings inside scenes, mockups (Chrome, Terminal, Desktop), or fullscreen.
 
@@ -37,7 +37,7 @@
   - `evaluateFrame`: Emits `VideoItem` when evaluating a `VideoNode`.
   - `collectAssets`: Includes `VideoNode` sources in the collected asset list.
 
-- [ ] **Step 1: Write failing unit test for `VideoNode` and evaluation**
+- [x] **Step 1: Write failing unit test for `VideoNode` and evaluation**
 
 Create `packages/runtime/test/video.test.ts`:
 ```typescript
@@ -78,12 +78,12 @@ describe("VideoNode", () => {
 });
 ```
 
-- [ ] **Step 2: Run test to verify it fails**
+- [x] **Step 2: Run test to verify it fails**
 
 Run: `pnpm --filter liosvideo test test/video.test.ts`
 Expected: FAIL (`video` not exported / kinds not defined).
 
-- [ ] **Step 3: Implement `VideoNode`, `VideoItem`, and update `evaluate.ts`**
+- [x] **Step 3: Implement `VideoNode`, `VideoItem`, and update `evaluate.ts`**
 
 1. In `packages/runtime/src/graph/kinds.ts`:
    Define `VideoProps`, `VideoNode`, and `video()` factory.
@@ -95,12 +95,12 @@ Expected: FAIL (`video` not exported / kinds not defined).
 4. In `packages/runtime/src/index.ts`:
    Ensure `VideoNode` and `video` are exported.
 
-- [ ] **Step 4: Run test to verify it passes**
+- [x] **Step 4: Run test to verify it passes**
 
 Run: `pnpm --filter liosvideo test test/video.test.ts`
 Expected: PASS.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add packages/runtime/src/ packages/runtime/test/video.test.ts
@@ -121,21 +121,21 @@ git commit -m "feat(runtime): VideoNode and VideoItem evaluation with frame time
   - In `writeInstance`: handle `leaf.kind === "video"` by retrieving the asset bitmap/frame from `assets.get(video.src)` (keyed by source or frame key) and uploading via `uploadSource`.
   - Fallback placeholder if asset not loaded (magenta solid rect with warning).
 
-- [ ] **Step 1: Write unit test verifying renderlist includes video items**
+- [x] **Step 1: Write unit test verifying renderlist includes video items**
 
 Add test in `packages/runtime/test/evaluate.test.ts`:
 Verify `renderlist.items` contains `VideoItem` and renderer type accepts it.
 
-- [ ] **Step 2: Update `packages/runtime/src/gpu/renderer.ts`**
+- [x] **Step 2: Update `packages/runtime/src/gpu/renderer.ts`**
 
 Update `writeInstance` and type `Leaf` to include `VideoItem`.
 
-- [ ] **Step 3: Run all runtime tests to verify they pass**
+- [x] **Step 3: Run all runtime tests to verify they pass**
 
 Run: `pnpm --filter liosvideo test`
 Expected: PASS with 100% green.
 
-- [ ] **Step 4: Commit**
+- [x] **Step 4: Commit**
 
 ```bash
 git add packages/runtime/src/gpu/renderer.ts packages/runtime/test/
@@ -157,22 +157,22 @@ git commit -m "feat(runtime): WebGPU renderer support for video items"
   - Video asset loader in `assets.ts`: supports `.mp4`, `.webm`, `.mov` files through HTMLVideoElement frame sampling.
   - Passes video frame bitmap into `AssetMap`.
 
-- [ ] **Step 1: Write test for video asset detection in host**
+- [x] **Step 1: Write test for video asset detection in host**
 
 Update `apps/desktop/src/lib/preview/host.test.ts` to verify video assets in `collectAssets` are forwarded to the worker.
 
-- [ ] **Step 2: Update `assets.ts` and `host.ts`**
+- [x] **Step 2: Update `assets.ts` and `host.ts`**
 
 Support video sources in `resolveAsset`:
 If file is a video, use an offscreen `HTMLVideoElement` seeked to the requested time, or frame extractor.
 
-- [ ] **Step 3: Run desktop tests and checks**
+- [x] **Step 3: Run desktop tests and checks**
 
 Run: `pnpm --filter desktop test`
 Run: `pnpm --filter desktop check`
 Expected: PASS with 0 errors.
 
-- [ ] **Step 4: Commit**
+- [x] **Step 4: Commit**
 
 ```bash
 git add apps/desktop/src/lib/preview/
