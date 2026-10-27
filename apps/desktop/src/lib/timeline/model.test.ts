@@ -101,3 +101,24 @@ describe("selection", () => {
     expect(selectionLabel({ composition: "long.ts", sceneId: "b", startFrame: 0, endFrame: 0 })).toBe("long.ts › b");
   });
 });
+
+describe("scene files in selections", () => {
+  const withSources = (): TimelineManifest => {
+    const m = manifest();
+    m.scenes[0].source = "scenes/a.ts";
+    return m;
+  };
+
+  it("selectionFor carries the scene's source file", () => {
+    const m = withSources();
+    const rows = visibleRows(m, new Set(["a"]));
+    expect(selectionFor(rows[0], "long.ts", m).sceneFile).toBe("scenes/a.ts");
+    expect(selectionFor(rows[1], "long.ts", m).sceneFile).toBe("scenes/a.ts");
+    expect(selectionFor(rows.at(-1)!, "long.ts", m).sceneFile).toBeUndefined();
+  });
+
+  it("reconcileSelection refreshes the source file", () => {
+    const sel = { composition: "long.ts", sceneId: "a", path: "a/desktop", startFrame: 0, endFrame: 0 };
+    expect(reconcileSelection(sel, "long.ts", withSources())?.sceneFile).toBe("scenes/a.ts");
+  });
+});

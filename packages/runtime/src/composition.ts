@@ -16,6 +16,8 @@ export type SceneDef = {
   duration: number;
   background?: string;
   build: (ctx: SceneContext) => void;
+  /** stack captured where scene() was called; the host maps it to the scene's source file */
+  site?: string;
 };
 
 export type Composition = {
@@ -29,7 +31,7 @@ export type Composition = {
 export type SceneSpan = { id: string; startFrame: number; endFrame: number };
 
 export function scene(id: string, opts: { duration: number; background?: string }, build: SceneDef["build"]): SceneDef {
-  return { id, duration: opts.duration, background: opts.background, build };
+  return { id, duration: opts.duration, background: opts.background, build, site: new Error().stack };
 }
 
 export function composition(c: Omit<Composition, "background"> & { background?: string }): Composition {

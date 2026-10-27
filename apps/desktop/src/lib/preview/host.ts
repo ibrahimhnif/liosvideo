@@ -217,6 +217,8 @@ export class PreviewHost {
     this.applied = { generation: msg.generation, code: pending?.code ?? this.applied?.code ?? "" };
     this.arm();
     const { type: _, ...info } = msg;
+    const code = this.applied.code;
+    info.manifest = { ...info.manifest, scenes: info.manifest.scenes.map((s) => ({ ...s, source: s.site ? locate(s.site, code)?.file : undefined })) };
     await this.sendAssets(msg.assets);
     if (this.applied.generation !== msg.generation) pending?.reject(new SupersededError());
     else pending?.resolve(info);

@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { playhead } from "$lib/playhead.svelte";
   import { invoke } from "@tauri-apps/api/core";
   import { listen } from "@tauri-apps/api/event";
   import { onMount } from "svelte";
@@ -19,6 +20,10 @@
 
   let stage: HTMLDivElement;
   let frame = $state(0);
+  $effect(() => {
+    playhead.frame = frame;
+    playhead.fps = info?.fps ?? 30;
+  });
   let playing = $state(false);
   let info = $state<LoadedInfo | null>(null);
   let buildErrors = $state<BuildError[]>([]);

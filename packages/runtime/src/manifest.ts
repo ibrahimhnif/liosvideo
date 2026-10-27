@@ -3,7 +3,13 @@ import type { Node } from "./graph/node";
 
 export type FrameSpan = { startFrame: number; endFrame: number };
 export type ManifestNode = { path: string; name: string; kind: string; spans: FrameSpan[]; children: ManifestNode[] };
-export type ManifestScene = SceneSpan & { tree: ManifestNode };
+export type ManifestScene = SceneSpan & {
+  tree: ManifestNode;
+  /** where scene() was called (a stack trace) */
+  site?: string;
+  /** project-relative file defining the scene, filled in by the host from `site` */
+  source?: string;
+};
 export type TimelineManifest = { width: number; height: number; fps: number; totalFrames: number; scenes: ManifestScene[] };
 
 function describe(node: Node<any>, scene: SceneSpan, fps: number): ManifestNode {
@@ -28,6 +34,6 @@ export function buildManifest(c: Composition): TimelineManifest {
     height: c.height,
     fps: c.fps,
     totalFrames,
-    scenes: scenes.map((span, i) => ({ ...span, tree: describe(instantiateScene(c, c.scenes[i]), span, c.fps) })),
+    scenes: scenes.map((span, i) => ({ ...span, tree: describe(instantiateScene(c, c.scenes[i]), span, c.fps), site: c.scenes[i].site })),
   };
 }

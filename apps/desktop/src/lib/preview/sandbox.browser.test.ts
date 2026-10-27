@@ -105,6 +105,21 @@ describe("scene error locations", () => {
   });
 });
 
+describe("scene source files", () => {
+  it("maps each manifest scene to the project file that defines it", async () => {
+    const { bundleComposition } = await import("../bundle/bundler");
+    const files: Record<string, string> = {
+      "long.ts": `import { composition } from "liosvideo";\nimport intro from "./scenes/intro";\nimport { outro } from "./scenes/more";\nexport default composition({ width: 64, height: 64, fps: 30, scenes: [intro, outro] });\n`,
+      "scenes/intro.ts": `import { scene } from "liosvideo";\nexport default scene("intro", { duration: 1 }, () => {});\n`,
+      "scenes/more.ts": `import { scene } from "liosvideo";\n\nexport const outro = scene("outro", { duration: 1 }, () => {});\n`,
+    };
+    const r = await bundleComposition("long.ts", async (rel) => files[rel]);
+    if (!r.ok) throw new Error(JSON.stringify(r.errors));
+    const info = await makeHost().load(r.code);
+    expect(info.manifest.scenes.map((s) => s.source)).toEqual(["scenes/intro.ts", "scenes/more.ts"]);
+  });
+});
+
 describe("more network paths are blocked", () => {
   for (const [name, call] of [
     ["FontFace", `new FontFace("x", "url(https://example.com/x.woff2)")`],

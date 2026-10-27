@@ -60,6 +60,20 @@ describe("buildManifest", () => {
   });
 
   it("is deterministic", () => {
-    expect(buildManifest(make())).toEqual(buildManifest(make()));
+    // `site` is where scene() was called (a stack), not derived content, so it is left out
+    const content = () => {
+      const m = buildManifest(make());
+      return { ...m, scenes: m.scenes.map(({ site: _, ...s }) => s) };
+    };
+    expect(content()).toEqual(content());
+  });
+});
+
+describe("scene call sites", () => {
+  it("records where scene() was called so the host can find the scene's file", () => {
+    const s = scene("intro", { duration: 1 }, () => {});
+    expect(s.site).toContain("manifest.test.ts");
+    const m = buildManifest(composition({ width: 10, height: 10, fps: 30, scenes: [s] }));
+    expect(m.scenes[0].site).toBe(s.site);
   });
 });

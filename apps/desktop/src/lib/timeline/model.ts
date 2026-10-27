@@ -3,7 +3,7 @@ import type { FrameSpan, ManifestNode, ManifestScene, TimelineManifest } from "l
 export const MIN_MARKER_PX = 3;
 
 /** What the user pointed at; becomes revision context for the agent. */
-export type Selection = { composition: string; sceneId: string; path?: string; startFrame: number; endFrame: number };
+export type Selection = { composition: string; sceneId: string; sceneFile?: string; path?: string; startFrame: number; endFrame: number };
 
 export type Row = {
   /** scene id (= scene root path) or node path */
@@ -63,11 +63,11 @@ function nodeSelection(composition: string, scene: ManifestScene, n: ManifestNod
   collect(n);
   const startFrame = spans.length ? Math.min(...spans.map((s) => s.startFrame)) : scene.startFrame;
   const endFrame = spans.length ? Math.max(...spans.map((s) => s.endFrame)) : scene.endFrame;
-  return { composition, sceneId: scene.id, path: n.path, startFrame, endFrame };
+  return { composition, sceneId: scene.id, sceneFile: scene.source, path: n.path, startFrame, endFrame };
 }
 
 const sceneSelection = (composition: string, s: ManifestScene): Selection => ({
-  composition, sceneId: s.id, startFrame: s.startFrame, endFrame: s.endFrame,
+  composition, sceneId: s.id, sceneFile: s.source, startFrame: s.startFrame, endFrame: s.endFrame,
 });
 
 export function selectionFor(row: Row, composition: string, m: TimelineManifest): Selection {
