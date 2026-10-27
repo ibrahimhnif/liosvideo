@@ -1,6 +1,6 @@
 import { applyTransition } from "./anim/transition";
 import { clampFrame, instantiateScene, layoutComposition, type Composition } from "./composition";
-import { ImageNode, RectNode, TextNode, VideoNode } from "./graph/kinds";
+import { CircleNode, ImageNode, PathNode, RectNode, ShaderNode, TextNode, VideoNode } from "./graph/kinds";
 import type { Node } from "./graph/node";
 import { multiply, type Affine } from "./math/affine";
 import type { RenderItem, RenderList } from "./renderlist";
@@ -13,6 +13,27 @@ function drawable(node: Node<any>, t: number, matrix: Affine, opacity: number): 
     return {
       kind: "rect", path, matrix, width: p.width, height: p.height, radius: p.radius,
       fill: p.fill, stroke: p.stroke || undefined, strokeWidth: p.strokeWidth, opacity,
+    };
+  }
+  if (node instanceof CircleNode) {
+    const p = node.propsAt(t);
+    return {
+      kind: "circle", path, matrix, radius: p.radius, width: p.width, height: p.height,
+      fill: p.fill, stroke: p.stroke || undefined, strokeWidth: p.strokeWidth, opacity,
+    };
+  }
+  if (node instanceof PathNode) {
+    const p = node.propsAt(t);
+    return {
+      kind: "path", path, matrix, d: p.d, width: p.width, height: p.height,
+      fill: p.fill, stroke: p.stroke || undefined, strokeWidth: p.strokeWidth, opacity,
+    };
+  }
+  if (node instanceof ShaderNode) {
+    const p = node.propsAt(t);
+    return {
+      kind: "shader", path, matrix, code: p.code, width: p.width, height: p.height,
+      uniforms: p.uniforms, opacity,
     };
   }
   if (node instanceof TextNode) {

@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it } from "vitest";
-import { group, image, rect, setTextMeasurer, text } from "../src/graph/kinds";
+import { circle, group, image, path, rect, setTextMeasurer, shader, text } from "../src/graph/kinds";
 import { apply } from "../src/math/affine";
 
 describe("Node names", () => {
@@ -41,6 +41,32 @@ describe("Node props", () => {
 
   it("keeps image src", () => {
     expect(image({ src: "assets/a.png" }).propsAt(0)).toMatchObject({ src: "assets/a.png", fit: "fill" });
+  });
+
+  it("creates circle with diameter width/height and radius", () => {
+    const c = circle({ radius: 40, fill: "#ff0000" });
+    expect(c.propsAt(0)).toMatchObject({
+      width: 80,
+      height: 80,
+      radius: 40,
+      fill: "#ff0000",
+    });
+  });
+
+  it("creates vector path node", () => {
+    const p = path({ d: "M 0 0 L 100 0 L 50 100 Z", fill: "#00ff00" });
+    expect(p.propsAt(0)).toMatchObject({
+      d: "M 0 0 L 100 0 L 50 100 Z",
+      fill: "#00ff00",
+    });
+  });
+
+  it("creates custom shader node with WGSL code and uniforms", () => {
+    const s = shader({ code: "@fragment fn fs() -> @location(0) vec4f { return vec4f(1.0); }", uniforms: { u_speed: 1.5 } });
+    expect(s.propsAt(0)).toMatchObject({
+      code: "@fragment fn fs() -> @location(0) vec4f { return vec4f(1.0); }",
+      uniforms: { u_speed: 1.5 },
+    });
   });
 });
 

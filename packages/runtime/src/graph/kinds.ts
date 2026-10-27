@@ -79,8 +79,54 @@ export class VideoNode extends Node<VideoProps> {
   }
 }
 
+export interface CircleProps extends BaseProps {
+  radius: number;
+  fill: string;
+  stroke: string;
+  strokeWidth: number;
+}
+
+export class CircleNode extends Node<CircleProps> {
+  constructor(init?: NodeInit<CircleProps> & { radius?: number }) {
+    const r = init?.radius ?? 50;
+    const diameter = r * 2;
+    super(
+      "circle",
+      { ...BASE_DEFAULTS, width: diameter, height: diameter, radius: r, fill: "#ffffff", stroke: "", strokeWidth: 0 },
+      { ...init, width: init?.width ?? diameter, height: init?.height ?? diameter, radius: r },
+    );
+  }
+}
+
+export interface PathProps extends BaseProps {
+  d: string;
+  fill: string;
+  stroke: string;
+  strokeWidth: number;
+}
+
+export class PathNode extends Node<PathProps> {
+  constructor(init: NodeInit<PathProps> & { d: string }) {
+    super("path", { ...BASE_DEFAULTS, d: "", fill: "#ffffff", stroke: "", strokeWidth: 0 }, init);
+  }
+}
+
+export interface ShaderProps extends BaseProps {
+  code: string;
+  uniforms?: Record<string, number | number[]>;
+}
+
+export class ShaderNode extends Node<ShaderProps> {
+  constructor(init: NodeInit<ShaderProps> & { code: string }) {
+    super("shader", { ...BASE_DEFAULTS, code: "", uniforms: {} }, init);
+  }
+}
+
 export const group = (init?: NodeInit<BaseProps>) => new GroupNode(init);
 export const rect = (init?: NodeInit<RectProps>) => new RectNode(init);
+export const circle = (init?: NodeInit<CircleProps> & { radius?: number }) => new CircleNode(init);
+export const path = (init: NodeInit<PathProps> & { d: string }) => new PathNode(init);
+export const shader = (init: NodeInit<ShaderProps> & { code: string }) => new ShaderNode(init);
 export const text = (init: NodeInit<TextProps>) => new TextNode(init);
 export const image = (init: NodeInit<ImageProps> & { src: string }) => new ImageNode(init);
 export const video = (init: NodeInit<VideoProps> & { src: string }) => new VideoNode(init);

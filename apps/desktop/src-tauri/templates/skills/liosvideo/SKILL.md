@@ -100,10 +100,49 @@ export default composition({
 - `"slide"`: Slides the incoming scene in from the specified direction (`"left" | "right" | "up" | "down"`).
 - `"zoom"`: Scaled zoom transition (incoming zooms in from center).
 - `"wipe"`: Directional wipe revealing the incoming scene.
+- **Custom Transition Callback**:
+  ```ts
+  transition((node, progress, width, height) => {
+    (node as any).base.rotation = progress * 360;
+    (node as any).base.scaleX = progress;
+    (node as any).base.opacity = progress;
+  }, 0.75);
+  ```
 
 ---
 
-## 4. Scene Authoring & Hierarchy
+## 4. Custom Mockups, Shapes & Shaders
+
+### Geometric Primitives
+- `circle({ radius: 50, fill: "#38bdf8" })`: Creates perfect circles for avatars, indicators, or floating particles.
+- `path({ d: "M 0 0 L 100 0 L 50 86 Z", fill: "#f59e0b" })`: Vector SVG paths for triangles, stars, badges, and custom polygons.
+- `rect({ width, height, radius, fill, stroke })`: Basic rectangles with rounded borders.
+
+### Raw WGSL Custom Shaders
+Use `shader(...)` for custom procedural graphics, animated backgrounds, audio-reactive ripples, or post-processing:
+```ts
+const effect = root.add(
+  shader({
+    name: "aurora",
+    width,
+    height,
+    code: `
+      @fragment fn fs(@location(0) uv: vec2f) -> @location(0) vec4f {
+        let col = 0.5 + 0.5 * cos(uv.xyx + vec3f(0.0, 2.0, 4.0));
+        return vec4f(col, 1.0);
+      }
+    `,
+    uniforms: { speed: 1.0 }
+  })
+);
+```
+
+### Authoring Custom Mockups
+Never hesitate to build custom domain components (smartwatches, game consoles, notification badges, dialog modals) by authoring modular helper functions in `scenes/components/` that return a configured `GroupNode`.
+
+---
+
+## 5. Scene Authoring & Hierarchy
 
 ```ts
 import { group, image, rect, scene, text, vo } from "liosvideo";

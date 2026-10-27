@@ -50,6 +50,43 @@ export type VideoItem = {
   opacity: number;
 };
 
+export type CircleItem = {
+  kind: "circle";
+  path: string;
+  matrix: Affine;
+  radius: number;
+  width: number;
+  height: number;
+  fill: string;
+  stroke?: string;
+  strokeWidth: number;
+  opacity: number;
+};
+
+export type PathItem = {
+  kind: "path";
+  path: string;
+  matrix: Affine;
+  d: string;
+  width: number;
+  height: number;
+  fill: string;
+  stroke?: string;
+  strokeWidth: number;
+  opacity: number;
+};
+
+export type ShaderItem = {
+  kind: "shader";
+  path: string;
+  matrix: Affine;
+  code: string;
+  width: number;
+  height: number;
+  uniforms?: Record<string, number | number[]>;
+  opacity: number;
+};
+
 export type LayerItem = {
   kind: "layer";
   path: string;
@@ -59,6 +96,6 @@ export type LayerItem = {
   clip?: { matrix: Affine; width: number; height: number; radius: number };
 };
 
-export type RenderItem = RectItem | TextItem | ImageItem | VideoItem | LayerItem;
+export type RenderItem = RectItem | CircleItem | PathItem | ShaderItem | TextItem | ImageItem | VideoItem | LayerItem;
 
 export type RenderList = { width: number; height: number; background: string; items: RenderItem[]; assets: string[] };

@@ -306,12 +306,23 @@ export async function createRenderer(
     let uv = [0, 0, 1, 1];
     let texture = white;
 
-    if (leaf.kind === "rect") {
+    if (leaf.kind === "rect" || leaf.kind === "circle") {
       w = leaf.width;
       h = leaf.height;
       color = parseColor(leaf.fill);
       if (leaf.stroke) stroke = parseColor(leaf.stroke);
       params = [leaf.radius, leaf.strokeWidth, leaf.opacity, MODE_RECT];
+    } else if (leaf.kind === "path") {
+      w = leaf.width || 100;
+      h = leaf.height || 100;
+      color = parseColor(leaf.fill);
+      if (leaf.stroke) stroke = parseColor(leaf.stroke);
+      params = [0, leaf.strokeWidth, leaf.opacity, MODE_SOLID];
+    } else if (leaf.kind === "shader") {
+      w = leaf.width || 100;
+      h = leaf.height || 100;
+      color = [1, 1, 1, 1];
+      params = [0, 0, leaf.opacity, MODE_SOLID];
     } else if (leaf.kind === "text") {
       const scale = Math.round(Math.sqrt(Math.abs(a * d - b * c)) * sx * 100) / 100 || 1;
       const raster = text.raster(leaf as TextItem, scale);

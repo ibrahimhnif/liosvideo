@@ -144,13 +144,36 @@ export default scene(
 | :--- | :--- | :--- |
 | **Group** | `group(props)` | `x, y, width, height, anchorX, anchorY, scaleX, scaleY, rotation, opacity, blur, z, clip, radius` |
 | **Rect** | `rect(props)` | Group properties plus `fill, stroke, strokeWidth` |
+| **Circle** | `circle(props)` | Group properties plus `radius, fill, stroke, strokeWidth` (creates perfect circles/avatars/dots) |
+| **Path** | `path(props)` | Group properties plus `d (SVG path string), fill, stroke, strokeWidth` (triangles, polygons, custom vector paths) |
+| **Shader** | `shader(props)` | Group properties plus `code (raw WGSL fragment shader), uniforms` (procedural effects, gradients, noise) |
 | **Text** | `text(props)` | Group properties plus `text, fontFamily, fontSize, fontWeight, color, lineHeight, letterSpacing` |
 | **Image** | `image(props)` | Group properties plus `src` (project-relative path), `fit ("fill" \| "contain" \| "cover")` |
 | **Phone** | `phone(props)` | Smartphone device frame for 9:16 mobile compositions with bezel, screen, dynamic island, and home indicator |
 
-### Transforms & Hierarchy
-- Hierarchy: Nodes are added with `parent.add(child)`. Parent transforms (scale, position, rotation, opacity, blur) affect all descendants.
-- Anchor Points: `anchorX` and `anchorY` range from `0` (top-left) to `0.5` (center) to `1` (bottom-right).
+### Custom Mockups & Components
+Agents can create domain-specific mockups (smartwatches, tablet frames, notification bubbles, custom app UIs) by authoring composite functions or classes extending `GroupNode` using `group()`, `rect()`, `circle()`, `path()`, and `text()`.
+
+---
+
+## Custom Transitions
+
+In compositions, you can use built-in transitions or custom transition callbacks:
+
+```ts
+// Built-in transitions
+transition("slide", { duration: 0.5, direction: "left" }) // "left" | "right" | "up" | "down"
+transition("fade", { duration: 0.4 })
+transition("zoom", { duration: 0.6 })
+
+// Custom transition callback:
+transition((node, progress, width, height) => {
+  (node as any).base.rotation = progress * 360;
+  (node as any).base.scaleX = progress;
+  (node as any).base.scaleY = progress;
+  (node as any).base.opacity = progress;
+}, 0.75);
+```
 
 ---
 
