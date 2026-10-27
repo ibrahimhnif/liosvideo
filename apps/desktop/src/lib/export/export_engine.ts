@@ -122,6 +122,7 @@ export class ExportEngine {
         height: this.config.height,
         bitrate: this.config.bitrate ?? 10_000_000,
         framerate: this.config.fps,
+        hardwareAcceleration: "prefer-hardware",
       });
 
       // 2. Setup AudioEncoder if audioBuffer is provided
@@ -209,7 +210,7 @@ export class ExportEngine {
           throw encoderError;
         }
 
-        await waitForQueueDrain(videoEncoder, 6, () => this.cancelled, () => encoderError, 4);
+        await waitForQueueDrain(videoEncoder, 16, () => this.cancelled, () => encoderError, 2);
 
         const renderT0 = Date.now();
         const canvasSource = await renderFrame(f);

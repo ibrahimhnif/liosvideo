@@ -114,7 +114,7 @@ describe("ExportEngine", () => {
 
   it("applies backpressure when encodeQueueSize exceeds threshold", async () => {
     let dequeueListener: (() => void) | null = null;
-    let queueSize = 10;
+    let queueSize = 20;
     let drained = false;
 
     class QueueMockVideoEncoder extends MockVideoEncoder {
