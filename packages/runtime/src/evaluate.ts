@@ -1,3 +1,4 @@
+import { applyTransition } from "./anim/transition";
 import { clampFrame, instantiateScene, layoutComposition, type Composition } from "./composition";
 import { ImageNode, RectNode, TextNode, VideoNode } from "./graph/kinds";
 import type { Node } from "./graph/node";
@@ -83,7 +84,12 @@ export function evaluateFrame(c: Composition, frame: number): RenderList {
   const def = c.scenes[index];
   const t = (f - scenes[index].startFrame) / c.fps;
   const items: RenderItem[] = [];
-  emit(instantiateScene(c, def), t, [1, 0, 0, 1, 0, 0], 1, items);
+  const root = instantiateScene(c, def);
+  if (def.transition) {
+    const progress = t / Math.max(0.001, def.transition.duration);
+    applyTransition(root, def.transition, progress, c.width, c.height);
+  }
+  emit(root, t, [1, 0, 0, 1, 0, 0], 1, items);
   return {
     width: c.width,
     height: c.height,

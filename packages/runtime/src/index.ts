@@ -1,5 +1,6 @@
 export { ease, type Ease, type EaseName } from "./anim/easing";
 export { Track, type Segment } from "./anim/track";
+export { applyTransition, transition, type TransitionDef, type TransitionType } from "./anim/transition";
 export { apply, IDENTITY, multiply, type Affine } from "./math/affine";
 export { formatColor, lerpColor, parseColor } from "./math/color";
 export { seededRandom } from "./math/random";

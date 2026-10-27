@@ -1,6 +1,7 @@
 import { group } from "./graph/kinds";
 import type { Node } from "./graph/node";
 import { seededRandom } from "./math/random";
+import type { TransitionDef } from "./anim/transition";
 
 export type SceneContext = {
   root: Node;
@@ -15,6 +16,7 @@ export type SceneDef = {
   /** seconds */
   duration: number;
   background?: string;
+  transition?: TransitionDef;
   build: (ctx: SceneContext) => void;
   /** stack captured where scene() was called; the host maps it to the scene's source file */
   site?: string;
@@ -50,8 +52,12 @@ export type Composition = {
 
 export type SceneSpan = { id: string; startFrame: number; endFrame: number };
 
-export function scene(id: string, opts: { duration: number; background?: string }, build: SceneDef["build"]): SceneDef {
-  return { id, duration: opts.duration, background: opts.background, build, site: new Error().stack };
+export function scene(
+  id: string,
+  opts: { duration: number; background?: string; transition?: TransitionDef },
+  build: SceneDef["build"],
+): SceneDef {
+  return { id, duration: opts.duration, background: opts.background, transition: opts.transition, build, site: new Error().stack };
 }
 
 export function composition(c: Omit<Composition, "background"> & { background?: string }): Composition {
