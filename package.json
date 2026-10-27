@@ -1,0 +1,8 @@
+{
+  "name": "liosvideo-monorepo",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "test": "pnpm -r test"
+  }
+}
