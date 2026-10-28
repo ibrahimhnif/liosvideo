@@ -91,6 +91,16 @@ self.onmessage = async (e: MessageEvent<ToWorker>) => {
     case "assets":
       for (const [src, bitmap] of msg.bitmaps) assets.set(src, bitmap);
       return;
+    case "timings":
+      (globalThis as any).__liosVoTimings = msg.timings;
+      if (typeof (runtime as any).registerVoTimings === "function") {
+        try {
+          (runtime as any).registerVoTimings(msg.timings);
+        } catch {
+          // ignore if format mismatch
+        }
+      }
+      return;
     case "load":
       // loads are applied strictly in the order they were sent
       loading = loading.then(async () => {

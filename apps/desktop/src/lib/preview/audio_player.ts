@@ -18,7 +18,8 @@ export interface AudioPlayerOptions {
 async function defaultLoadBuffer(src: string): Promise<ArrayBuffer> {
   const path = await invoke<string>("asset_url_path", { rel: src });
   const url = convertFileSrc(path);
-  const res = await fetch(url);
+  const cacheBustUrl = `${url}${url.includes("?") ? "&" : "?"}t=${Date.now()}`;
+  const res = await fetch(cacheBustUrl, { cache: "no-store" });
   if (!res.ok) throw new Error(`Could not load audio asset "${src}" (${res.status})`);
   return res.arrayBuffer();
 }
@@ -52,7 +53,33 @@ export class AudioPlayer {
     return this.ctx;
   }
 
-  async setClips(clips: AudioClipDef[]): Promise<void> {
+  invalidate(src?: string): void {
+    if (src) {
+      const norm = src.replace(/^\/+/, "");
+      for (const key of Array.from(this.bufferCache.keys())) {
+        const keyNorm = key.replace(/^\/+/, "");
+        if (keyNorm === norm || keyNorm.endsWith(norm) || norm.endsWith(keyNorm)) {
+          this.bufferCache.delete(key);
+        }
+      }
+    } else {
+      this.bufferCache.clear();
+    }
+    if (this.isPlaying) {
+      this.reschedule();
+    }
+  }
+
+  clearCache(): void {
+    this.invalidate();
+  }
+
+  async setClips(clips: AudioClipDef[], forceReload = false): Promise<void> {
+    if (forceReload) {
+      for (const c of clips) {
+        this.invalidate(c.src);
+      }
+    }
     this.clips = clips;
     const ctx = this.getContext();
 

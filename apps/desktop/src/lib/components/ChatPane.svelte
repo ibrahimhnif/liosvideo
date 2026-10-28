@@ -11,8 +11,9 @@
   import ScopeWarningCard from "./ScopeWarningCard.svelte";
   import SelectionChip from "./SelectionChip.svelte";
 
-  let { api, selection, playhead, onClearSelection }: {
+  let { api, projectRoot, selection, playhead, onClearSelection }: {
     api: AgentApi;
+    projectRoot?: string;
     selection?: Selection;
     playhead: { frame: number; fps: number };
     onClearSelection: () => void;
@@ -89,13 +90,28 @@
     api.setConfigOption("model", val).catch(fail);
   }
 
-  export function saveNow() {
+  let lastLoadedRoot = $state<string | undefined>(undefined);
+  $effect(() => {
+    const currentRoot = projectRoot;
+    if (currentRoot && currentRoot !== lastLoadedRoot) {
+      lastLoadedRoot = currentRoot;
+      loadHistory(currentRoot);
+      loadStats(currentRoot);
+    }
+  });
+
+  export async function saveNow(explicitRoot?: string) {
     if (saveTimer) {
       clearTimeout(saveTimer);
       saveTimer = undefined;
     }
-    if (hasLoadedHistory) {
-      api.saveConversation(JSON.stringify({ items: chat.items })).catch(() => {});
+    const targetRoot = explicitRoot ?? projectRoot;
+    if (hasLoadedHistory && chat.items.length > 0) {
+      try {
+        await api.saveConversation(JSON.stringify({ items: chat.items }), targetRoot);
+      } catch (e) {
+        devLog(`save-conversation-failed: ${e}`);
+      }
     }
   }
 
@@ -105,6 +121,52 @@
     saveTimer = setTimeout(() => {
       saveNow();
     }, 400);
+  }
+
+  export async function loadHistory(root?: string) {
+    const targetRoot = root ?? projectRoot;
+    hasLoadedHistory = false;
+    try {
+      const saved = await api.loadConversation(targetRoot);
+      devLog(`load-conversation (${targetRoot}): received ${saved ? `${saved.length} chars` : "null"}`);
+      if (saved) {
+        try {
+          const parsed = JSON.parse(saved);
+          if (Array.isArray(parsed.items) && parsed.items.length > 0) {
+            const maxId = parsed.items.reduce((max: number, item: any) => {
+              const num = parseInt(String(item.id).replace(/\D+/g, ""), 10);
+              return !isNaN(num) && num > max ? num : max;
+            }, 0);
+            chat = {
+              ...chat,
+              items: parsed.items,
+              nextId: maxId + 1,
+            };
+            await tick();
+            if (list) list.scrollTop = list.scrollHeight;
+            setTimeout(() => {
+              if (list) list.scrollTop = list.scrollHeight;
+            }, 100);
+          } else {
+            chat = { ...chat, items: [], nextId: 1 };
+          }
+        } catch (e) {
+          devLog(`failed to parse conversation ${e}`);
+        }
+      } else {
+        chat = { ...chat, items: [], nextId: 1 };
+      }
+    } catch (e) {
+      devLog(`failed to load conversation ${e}`);
+    } finally {
+      hasLoadedHistory = true;
+    }
+  }
+
+  function loadStats(root?: string) {
+    api.getProjectStats(root ?? projectRoot).then((s) => {
+      if (s) stats = s;
+    }).catch(() => {});
   }
 
   async function push(e: ChatEvent) {
@@ -143,39 +205,10 @@
     let unsubEvent: (() => void) | undefined;
     let unsubStats: (() => void) | undefined;
 
-    api.loadConversation().then(async (saved) => {
-      devLog(`load-conversation: received ${saved ? `${saved.length} chars` : "null"}`);
-      if (saved) {
-        try {
-          const parsed = JSON.parse(saved);
-          if (Array.isArray(parsed.items) && parsed.items.length > 0) {
-            const maxId = parsed.items.reduce((max: number, item: any) => {
-              const num = parseInt(String(item.id).replace(/\D+/g, ""), 10);
-              return !isNaN(num) && num > max ? num : max;
-            }, 0);
-            chat = {
-              ...chat,
-              items: parsed.items,
-              nextId: maxId + 1,
-            };
-            await tick();
-            if (list) {
-              list.scrollTop = list.scrollHeight;
-            }
-          }
-        } catch (e) {
-          devLog(`failed to parse conversation ${e}`);
-        }
-      }
-      hasLoadedHistory = true;
-    }).catch((e) => {
-      devLog(`failed to load conversation ${e}`);
-      hasLoadedHistory = true;
-    });
-
-    api.getProjectStats().then((s) => {
-      if (s) stats = s;
-    }).catch(() => {});
+    if (!lastLoadedRoot) {
+      loadHistory(projectRoot);
+      loadStats(projectRoot);
+    }
 
     listen<ProjectStats>("project://stats_updated", (e) => {
       if (e.payload) stats = e.payload;
@@ -307,7 +340,7 @@
       return;
     }
     chat = { ...chat, items: [], nextId: 1 };
-    api.saveConversation(JSON.stringify({ items: [] })).catch(() => {});
+    api.saveConversation(JSON.stringify({ items: [] }), projectRoot).catch(() => {});
   }
 
   function send() {

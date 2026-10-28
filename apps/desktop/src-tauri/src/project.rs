@@ -551,9 +551,12 @@ pub fn record_token_usage_in(
 }
 
 #[tauri::command]
-pub fn load_conversation(state: State<ProjectState>) -> Result<Option<String>> {
-    let root = state.root()?;
-    let path = conversation_file(&root);
+pub fn load_conversation(state: State<ProjectState>, root: Option<String>) -> Result<Option<String>> {
+    let project_root = match root {
+        Some(r) if !r.trim().is_empty() => PathBuf::from(r),
+        _ => state.root()?,
+    };
+    let path = conversation_file(&project_root);
     if path.is_file() {
         let content = fs::read_to_string(path)?;
         Ok(Some(content))
@@ -563,18 +566,71 @@ pub fn load_conversation(state: State<ProjectState>) -> Result<Option<String>> {
 }
 
 #[tauri::command]
-pub fn save_conversation(state: State<ProjectState>, content: String) -> Result<()> {
-    let root = state.root()?;
-    let lios_dir = root.join(".liosvideo");
+pub fn save_conversation(state: State<ProjectState>, content: String, root: Option<String>) -> Result<()> {
+    let project_root = match root {
+        Some(r) if !r.trim().is_empty() => PathBuf::from(r),
+        _ => state.root()?,
+    };
+    let lios_dir = project_root.join(".liosvideo");
     let _ = fs::create_dir_all(&lios_dir);
-    fs::write(conversation_file(&root), content)?;
+    fs::write(conversation_file(&project_root), content)?;
     Ok(())
 }
 
 #[tauri::command]
-pub fn get_project_stats(state: State<ProjectState>) -> Result<ProjectStats> {
-    let root = state.root()?;
-    Ok(load_stats_in(&root))
+pub fn get_project_stats(state: State<ProjectState>, root: Option<String>) -> Result<ProjectStats> {
+    let project_root = match root {
+        Some(r) if !r.trim().is_empty() => PathBuf::from(r),
+        _ => state.root()?,
+    };
+    Ok(load_stats_in(&project_root))
+}
+
+pub fn get_vo_timings_in(project_root: &Path) -> std::collections::HashMap<String, serde_json::Value> {
+    let vo_dir = project_root.join("assets").join("audio").join("vo");
+    let mut timings = std::collections::HashMap::new();
+
+    if vo_dir.is_dir() {
+        if let Ok(entries) = fs::read_dir(vo_dir) {
+            for entry in entries.flatten() {
+                let path = entry.path();
+                if path.is_file()
+                    && path
+                        .file_name()
+                        .and_then(|n| n.to_str())
+                        .map_or(false, |s| s.ends_with(".timing.json"))
+                {
+                    if let Ok(content) = fs::read_to_string(&path) {
+                        if let Ok(json) = serde_json::from_str::<serde_json::Value>(&content) {
+                            let line_id = json
+                                .get("lineId")
+                                .or_else(|| json.get("line_id"))
+                                .and_then(|v| v.as_str())
+                                .map(|s| s.to_string())
+                                .unwrap_or_else(|| {
+                                    let fname = path.file_stem().and_then(|s| s.to_str()).unwrap_or("");
+                                    fname.trim_end_matches(".timing").to_string()
+                                });
+                            timings.insert(line_id, json);
+                        }
+                    }
+                }
+            }
+        }
+    }
+    timings
+}
+
+#[tauri::command]
+pub fn get_vo_timings(
+    state: State<ProjectState>,
+    root: Option<String>,
+) -> Result<std::collections::HashMap<String, serde_json::Value>> {
+    let project_root = match root {
+        Some(r) if !r.trim().is_empty() => PathBuf::from(r),
+        _ => state.root()?,
+    };
+    Ok(get_vo_timings_in(&project_root))
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -884,5 +940,15 @@ mod tests {
             fs::write(images_dir.join("test.png"), b"fakepng").unwrap();
             assert!(root.join("assets/images/test.png").exists());
         });
+
+        // 6. VO Timings scanning test
+        let vo_dir = root.join("assets/audio/vo");
+        fs::create_dir_all(&vo_dir).unwrap();
+        let timing_json = r#"{ "lineId": "intro-1", "duration": 3.5, "words": [] }"#;
+        fs::write(vo_dir.join("intro-1.timing.json"), timing_json).unwrap();
+
+        let timings = get_vo_timings_in(root);
+        assert!(timings.contains_key("intro-1"));
+        assert_eq!(timings["intro-1"]["duration"], 3.5);
     }
 }

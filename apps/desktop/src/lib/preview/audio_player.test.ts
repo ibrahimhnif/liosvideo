@@ -167,4 +167,37 @@ describe("AudioPlayer", () => {
     expect(src.startedAt).toBeCloseTo(10.0);
     expect(src.offset).toBeCloseTo(0);
   });
+
+  it("invalidates cached buffers so subsequent setClips re-fetches", async () => {
+    let loadCount = 0;
+    const testPlayer = new AudioPlayer({
+      createContext: () => mockCtx as any,
+      loadBuffer: async () => {
+        loadCount++;
+        return new ArrayBuffer(8);
+      },
+    });
+
+    const clips: AudioClipDef[] = [{ src: "audio/vo.mp3", startFrame: 0, endFrame: 30 }];
+    await testPlayer.setClips(clips);
+    expect(loadCount).toBe(1);
+
+    // Calling setClips again with same clips shouldn't re-load
+    await testPlayer.setClips(clips);
+    expect(loadCount).toBe(1);
+
+    // Invalidate the src
+    testPlayer.invalidate("audio/vo.mp3");
+    await testPlayer.setClips(clips);
+    expect(loadCount).toBe(2);
+
+    // Invalidate all via clearCache
+    testPlayer.clearCache();
+    await testPlayer.setClips(clips);
+    expect(loadCount).toBe(3);
+
+    // forceReload in setClips
+    await testPlayer.setClips(clips, true);
+    expect(loadCount).toBe(4);
+  });
 });

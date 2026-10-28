@@ -78,6 +78,10 @@ export class PreviewHost {
     this.post({ type: "resize", width, height });
   }
 
+  setTimings(timings: Record<string, any>): void {
+    this.post({ type: "timings", timings });
+  }
+
   /** Loads a bundle. Rejects with SceneError, SupersededError, or a timeout Error. */
   load(code: string): Promise<LoadedInfo> {
     const generation = ++this.generation;

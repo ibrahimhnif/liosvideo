@@ -12,7 +12,7 @@
   import type { LoadedInfo, SourceLocation } from "$lib/preview/protocol";
   import { reconcileSelection, visibleRows } from "$lib/timeline/model";
   import { select, selection } from "$lib/timeline/selection.svelte";
-  import { shouldRebuild, touchesRootFiles } from "$lib/preview/rebuild";
+  import { shouldRebuild, touchesAudio, touchesRootFiles } from "$lib/preview/rebuild";
   import { ExportEngine, type ExportConfig } from "$lib/export/export_engine";
   import { mixdownAudio } from "$lib/export/audio_mixdown";
   import { saveExportedVideoChunks } from "$lib/export/save_video";
@@ -225,7 +225,20 @@
     currentExportEngine?.cancel();
   }
 
+  async function refreshVoTimings() {
+    try {
+      const timings = await invoke<Record<string, any>>("get_vo_timings");
+      if (host && timings) {
+        host.setTimings(timings);
+      }
+    } catch {
+      // Ignore if not in a project context
+    }
+  }
+
   export function reload() {
+    audioPlayer.clearCache();
+    refreshVoTimings().catch(() => {});
     builds.trigger();
   }
 
@@ -233,6 +246,7 @@
     canvas = document.createElement("canvas");
     stage.appendChild(canvas);
     host = new PreviewHost(canvas, loadProjectImage);
+    refreshVoTimings().catch(() => {});
     host.onError((e) => {
       devLog(`preview-error ${e.phase} ${e.message}${e.location ? ` at ${e.location.file}:${e.location.line}` : ""}`);
       runtimeError = { message: e.message, stack: e.stack, location: e.location };
@@ -255,7 +269,14 @@
 
     const unlisten = listen<{ paths: string[] }>("project://changed", ({ payload }) => {
       if (touchesRootFiles(payload.paths)) onRootFilesChanged();
-      if (shouldRebuild(payload.paths, lastFiles, lastBuildOk)) {
+      const audioChanged = touchesAudio(payload.paths);
+      if (audioChanged) {
+        for (const p of payload.paths) {
+          audioPlayer.invalidate(p);
+        }
+        refreshVoTimings().catch(() => {});
+      }
+      if (audioChanged || shouldRebuild(payload.paths, lastFiles, lastBuildOk)) {
         devLog(`changed ${payload.paths.join(",")}`);
         builds.trigger();
       }

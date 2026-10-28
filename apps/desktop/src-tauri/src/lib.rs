@@ -91,6 +91,7 @@ pub fn run() {
             project::save_conversation,
             project::save_image_asset,
             project::get_project_stats,
+            project::get_vo_timings,
             project::record_token_usage,
             project::record_tts_usage,
             scene_validator::validate_scenes,

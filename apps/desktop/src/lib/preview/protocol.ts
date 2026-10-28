@@ -6,7 +6,8 @@ export type ToWorker =
   | { type: "load"; code: string; generation: number }
   | { type: "render"; frame: number; id: number }
   | { type: "assets"; bitmaps: [string, ImageBitmap][] }
-  | { type: "snapshot"; id: number };
+  | { type: "snapshot"; id: number }
+  | { type: "timings"; timings: Record<string, any> };
 
 export type FromWorker =
   | {

@@ -53,7 +53,7 @@
   }
 
   async function closeProject() {
-    chatPaneRef?.saveNow?.();
+    await chatPaneRef?.saveNow?.();
     try {
       await invoke("close_project");
     } catch (e) {
@@ -171,6 +171,7 @@
           <ChatPane
             bind:this={chatPaneRef}
             api={tauriAgentApi}
+            projectRoot={project.root}
             selection={selection.current}
             {playhead}
             onClearSelection={() => select(undefined)}

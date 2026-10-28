@@ -197,4 +197,26 @@ describe("ChatPane", () => {
     await expect.element(screen.getByRole("button", { name: /Attach/ })).toBeVisible();
     await expect.element(screen.getByRole("button", { name: /Clear conversation history/ })).toBeVisible();
   });
+
+  it("loads conversation using explicit projectRoot prop", async () => {
+    const { api } = fakeAgentApi();
+    api.loadConversation = vi.fn(async (root?: string) => {
+      if (root === "/path/to/my-project") {
+        return JSON.stringify({
+          items: [{ kind: "user", id: "u1", text: "Halo from saved project history!" }],
+        });
+      }
+      return null;
+    });
+
+    const screen = await render(ChatPane, {
+      api,
+      projectRoot: "/path/to/my-project",
+      playhead: { frame: 0, fps: 30 },
+      onClearSelection: () => {},
+    });
+
+    await expect.element(screen.getByText("Halo from saved project history!")).toBeVisible();
+    expect(api.loadConversation).toHaveBeenCalledWith("/path/to/my-project");
+  });
 });

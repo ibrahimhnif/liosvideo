@@ -11,3 +11,18 @@ export function shouldRebuild(paths: string[], lastFiles: Set<string>, lastBuild
 export function touchesRootFiles(paths: string[]): boolean {
   return paths.some(isRootTs);
 }
+
+export function touchesAudio(paths: string[]): boolean {
+  return paths.some((p) => {
+    const lower = p.toLowerCase();
+    return (
+      lower.startsWith("assets/audio/") ||
+      lower.includes("/assets/audio/") ||
+      lower.includes("/audio/") ||
+      lower.endsWith(".mp3") ||
+      lower.endsWith(".wav") ||
+      lower.endsWith(".ogg") ||
+      lower.endsWith(".timing.json")
+    );
+  });
+}

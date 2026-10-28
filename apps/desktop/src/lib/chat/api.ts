@@ -99,10 +99,10 @@ export interface AgentApi {
   setConfigOption(configId: string, value: any): Promise<void>;
   setAutoApprove(enabled: boolean): Promise<void>;
   getAutoApprove(): Promise<boolean>;
-  loadConversation(): Promise<string | null>;
-  saveConversation(content: string): Promise<void>;
+  loadConversation(root?: string): Promise<string | null>;
+  saveConversation(content: string, root?: string): Promise<void>;
   saveImageAsset(name: string, base64Data: string): Promise<{ relPath: string; filename: string }>;
-  getProjectStats(): Promise<ProjectStats>;
+  getProjectStats(root?: string): Promise<ProjectStats>;
   recordTokenUsage(inputTokens: number, outputTokens: number, model?: string): Promise<ProjectStats>;
   /** Subscribes to agent events; returns an unsubscribe function. */
   on(handler: (e: AgentEvent) => void): () => void;
@@ -137,11 +137,11 @@ export const tauriAgentApi: AgentApi = {
   setConfigOption: (configId, value) => invoke("agent_set_config_option", { configId, value }),
   setAutoApprove: (enabled) => invoke("agent_set_auto_approve", { enabled }),
   getAutoApprove: () => invoke<boolean>("agent_get_auto_approve"),
-  loadConversation: () => invoke<string | null>("load_conversation"),
-  saveConversation: (content) => invoke("save_conversation", { content }),
+  loadConversation: (root) => invoke<string | null>("load_conversation", { root: root ?? null }),
+  saveConversation: (content, root) => invoke("save_conversation", { content, root: root ?? null }),
   saveImageAsset: (name, base64Data) =>
     invoke<{ relPath: string; filename: string }>("save_image_asset", { name, base64Data }),
-  getProjectStats: () => invoke<ProjectStats>("get_project_stats"),
+  getProjectStats: (root) => invoke<ProjectStats>("get_project_stats", { root: root ?? null }),
   recordTokenUsage: (inputTokens, outputTokens, model) =>
     invoke<ProjectStats>("record_token_usage", { inputTokens, outputTokens, model }),
   on(handler) {
