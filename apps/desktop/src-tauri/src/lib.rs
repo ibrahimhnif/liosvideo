@@ -89,6 +89,7 @@ pub fn run() {
             project::asset_url_path,
             project::load_conversation,
             project::save_conversation,
+            project::save_image_asset,
             project::get_project_stats,
             project::record_token_usage,
             project::record_tts_usage,

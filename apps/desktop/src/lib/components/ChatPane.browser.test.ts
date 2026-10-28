@@ -164,4 +164,37 @@ describe("ChatPane", () => {
     await expect.element(screen.getByText(/TTS Audio Synthesis/)).toBeVisible();
     await expect.element(screen.getByText(/LLM Token Consumption/)).toBeVisible();
   });
+
+  it("renders attached image in user chat bubble", async () => {
+    const { api } = fakeAgentApi();
+    api.loadConversation = vi.fn(async () =>
+      JSON.stringify({
+        items: [
+          {
+            kind: "user",
+            id: "u1",
+            text: "Use this logo in the intro scene",
+            images: [
+              {
+                filename: "brand-logo.png",
+                relPath: "assets/images/brand-logo.png",
+                dataUrl: "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==",
+                mimeType: "image/png",
+              },
+            ],
+          },
+        ],
+      })
+    );
+    const screen = await render(ChatPane, { api, playhead: { frame: 0, fps: 30 }, onClearSelection: () => {} });
+    await expect.element(screen.getByText("Use this logo in the intro scene")).toBeVisible();
+    await expect.element(screen.getByText("assets/images/brand-logo.png")).toBeVisible();
+    await expect.element(screen.getByAltText("brand-logo.png")).toBeVisible();
+  });
+
+  it("has attach image button and clear history button", async () => {
+    const { screen } = await setup();
+    await expect.element(screen.getByRole("button", { name: /Attach/ })).toBeVisible();
+    await expect.element(screen.getByRole("button", { name: /Clear conversation history/ })).toBeVisible();
+  });
 });

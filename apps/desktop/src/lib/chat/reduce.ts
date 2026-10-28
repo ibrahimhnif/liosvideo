@@ -1,7 +1,15 @@
 import type { AgentEvent, AuthMethod, ConfigOption, ConnectionState, PermissionOption } from "./api";
 
+export type AttachedImage = {
+  dataUrl?: string;
+  relPath: string;
+  filename: string;
+  data?: string;
+  mimeType: string;
+};
+
 export type ChatItem =
-  | { kind: "user"; id: string; text: string; selection?: string }
+  | { kind: "user"; id: string; text: string; selection?: string; images?: AttachedImage[] }
   | { kind: "agent"; id: string; text: string; messageId?: string }
   | { kind: "thought"; id: string; text: string; messageId?: string }
   | { kind: "tool"; id: string; toolCallId: string; gen: number; title: string; toolKind: string; status: string; locations: string[]; content: string[] }
@@ -25,7 +33,7 @@ export type ChatState = { items: ChatItem[]; turn: "idle" | "running"; connectio
 /** Events the UI adds on its own, next to the agent's. */
 export type ChatEvent =
   | AgentEvent
-  | { type: "user"; text: string; selection?: string }
+  | { type: "user"; text: string; selection?: string; images?: AttachedImage[] }
   | { type: "answered"; requestId: string; optionId: string | null }
   | { type: "asset_resolved"; requestId: string; answer: "provided" | "skipped" | "cancelled"; filePath?: string };
 
@@ -114,7 +122,14 @@ export function applyEvent(s: ChatState, e: ChatEvent): ChatState {
     case "update":
       return applyUpdate(s, e.update);
     case "user":
-      return { ...s, items: [...s.items, { kind: "user", id: `u${s.nextId}`, text: e.text, selection: e.selection }], nextId: s.nextId + 1 };
+      return {
+        ...s,
+        items: [
+          ...s.items,
+          { kind: "user", id: `u${s.nextId}`, text: e.text, selection: e.selection, images: e.images },
+        ],
+        nextId: s.nextId + 1,
+      };
     case "permission":
       return {
         ...s,

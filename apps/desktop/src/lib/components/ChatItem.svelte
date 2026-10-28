@@ -18,6 +18,16 @@
 {#if item.kind === "user"}
   <div class="bubble user">
     {#if item.selection}<div class="sel">{item.selection}</div>{/if}
+    {#if item.images && item.images.length > 0}
+      <div class="attached-images">
+        {#each item.images as img}
+          <div class="img-preview">
+            <img src={img.dataUrl || img.relPath} alt={img.filename} />
+            <span class="img-tag">{img.relPath}</span>
+          </div>
+        {/each}
+      </div>
+    {/if}
     <div class="text">{item.text}</div>
   </div>
 {:else if item.kind === "agent"}
@@ -48,6 +58,10 @@
 <style>
   .bubble { border-radius: 10px; padding: 7px 10px; max-width: 92%; }
   .user { align-self: flex-end; background: color-mix(in srgb, #4f8cff 18%, var(--panel)); }
+  .attached-images { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 6px; }
+  .img-preview { display: flex; flex-direction: column; gap: 2px; max-width: 140px; }
+  .img-preview img { width: 100%; max-height: 100px; object-fit: cover; border-radius: 6px; border: 1px solid var(--border); }
+  .img-tag { font-family: ui-monospace, monospace; font-size: 10px; color: var(--muted); word-break: break-all; }
   .agent { align-self: flex-start; background: var(--raised); }
   .text { white-space: pre-wrap; word-break: break-word; }
   .small { font-size: 12px; color: var(--muted); }

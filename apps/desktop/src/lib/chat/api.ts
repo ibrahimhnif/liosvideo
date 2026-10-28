@@ -48,6 +48,12 @@ export type SelectionContext = {
   startFrame: number; endFrame: number; fps: number; playheadFrame?: number;
 };
 
+export type ImageInput = {
+  data: string;
+  mimeType: string;
+  relPath?: string;
+};
+
 export type ConfigOptionValue = { value: string; name?: string; description?: string };
 export type ConfigOption = {
   id: string;
@@ -86,7 +92,7 @@ export interface AgentApi {
   removeCustom(id: string): Promise<AgentSettings>;
   connect(id?: string): Promise<void>;
   authenticate(methodId: string): Promise<void>;
-  prompt(text: string, selection?: SelectionContext): Promise<string>;
+  prompt(text: string, selection?: SelectionContext, images?: ImageInput[]): Promise<string>;
   cancel(): Promise<void>;
   respond(requestId: string, optionId: string | null): Promise<void>;
   resolveAssetRequest(requestId: string, filePath?: string | null): Promise<void>;
@@ -95,6 +101,7 @@ export interface AgentApi {
   getAutoApprove(): Promise<boolean>;
   loadConversation(): Promise<string | null>;
   saveConversation(content: string): Promise<void>;
+  saveImageAsset(name: string, base64Data: string): Promise<{ relPath: string; filename: string }>;
   getProjectStats(): Promise<ProjectStats>;
   recordTokenUsage(inputTokens: number, outputTokens: number, model?: string): Promise<ProjectStats>;
   /** Subscribes to agent events; returns an unsubscribe function. */
@@ -121,7 +128,8 @@ export const tauriAgentApi: AgentApi = {
   removeCustom: (id) => invoke("remove_custom_agent", { id }),
   connect: (id) => invoke("agent_connect", { agentId: id ?? null }),
   authenticate: (methodId) => invoke("agent_authenticate", { methodId }),
-  prompt: (text, selection) => invoke("agent_prompt", { text, selection: selection ?? null }),
+  prompt: (text, selection, images) =>
+    invoke("agent_prompt", { text, selection: selection ?? null, images: images ?? null }),
   cancel: () => invoke("agent_cancel"),
   respond: (requestId, optionId) => invoke("agent_permission_respond", { requestId, optionId }),
   resolveAssetRequest: (requestId, filePath) =>
@@ -131,6 +139,8 @@ export const tauriAgentApi: AgentApi = {
   getAutoApprove: () => invoke<boolean>("agent_get_auto_approve"),
   loadConversation: () => invoke<string | null>("load_conversation"),
   saveConversation: (content) => invoke("save_conversation", { content }),
+  saveImageAsset: (name, base64Data) =>
+    invoke<{ relPath: string; filename: string }>("save_image_asset", { name, base64Data }),
   getProjectStats: () => invoke<ProjectStats>("get_project_stats"),
   recordTokenUsage: (inputTokens, outputTokens, model) =>
     invoke<ProjectStats>("record_token_usage", { inputTokens, outputTokens, model }),

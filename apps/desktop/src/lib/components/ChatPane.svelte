@@ -3,9 +3,10 @@
   import { invoke } from "@tauri-apps/api/core";
   import { listen } from "@tauri-apps/api/event";
   import type { AgentApi, ProjectStats, SelectionContext } from "$lib/chat/api";
-  import { applyEvent, initialChat, type ChatEvent } from "$lib/chat/reduce";
+  import { applyEvent, initialChat, type AttachedImage, type ChatEvent } from "$lib/chat/reduce";
   import { detectOutOfScopeChanges } from "$lib/chat/scope_warning";
   import { selectionLabel, type Selection } from "$lib/timeline/model";
+  import { devLog } from "$lib/devlog";
   import ChatItem from "./ChatItem.svelte";
   import ScopeWarningCard from "./ScopeWarningCard.svelte";
   import SelectionChip from "./SelectionChip.svelte";
@@ -25,6 +26,11 @@
   let stats = $state<ProjectStats | null>(null);
   let showStatsDetail = $state(false);
   let saveTimer: ReturnType<typeof setTimeout> | undefined;
+  let hasLoadedHistory = $state(false);
+  let pendingImages = $state<AttachedImage[]>([]);
+  let isUploadingImage = $state(false);
+  let fileInput: HTMLInputElement | undefined = $state();
+  let isDraggingOver = $state(false);
 
   $effect(() => {
     if (typeof localStorage !== "undefined") {
@@ -83,19 +89,38 @@
     api.setConfigOption("model", val).catch(fail);
   }
 
+  export function saveNow() {
+    if (saveTimer) {
+      clearTimeout(saveTimer);
+      saveTimer = undefined;
+    }
+    if (hasLoadedHistory) {
+      api.saveConversation(JSON.stringify({ items: chat.items })).catch(() => {});
+    }
+  }
+
   function scheduleSave() {
+    if (!hasLoadedHistory) return;
     if (saveTimer) clearTimeout(saveTimer);
     saveTimer = setTimeout(() => {
-      if (chat.items.length > 0) {
-        api.saveConversation(JSON.stringify({ items: chat.items })).catch(() => {});
-      }
+      saveNow();
     }, 400);
   }
 
   async function push(e: ChatEvent) {
     const atBottom = !list || list.scrollHeight - list.scrollTop - list.clientHeight < 40;
     chat = applyEvent(chat, e);
-    scheduleSave();
+
+    if (
+      e.type === "user" ||
+      (e.type === "turn" && e.state === "ended") ||
+      e.type === "answered" ||
+      e.type === "asset_resolved"
+    ) {
+      saveNow();
+    } else {
+      scheduleSave();
+    }
 
     if (e.type === "turn" && e.state === "ended") {
       const lastUser = [...chat.items].reverse().find((x) => x.kind === "user");
@@ -118,22 +143,35 @@
     let unsubEvent: (() => void) | undefined;
     let unsubStats: (() => void) | undefined;
 
-    api.loadConversation().then((saved) => {
+    api.loadConversation().then(async (saved) => {
+      devLog(`load-conversation: received ${saved ? `${saved.length} chars` : "null"}`);
       if (saved) {
         try {
           const parsed = JSON.parse(saved);
           if (Array.isArray(parsed.items) && parsed.items.length > 0) {
+            const maxId = parsed.items.reduce((max: number, item: any) => {
+              const num = parseInt(String(item.id).replace(/\D+/g, ""), 10);
+              return !isNaN(num) && num > max ? num : max;
+            }, 0);
             chat = {
               ...chat,
               items: parsed.items,
-              nextId: Math.max(...parsed.items.map((i: any) => parseInt(String(i.id).slice(1)) || 0), 0) + 1,
+              nextId: maxId + 1,
             };
+            await tick();
+            if (list) {
+              list.scrollTop = list.scrollHeight;
+            }
           }
-        } catch {
-          // Ignore parse errors on corrupted local file
+        } catch (e) {
+          devLog(`failed to parse conversation ${e}`);
         }
       }
-    }).catch(() => {});
+      hasLoadedHistory = true;
+    }).catch((e) => {
+      devLog(`failed to load conversation ${e}`);
+      hasLoadedHistory = true;
+    });
 
     api.getProjectStats().then((s) => {
       if (s) stats = s;
@@ -163,8 +201,12 @@
       unsubEvent = u;
     }).catch(() => {});
 
+    const onBeforeUnload = () => saveNow();
+    window.addEventListener("beforeunload", onBeforeUnload);
+
     return () => {
-      if (saveTimer) clearTimeout(saveTimer);
+      window.removeEventListener("beforeunload", onBeforeUnload);
+      saveNow();
       unsubApi();
       unsubEvent?.();
       unsubStats?.();
@@ -192,12 +234,108 @@
 
   const fail = (e: unknown) => push({ type: "turn", state: "ended", error: String(e) });
 
+  async function attachImageFile(file: File) {
+    if (!file.type.startsWith("image/")) return;
+    isUploadingImage = true;
+    try {
+      const dataUrl = await new Promise<string>((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = () => resolve(reader.result as string);
+        reader.onerror = reject;
+        reader.readAsDataURL(file);
+      });
+      const pureBase64 = dataUrl.split(",")[1];
+      const saved = await api.saveImageAsset(file.name || "image.png", pureBase64);
+      pendingImages = [
+        ...pendingImages,
+        {
+          dataUrl,
+          relPath: saved.relPath,
+          filename: saved.filename,
+          data: pureBase64,
+          mimeType: file.type || "image/png",
+        },
+      ];
+    } catch (e) {
+      fail(`Failed to attach image: ${e}`);
+    } finally {
+      isUploadingImage = false;
+    }
+  }
+
+  async function onFileInputChange(e: Event) {
+    const input = e.target as HTMLInputElement;
+    if (!input.files) return;
+    for (const file of Array.from(input.files)) {
+      await attachImageFile(file);
+    }
+    input.value = "";
+  }
+
+  async function handlePaste(e: ClipboardEvent) {
+    const items = e.clipboardData?.items;
+    if (!items) return;
+    for (const item of Array.from(items)) {
+      if (item.type.startsWith("image/")) {
+        e.preventDefault();
+        const file = item.getAsFile();
+        if (file) await attachImageFile(file);
+      }
+    }
+  }
+
+  function handleDrop(e: DragEvent) {
+    e.preventDefault();
+    isDraggingOver = false;
+    const files = e.dataTransfer?.files;
+    if (!files) return;
+    for (const file of Array.from(files)) {
+      if (file.type.startsWith("image/")) {
+        void attachImageFile(file);
+      }
+    }
+  }
+
+  function removePendingImage(index: number) {
+    pendingImages = pendingImages.filter((_, i) => i !== index);
+  }
+
+  function clearChatHistory() {
+    if (running) return;
+    if (chat.items.length === 0) return;
+    if (typeof confirm !== "undefined" && !confirm("Clear conversation history for this project?")) {
+      return;
+    }
+    chat = { ...chat, items: [], nextId: 1 };
+    api.saveConversation(JSON.stringify({ items: [] })).catch(() => {});
+  }
+
   function send() {
     const prompt = text.trim();
-    if (!prompt || !ready || running) return;
+    if ((!prompt && pendingImages.length === 0) || !ready || running) return;
+    const promptToSend = prompt || "Use the attached image in the scene";
     text = "";
-    push({ type: "user", text: prompt, selection: selection ? selectionLabel(selection) : undefined });
-    api.prompt(prompt, toContext(selection)).catch(fail);
+    const imagesToSend = [...pendingImages];
+    pendingImages = [];
+
+    push({
+      type: "user",
+      text: promptToSend,
+      selection: selection ? selectionLabel(selection) : undefined,
+      images: imagesToSend.length > 0 ? imagesToSend : undefined,
+    });
+
+    const apiImages = imagesToSend.map((img) => ({
+      data: img.data!,
+      mimeType: img.mimeType,
+      relPath: img.relPath,
+    }));
+
+    if (apiImages.length > 0) {
+      api.prompt(promptToSend, toContext(selection), apiImages).catch(fail);
+    } else {
+      api.prompt(promptToSend, toContext(selection)).catch(fail);
+    }
   }
 
   function onKey(e: KeyboardEvent) {
@@ -257,6 +395,16 @@
       title={yolo ? "Yolo mode active: permissions are auto-approved" : "Yolo mode off: prompt for permissions"}
     >
       ⚡ Yolo
+    </button>
+    <button
+      type="button"
+      class="clear-btn"
+      onclick={clearChatHistory}
+      disabled={running || chat.items.length === 0}
+      title="Clear conversation history"
+      aria-label="Clear conversation history"
+    >
+      🗑️
     </button>
     {#if running}
       <button onclick={() => api.cancel().catch(fail)}>Cancel</button>
@@ -341,9 +489,60 @@
     />
   {/if}
   <SelectionChip {selection} onClear={onClearSelection} />
-  <form class="composer" onsubmit={(e) => (e.preventDefault(), send())}>
-    <textarea rows="3" placeholder={ready ? "Ask the agent… (Enter to send, Shift+Enter for a new line)" : "Ask the agent… (connect first)"} bind:value={text} onkeydown={onKey}></textarea>
-    <button type="submit" disabled={!ready || running || !text.trim()}>Send</button>
+  <form
+    class="composer"
+    class:drag-over={isDraggingOver}
+    onsubmit={(e) => (e.preventDefault(), send())}
+    ondragover={(e) => { e.preventDefault(); isDraggingOver = true; }}
+    ondragleave={() => (isDraggingOver = false)}
+    ondrop={handleDrop}
+  >
+    {#if pendingImages.length > 0}
+      <div class="pending-images">
+        {#each pendingImages as img, i (img.relPath + i)}
+          <div class="pending-chip">
+            <img src={img.dataUrl} alt={img.filename} />
+            <span class="pending-name" title={img.relPath}>{img.filename}</span>
+            <button
+              type="button"
+              class="remove-img"
+              onclick={() => removePendingImage(i)}
+              title="Remove image"
+            >✕</button>
+          </div>
+        {/each}
+      </div>
+    {/if}
+    <input
+      type="file"
+      accept="image/*"
+      multiple
+      hidden
+      bind:this={fileInput}
+      onchange={onFileInputChange}
+    />
+    <textarea
+      rows="3"
+      placeholder={ready ? "Ask the agent… (Enter to send, Shift+Enter for newline, paste/drop images)" : "Ask the agent… (connect first)"}
+      bind:value={text}
+      onkeydown={onKey}
+      onpaste={handlePaste}
+    ></textarea>
+    <div class="composer-footer">
+      <button
+        type="button"
+        class="attach-btn"
+        disabled={running || isUploadingImage}
+        onclick={() => fileInput?.click()}
+        title="Attach image (saved to assets/images/)"
+      >
+        🖼️ Attach
+      </button>
+      <span class="spacer"></span>
+      <button type="submit" disabled={!ready || running || (!text.trim() && pendingImages.length === 0)}>
+        Send
+      </button>
+    </div>
   </form>
 </div>
 
@@ -390,10 +589,109 @@
   button:disabled { opacity: 0.5; cursor: default; }
   .auth { padding: 8px 12px; display: flex; flex-wrap: wrap; gap: 6px; align-items: center; border-bottom: 1px solid var(--border); }
   .auth p { margin: 0; width: 100%; color: var(--muted); font-size: 12px; }
+  .clear-btn {
+    font-size: 11px;
+    padding: 2px 5px;
+    border-radius: 4px;
+    border: 1px solid var(--border);
+    background: transparent;
+    color: var(--muted);
+    cursor: pointer;
+  }
+  .clear-btn:hover:not(:disabled) {
+    color: var(--danger);
+    border-color: var(--danger);
+    background: rgba(239, 68, 68, 0.1);
+  }
   .items { flex: 1; min-height: 0; overflow-y: auto; display: flex; flex-direction: column; gap: 8px; padding: 10px 12px; }
   .working { color: var(--muted); font-size: 12px; }
-  .composer { display: flex; gap: 6px; padding: 8px 12px 12px; align-items: flex-end; }
-  textarea { flex: 1; resize: none; font: inherit; padding: 6px 8px; border-radius: 8px; border: 1px solid var(--border); background: var(--bg); color: var(--fg); }
+  .composer {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    padding: 8px 12px 12px;
+    border-top: 1px solid var(--border);
+    background: var(--panel);
+    transition: background 0.15s ease;
+  }
+  .composer.drag-over {
+    background: color-mix(in srgb, #4f8cff 10%, var(--panel));
+    border-color: #4f8cff;
+  }
+  textarea {
+    width: 100%;
+    box-sizing: border-box;
+    resize: none;
+    font: inherit;
+    padding: 6px 8px;
+    border-radius: 8px;
+    border: 1px solid var(--border);
+    background: var(--bg);
+    color: var(--fg);
+  }
+  .composer-footer {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+  .attach-btn {
+    font-size: 11px;
+    padding: 3px 8px;
+    border-radius: 5px;
+    border: 1px solid var(--border);
+    background: var(--raised);
+    color: var(--fg);
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    gap: 4px;
+  }
+  .attach-btn:hover:not(:disabled) {
+    background: var(--bg);
+    border-color: #4f8cff;
+  }
+  .pending-images {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+    max-height: 120px;
+    overflow-y: auto;
+  }
+  .pending-chip {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 2px 6px 2px 2px;
+    border-radius: 6px;
+    background: var(--raised);
+    border: 1px solid var(--border);
+    font-size: 11px;
+  }
+  .pending-chip img {
+    width: 24px;
+    height: 24px;
+    object-fit: cover;
+    border-radius: 4px;
+  }
+  .pending-name {
+    max-width: 120px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    font-family: ui-monospace, monospace;
+    font-size: 10px;
+  }
+  .remove-img {
+    background: none;
+    border: none;
+    padding: 0 3px;
+    font-size: 11px;
+    color: var(--muted);
+    cursor: pointer;
+  }
+  .remove-img:hover {
+    color: var(--danger);
+  }
 
   .cost-btn {
     font-size: 11px;

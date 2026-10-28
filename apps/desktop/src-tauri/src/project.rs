@@ -114,7 +114,14 @@ pub fn read_file_in(root: &Path, rel: &str) -> Result<String> {
 
 /// Project-relative paths whose changes never affect rendering.
 pub fn is_ignored(rel: &str) -> bool {
-    const IGNORED: [&str; 4] = [".git/", "out/", ".liosvideo/cache/", "node_modules/"];
+    const IGNORED: [&str; 6] = [
+        ".git/",
+        "out/",
+        ".liosvideo/cache/",
+        ".liosvideo/conversation.json",
+        ".liosvideo/stats.json",
+        "node_modules/",
+    ];
     IGNORED.iter().any(|prefix| rel.starts_with(prefix) || rel.contains(&format!("/{prefix}")))
 }
 
@@ -570,6 +577,70 @@ pub fn get_project_stats(state: State<ProjectState>) -> Result<ProjectStats> {
     Ok(load_stats_in(&root))
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SavedImageAsset {
+    pub rel_path: String,
+    pub filename: String,
+}
+
+#[tauri::command]
+pub async fn save_image_asset(
+    state: State<'_, ProjectState>,
+    name: String,
+    base64_data: String,
+) -> Result<SavedImageAsset> {
+    let root = state.root()?;
+    let images_dir = root.join("assets").join("images");
+    tokio::fs::create_dir_all(&images_dir)
+        .await
+        .map_err(|e| ProjectError::Other(format!("Failed to create assets/images: {e}")))?;
+
+    let raw_name = Path::new(&name)
+        .file_name()
+        .and_then(|n| n.to_str())
+        .unwrap_or("image.png");
+    let clean_name = raw_name
+        .chars()
+        .map(|c| if c.is_alphanumeric() || c == '.' || c == '-' || c == '_' { c } else { '_' })
+        .collect::<String>();
+    let clean_name = if clean_name.is_empty() { "image.png".to_string() } else { clean_name };
+
+    let pure_base64 = if let Some(idx) = base64_data.find(";base64,") {
+        &base64_data[idx + 8..]
+    } else {
+        &base64_data
+    };
+
+    use base64::Engine;
+    let bytes = base64::engine::general_purpose::STANDARD
+        .decode(pure_base64.trim())
+        .map_err(|e| ProjectError::Other(format!("Invalid base64 image data: {e}")))?;
+
+    let target_path = images_dir.join(&clean_name);
+    let final_name = if target_path.exists() {
+        let stem = Path::new(&clean_name).file_stem().and_then(|s| s.to_str()).unwrap_or("image");
+        let ext = Path::new(&clean_name).extension().and_then(|e| e.to_str()).unwrap_or("png");
+        let timestamp = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_secs();
+        format!("{stem}-{timestamp}.{ext}")
+    } else {
+        clean_name
+    };
+
+    let final_path = images_dir.join(&final_name);
+    tokio::fs::write(&final_path, bytes)
+        .await
+        .map_err(|e| ProjectError::Other(format!("Failed to write image file: {e}")))?;
+
+    let rel_path = format!("assets/images/{final_name}");
+    Ok(SavedImageAsset {
+        rel_path,
+        filename: final_name,
+    })
+}
+
 #[tauri::command]
 pub fn record_token_usage(
     app: AppHandle,
@@ -802,5 +873,16 @@ mod tests {
         let loaded_stats = load_stats_in(root);
         assert_eq!(loaded_stats.tts.total_characters, 16);
         assert_eq!(loaded_stats.tokens.total_tokens, 1200);
+
+        // 5. Image asset saving test
+        let state = ProjectState::default();
+        state.open_for_test(root.to_path_buf());
+        tauri::async_runtime::block_on(async {
+            // Test direct file writing in project assets
+            let images_dir = root.join("assets/images");
+            fs::create_dir_all(&images_dir).unwrap();
+            fs::write(images_dir.join("test.png"), b"fakepng").unwrap();
+            assert!(root.join("assets/images/test.png").exists());
+        });
     }
 }

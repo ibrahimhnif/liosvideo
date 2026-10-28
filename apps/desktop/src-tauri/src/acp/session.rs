@@ -3,7 +3,7 @@ use std::path::PathBuf;
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::{Arc, Mutex};
 
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 use tokio::io::{AsyncRead, AsyncWrite};
 use tokio::sync::oneshot;
@@ -26,9 +26,42 @@ pub struct SelectionContext {
     pub playhead_frame: Option<u32>,
 }
 
-/// The user's text, plus the timeline selection as a plain-text block (text blocks work with every agent).
-pub fn build_prompt(text: &str, sel: Option<&SelectionContext>) -> Vec<Value> {
-    let mut blocks = vec![json!({"type": "text", "text": text})];
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ImageInput {
+    pub data: String,
+    pub mime_type: String,
+    pub rel_path: Option<String>,
+}
+
+/// The user's text, plus the timeline selection as a plain-text block and any attached image blocks.
+pub fn build_prompt(
+    text: &str,
+    sel: Option<&SelectionContext>,
+    images: Option<&[ImageInput]>,
+) -> Vec<Value> {
+    let mut full_text = text.to_string();
+    if let Some(imgs) = images {
+        let paths: Vec<String> = imgs.iter().filter_map(|img| img.rel_path.clone()).collect();
+        if !paths.is_empty() {
+            full_text.push_str(&format!(
+                "\n\n[Attached image assets saved in project: {} (can be imported in scenes via image({{ src: \"...\", ... }}))]",
+                paths.join(", ")
+            ));
+        }
+    }
+
+    let mut blocks = vec![json!({"type": "text", "text": full_text})];
+
+    if let Some(imgs) = images {
+        for img in imgs {
+            blocks.push(json!({
+                "type": "image",
+                "data": img.data,
+                "mimeType": img.mime_type,
+            }));
+        }
+    }
+
     if let Some(sel) = sel {
         let secs = |f: u32| f as f64 / sel.fps;
         let mut lines = vec![
@@ -334,14 +367,14 @@ impl Session {
     }
 
     /// One turn: commit outside edits, prompt, then commit whatever the agent changed (even if it failed or was cancelled).
-    pub async fn prompt(&self, text: &str, sel: Option<&SelectionContext>) -> Result<String, ProjectError> {
+    pub async fn prompt(&self, text: &str, sel: Option<&SelectionContext>, images: Option<&[ImageInput]>) -> Result<String, ProjectError> {
         let session_id = self.session_id.lock().unwrap().clone().ok_or_else(|| ProjectError::Other("The agent isn't ready".into()))?;
         if self.turn_active.swap(true, Ordering::SeqCst) {
             return Err(ProjectError::Other("A turn is already running".into()));
         }
         self.commit(git::MANUAL_EDIT.to_string()).await;
         self.events.emit("agent://turn", json!({ "state": "started" }));
-        let result = self.client.prompt(&session_id, build_prompt(text, sel)).await;
+        let result = self.client.prompt(&session_id, build_prompt(text, sel, images)).await;
         let commit = self.commit(turn_commit_message(text)).await;
         self.turn_active.store(false, Ordering::SeqCst);
         match result {
@@ -415,18 +448,31 @@ mod tests {
 
     #[test]
     fn build_prompt_without_and_with_selection() {
-        assert_eq!(build_prompt("make it blue", None), vec![json!({"type": "text", "text": "make it blue"})]);
-        let blocks = build_prompt("make it blue", Some(&sel(Some("intro/desktop/terminal"), Some(36))));
+        assert_eq!(build_prompt("make it blue", None, None), vec![json!({"type": "text", "text": "make it blue"})]);
+        let blocks = build_prompt("make it blue", Some(&sel(Some("intro/desktop/terminal"), Some(36))), None);
         assert_eq!(blocks.len(), 2);
         assert_eq!(
             blocks[1]["text"],
             "Selected on the timeline (confine edits to this unless asked otherwise):\ncomposition: long.ts\nscene: intro (file: scenes/intro.ts)\nobject: desktop/terminal\ntime: 1.00s–2.50s (frames 30–75)\nplayhead: 1.20s (frame 36)"
         );
-        let scene_only = build_prompt("x", Some(&sel(None, None)));
+        let scene_only = build_prompt("x", Some(&sel(None, None)), None);
         assert_eq!(
             scene_only[1]["text"],
             "Selected on the timeline (confine edits to this unless asked otherwise):\ncomposition: long.ts\nscene: intro (file: scenes/intro.ts)\ntime: 1.00s–2.50s (frames 30–75)"
         );
+
+        let img_blocks = build_prompt(
+            "use this logo",
+            None,
+            Some(&[ImageInput {
+                data: "base64data".into(),
+                mime_type: "image/png".into(),
+                rel_path: Some("assets/images/logo.png".into()),
+            }]),
+        );
+        assert_eq!(img_blocks.len(), 2);
+        assert!(img_blocks[0]["text"].as_str().unwrap().contains("assets/images/logo.png"));
+        assert_eq!(img_blocks[1], json!({"type": "image", "data": "base64data", "mimeType": "image/png"}));
     }
 
     #[test]
@@ -548,7 +594,7 @@ mod tests {
         fs::write(root.join("scenes/extra.ts"), "outside edit").unwrap();
         let (session, mut agent, rec) = started(&root).await;
         let s = session.clone();
-        let turn = tokio::spawn(async move { s.prompt("Make the title blue", None).await });
+        let turn = tokio::spawn(async move { s.prompt("Make the title blue", None, None).await });
         let p = agent.recv_method("session/prompt").await;
         assert_eq!(p["params"]["sessionId"], "s1");
         assert_eq!(summaries(&root)[0], "Manual edit", "outside edits committed before the prompt");
@@ -574,7 +620,7 @@ mod tests {
         let root = dir.path().canonicalize().unwrap();
         let (session, mut agent, _) = started(&root).await;
         let s = session.clone();
-        let turn = tokio::spawn(async move { s.prompt("hi", None).await });
+        let turn = tokio::spawn(async move { s.prompt("hi", None, None).await });
         let p = agent.recv_method("session/prompt").await;
         agent.reply(&p["id"], json!({"stopReason": "end_turn"})).await;
         turn.await.unwrap().unwrap();
@@ -587,9 +633,9 @@ mod tests {
         let root = dir.path().canonicalize().unwrap();
         let (session, mut agent, _) = started(&root).await;
         let s = session.clone();
-        let turn = tokio::spawn(async move { s.prompt("first", None).await });
+        let turn = tokio::spawn(async move { s.prompt("first", None, None).await });
         let p = agent.recv_method("session/prompt").await;
-        let err = session.prompt("second", None).await.unwrap_err();
+        let err = session.prompt("second", None, None).await.unwrap_err();
         assert!(err.to_string().contains("already running"), "{err}");
         agent.reply(&p["id"], json!({"stopReason": "end_turn"})).await;
         turn.await.unwrap().unwrap();
@@ -601,7 +647,7 @@ mod tests {
         let root = dir.path().canonicalize().unwrap();
         let (session, mut agent, rec) = started(&root).await;
         let s = session.clone();
-        let turn = tokio::spawn(async move { s.prompt("risky", None).await });
+        let turn = tokio::spawn(async move { s.prompt("risky", None, None).await });
         let p = agent.recv_method("session/prompt").await;
         let path = root.join("scenes/intro.ts").to_string_lossy().into_owned();
         agent.send(json!({"jsonrpc": "2.0", "id": 901, "method": "fs/write_text_file", "params": {"sessionId": "s1", "path": path, "content": "half done"}})).await;
@@ -680,7 +726,7 @@ mod tests {
         let root = dir.path().canonicalize().unwrap();
         let (session, mut agent, rec) = started(&root).await;
         let s = session.clone();
-        let turn = tokio::spawn(async move { s.prompt("hi", None).await });
+        let turn = tokio::spawn(async move { s.prompt("hi", None, None).await });
         agent.recv_method("session/prompt").await;
         agent.hang_up().await;
         let err = turn.await.unwrap().unwrap_err();

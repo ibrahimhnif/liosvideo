@@ -28,6 +28,7 @@ export function fakeAgentApi(agents: AgentStatus[] = []) {
     getAutoApprove: vi.fn(async () => false),
     loadConversation: vi.fn(async () => null),
     saveConversation: vi.fn(async () => {}),
+    saveImageAsset: vi.fn(async (name: string) => ({ relPath: `assets/images/${name}`, filename: name })),
     getProjectStats: vi.fn(async () => ({
       tts: { totalCharacters: 0, totalCostUsd: 0, items: [] },
       tokens: { inputTokens: 0, outputTokens: 0, totalTokens: 0, totalCostUsd: 0 },

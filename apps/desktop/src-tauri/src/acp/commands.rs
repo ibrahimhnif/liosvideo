@@ -268,10 +268,11 @@ pub async fn agent_prompt(
     asset_coordinator: State<'_, AssetRequestCoordinator>,
     text: String,
     selection: Option<SelectionContext>,
+    images: Option<Vec<crate::acp::session::ImageInput>>,
 ) -> Result<String> {
     // the lock is released before the turn runs, so cancel and permission answers get through
     let session = sessions.current().await?;
-    let res = session.prompt(&text, selection.as_ref()).await;
+    let res = session.prompt(&text, selection.as_ref(), images.as_deref()).await;
     asset_coordinator.on_turn_end();
     res
 }

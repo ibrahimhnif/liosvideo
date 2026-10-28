@@ -31,6 +31,9 @@
   let showExport = $state(false);
   let loadedInfo = $state<LoadedInfo | null>(null);
   let previewInstance = $state<any>(null);
+  let chatPaneRef = $state<any>(null);
+  let sidebarWidth = $state(360);
+  let isResizing = $state(false);
 
   function opened(info: ProjectInfo) {
     project = info;
@@ -50,6 +53,7 @@
   }
 
   async function closeProject() {
+    chatPaneRef?.saveNow?.();
     try {
       await invoke("close_project");
     } catch (e) {
@@ -62,12 +66,46 @@
     }
   }
 
+  function startResize(e: PointerEvent) {
+    e.preventDefault();
+    isResizing = true;
+    const startX = e.clientX;
+    const startWidth = sidebarWidth;
+
+    function onPointerMove(ev: PointerEvent) {
+      const delta = ev.clientX - startX;
+      const newWidth = Math.max(260, Math.min(window.innerWidth - 380, startWidth + delta));
+      sidebarWidth = newWidth;
+    }
+
+    function onPointerUp() {
+      isResizing = false;
+      window.removeEventListener("pointermove", onPointerMove);
+      window.removeEventListener("pointerup", onPointerUp);
+      if (typeof localStorage !== "undefined") {
+        localStorage.setItem("liosvideo:sidebar_width", String(sidebarWidth));
+      }
+    }
+
+    window.addEventListener("pointermove", onPointerMove);
+    window.addEventListener("pointerup", onPointerUp);
+  }
+
   async function refreshProject() {
     await refreshCompositions();
     previewInstance?.reload?.();
   }
 
   onMount(() => {
+    if (typeof localStorage !== "undefined") {
+      const savedWidth = localStorage.getItem("liosvideo:sidebar_width");
+      if (savedWidth) {
+        const parsed = parseInt(savedWidth, 10);
+        if (!isNaN(parsed) && parsed >= 260 && parsed <= 900) {
+          sidebarWidth = parsed;
+        }
+      }
+    }
     tauriAgentApi
       .listAgents()
       .then((list) => devLog(`agents ${list.map((a) => `${a.id}:${a.state}`).join(" ")}`))
@@ -116,8 +154,8 @@
 
 <svelte:window onkeydown={onKey} />
 
-<main>
-  <section class="chat">
+<main class:resizing={isResizing}>
+  <section class="chat" style="width: {sidebarWidth}px">
     <header>
       liosvideo
       <div class="header-actions">
@@ -130,7 +168,13 @@
     <div class="chat-slot" hidden={showAgents}>
       {#if project}
         {#key project.root}
-          <ChatPane api={tauriAgentApi} selection={selection.current} {playhead} onClearSelection={() => select(undefined)} />
+          <ChatPane
+            bind:this={chatPaneRef}
+            api={tauriAgentApi}
+            selection={selection.current}
+            {playhead}
+            onClearSelection={() => select(undefined)}
+          />
         {/key}
       {:else}
         <p class="placeholder">Open a project to chat with an agent.</p>
@@ -139,6 +183,15 @@
     <button class="dev" onclick={() => (showProbe = !showProbe)}>{showProbe ? "Hide" : "Show"} capability probe</button>
     {#if showProbe}<Probe />{/if}
   </section>
+  <div
+    class="sidebar-resizer"
+    class:active={isResizing}
+    role="separator"
+    aria-orientation="vertical"
+    tabindex="0"
+    onpointerdown={startResize}
+    title="Drag to resize sidebar"
+  ></div>
   <section class="right">
     {#if !project}
       <ProjectPicker onOpen={opened} />
@@ -215,9 +268,25 @@
     :global(:root) { --bg: #111113; --panel: #18181b; --raised: #232328; --border: #2e2e34; --fg: #ececf0; --muted: #8d8d98; --danger: #ff6b6b; }
   }
   :global(html, body) { margin: 0; height: 100%; background: var(--bg); color: var(--fg); font: 13px system-ui, -apple-system, sans-serif; }
-  main { display: grid; grid-template-columns: minmax(280px, 380px) 1fr; height: 100vh; }
+  main { display: flex; height: 100vh; overflow: hidden; }
+  main.resizing { user-select: none; cursor: col-resize; }
   section { display: flex; flex-direction: column; min-width: 0; min-height: 0; }
-  .chat { border-right: 1px solid var(--border); background: var(--panel); }
+  .chat { flex-shrink: 0; background: var(--panel); min-width: 260px; max-width: 900px; height: 100%; border-right: none; }
+  .sidebar-resizer {
+    width: 5px;
+    margin: 0 -2px;
+    cursor: col-resize;
+    z-index: 10;
+    position: relative;
+    background: var(--border);
+    opacity: 0.6;
+    transition: background 0.15s ease, opacity 0.15s ease, width 0.15s ease;
+  }
+  .sidebar-resizer:hover, .sidebar-resizer.active {
+    background: #4f8cff;
+    opacity: 1;
+    width: 6px;
+  }
   header { display: flex; align-items: center; gap: 12px; height: 40px; padding: 0 12px; border-bottom: 1px solid var(--border); font-weight: 600; flex-shrink: 0; }
   .project-info { display: flex; align-items: center; gap: 8px; min-width: 0; }
   .project-actions { margin-left: auto; display: flex; align-items: center; gap: 6px; }
