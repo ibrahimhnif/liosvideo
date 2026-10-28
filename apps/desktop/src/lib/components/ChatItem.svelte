@@ -20,7 +20,7 @@
     {#if item.selection}<div class="sel">{item.selection}</div>{/if}
     {#if item.images && item.images.length > 0}
       <div class="attached-images">
-        {#each item.images as img}
+        {#each item.images as img, i (i)}
           <div class="img-preview">
             <img src={img.dataUrl || img.relPath} alt={img.filename} />
             <span class="img-tag">{img.relPath}</span>
@@ -37,13 +37,19 @@
 {:else if item.kind === "tool"}
   <details class="tool">
     <summary><span class="status {item.status}">{item.status}</span> {item.title}</summary>
-    {#each item.locations as l (l)}<div class="mono">{l}</div>{/each}
-    {#each item.content as c, i (i)}<div class="text small">{c}</div>{/each}
+    {#if item.locations}
+      {#each item.locations as l, i (`${i}-${l}`)}<div class="mono">{l}</div>{/each}
+    {/if}
+    {#if item.content}
+      {#each item.content as c, i (i)}<div class="text small">{c}</div>{/each}
+    {/if}
   </details>
 {:else if item.kind === "plan"}
   <div class="plan">
     <div class="label">Plan</div>
-    {#each item.entries as e, i (i)}<div class="entry {e.status}">{e.status === "completed" ? "✓" : e.status === "in_progress" ? "▸" : "○"} {e.content}</div>{/each}
+    {#if item.entries}
+      {#each item.entries as e, i (i)}<div class="entry {e.status}">{e.status === "completed" ? "✓" : e.status === "in_progress" ? "▸" : "○"} {e.content}</div>{/each}
+    {/if}
   </div>
 {:else if item.kind === "permission"}
   <PermissionCard {item} onAnswer={(optionId) => onAnswer(item.requestId, optionId)} />

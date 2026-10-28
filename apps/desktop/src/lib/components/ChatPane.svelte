@@ -133,15 +133,48 @@
         try {
           const parsed = JSON.parse(saved);
           if (Array.isArray(parsed.items) && parsed.items.length > 0) {
-            const maxId = parsed.items.reduce((max: number, item: any) => {
+            const seenIds = new Set<string>();
+            const sanitized = parsed.items.map((item: any, idx: number) => {
+              let id = item.id ? String(item.id) : `item-${idx}`;
+              if (seenIds.has(id)) {
+                id = `${id}-${idx}`;
+              }
+              seenIds.add(id);
+              if (item.kind === "tool") {
+                return {
+                  ...item,
+                  id,
+                  locations: Array.isArray(item.locations) ? item.locations : [],
+                  content: Array.isArray(item.content) ? item.content : [],
+                };
+              }
+              if (item.kind === "permission") {
+                return {
+                  ...item,
+                  id,
+                  options: Array.isArray(item.options) ? item.options : [],
+                };
+              }
+              if (item.kind === "plan") {
+                return {
+                  ...item,
+                  id,
+                  entries: Array.isArray(item.entries) ? item.entries : [],
+                };
+              }
+              return { ...item, id };
+            });
+
+            const maxId = sanitized.reduce((max: number, item: any) => {
               const num = parseInt(String(item.id).replace(/\D+/g, ""), 10);
               return !isNaN(num) && num > max ? num : max;
             }, 0);
             chat = {
               ...chat,
-              items: parsed.items,
+              items: sanitized,
               nextId: maxId + 1,
             };
+            devLog(`rendered conversation history: ${sanitized.length} items`);
             await tick();
             if (list) list.scrollTop = list.scrollHeight;
             setTimeout(() => {

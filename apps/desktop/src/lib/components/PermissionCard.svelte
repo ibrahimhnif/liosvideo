@@ -10,7 +10,7 @@
     {#if item.autoApproved}<span class="yolo-badge">⚡ Auto-approved</span>{/if}
   </div>
   <div class="options">
-    {#each item.options as o (o.optionId)}
+    {#each item.options ?? [] as o, i (o.optionId || i)}
       <button class={o.kind.startsWith("reject") ? "reject" : "allow"} class:chosen={item.answer === o.optionId} disabled={item.answer !== undefined} onclick={() => onAnswer(o.optionId)}>{o.name}</button>
     {/each}
   </div>

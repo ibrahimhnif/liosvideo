@@ -219,4 +219,42 @@ describe("ChatPane", () => {
     await expect.element(screen.getByText("Halo from saved project history!")).toBeVisible();
     expect(api.loadConversation).toHaveBeenCalledWith("/path/to/my-project");
   });
+
+  it("renders conversation history with duplicate tool locations without crashing", async () => {
+    const { api } = fakeAgentApi();
+    api.loadConversation = vi.fn(async () =>
+      JSON.stringify({
+        items: [
+          { kind: "user", id: "u1", text: "Please edit code.ts" },
+          {
+            kind: "tool",
+            id: "k78",
+            toolCallId: "call_78",
+            gen: 1,
+            title: "Edit scenes/code.ts",
+            toolKind: "execute",
+            status: "completed",
+            locations: [
+              "/path/to/scenes/code.ts",
+              "/path/to/scenes/code.ts",
+              "/path/to/scenes/code.ts",
+            ],
+            content: ["Applied edit"],
+          },
+          { kind: "agent", id: "m79", text: "Done editing code.ts!" },
+        ],
+      })
+    );
+
+    const screen = await render(ChatPane, {
+      api,
+      projectRoot: "/path/to/my-project",
+      playhead: { frame: 0, fps: 30 },
+      onClearSelection: () => {},
+    });
+
+    await expect.element(screen.getByText("Please edit code.ts")).toBeVisible();
+    await expect.element(screen.getByText(/Edit scenes\/code\.ts/)).toBeVisible();
+    await expect.element(screen.getByText("Done editing code.ts!")).toBeVisible();
+  });
 });
