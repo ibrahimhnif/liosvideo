@@ -76,9 +76,9 @@
 </div>
 
 <style>
-  .timeline { max-height: 220px; overflow-y: auto; border-top: 1px solid var(--border); font-size: 12px; user-select: none; }
+  .timeline { max-height: 220px; overflow-y: auto; overflow-x: hidden; border-top: 1px solid var(--border); font-size: 12px; user-select: none; min-width: 0; }
   .empty { color: var(--muted); padding: 8px 12px; margin: 0; }
-  .row { display: grid; grid-template-columns: 180px 1fr; height: 24px; border-bottom: 1px solid color-mix(in srgb, var(--border) 50%, transparent); }
+  .row { display: grid; grid-template-columns: 180px 1fr; height: 24px; border-bottom: 1px solid color-mix(in srgb, var(--border) 50%, transparent); min-width: 0; }
   .row.selected { background: color-mix(in srgb, #4f8cff 18%, transparent); }
   .head { display: flex; align-items: center; gap: 2px; min-width: 0; border-right: 1px solid var(--border); }
   .disclosure { width: 16px; flex-shrink: 0; border: none; background: none; color: var(--muted); cursor: pointer; padding: 0; font-size: 10px; }

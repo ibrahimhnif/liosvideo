@@ -613,9 +613,9 @@
 </div>
 
 <style>
-  .chat { display: flex; flex-direction: column; flex: 1; min-height: 0; }
-  .bar { display: flex; align-items: center; gap: 8px; padding: 6px 12px; border-bottom: 1px solid var(--border); }
-  .name { font-weight: 500; }
+  .chat { display: flex; flex-direction: column; flex: 1; min-height: 0; min-width: 0; overflow: hidden; }
+  .bar { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 8px; padding: 6px 12px; border-bottom: 1px solid var(--border); min-width: 0; }
+  .name { font-weight: 500; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 120px; min-width: 0; }
   .model-select {
     font: inherit;
     font-size: 11px;
@@ -624,7 +624,8 @@
     border: 1px solid var(--border);
     background: var(--bg);
     color: var(--fg);
-    max-width: 150px;
+    max-width: 110px;
+    min-width: 0;
     outline: none;
     cursor: pointer;
   }
@@ -669,7 +670,7 @@
     border-color: var(--danger);
     background: rgba(239, 68, 68, 0.1);
   }
-  .items { flex: 1; min-height: 0; overflow-y: auto; display: flex; flex-direction: column; gap: 8px; padding: 10px 12px; }
+  .items { flex: 1; min-height: 0; min-width: 0; overflow-y: auto; overflow-x: hidden; display: flex; flex-direction: column; gap: 8px; padding: 10px 12px; }
   .working { color: var(--muted); font-size: 12px; }
   .composer {
     display: flex;

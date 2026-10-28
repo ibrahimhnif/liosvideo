@@ -71,15 +71,20 @@
     isResizing = true;
     const startX = e.clientX;
     const startWidth = sidebarWidth;
+    const target = e.currentTarget as HTMLElement;
+    target?.setPointerCapture?.(e.pointerId);
 
     function onPointerMove(ev: PointerEvent) {
       const delta = ev.clientX - startX;
-      const newWidth = Math.max(260, Math.min(window.innerWidth - 380, startWidth + delta));
+      const minW = 260;
+      const maxW = Math.max(minW, window.innerWidth - 380);
+      const newWidth = Math.max(minW, Math.min(maxW, startWidth + delta));
       sidebarWidth = newWidth;
     }
 
-    function onPointerUp() {
+    function onPointerUp(ev: PointerEvent) {
       isResizing = false;
+      target?.releasePointerCapture?.(ev.pointerId);
       window.removeEventListener("pointermove", onPointerMove);
       window.removeEventListener("pointerup", onPointerUp);
       if (typeof localStorage !== "undefined") {
@@ -271,44 +276,49 @@
   :global(html, body) { margin: 0; height: 100%; background: var(--bg); color: var(--fg); font: 13px system-ui, -apple-system, sans-serif; }
   main { display: flex; height: 100vh; overflow: hidden; }
   main.resizing { user-select: none; cursor: col-resize; }
+  main.resizing iframe,
+  main.resizing canvas,
+  main.resizing .items {
+    pointer-events: none;
+  }
   section { display: flex; flex-direction: column; min-width: 0; min-height: 0; }
-  .chat { flex-shrink: 0; background: var(--panel); min-width: 260px; max-width: 900px; height: 100%; border-right: none; }
+  .chat { flex-shrink: 0; background: var(--panel); min-width: 260px; max-width: 900px; height: 100%; border-right: none; overflow: hidden; }
   .sidebar-resizer {
-    width: 5px;
+    width: 6px;
     margin: 0 -2px;
     cursor: col-resize;
     z-index: 10;
     position: relative;
     background: var(--border);
     opacity: 0.6;
-    transition: background 0.15s ease, opacity 0.15s ease, width 0.15s ease;
+    touch-action: none;
+    transition: background 0.15s ease, opacity 0.15s ease;
   }
   .sidebar-resizer:hover, .sidebar-resizer.active {
     background: #4f8cff;
     opacity: 1;
-    width: 6px;
   }
-  header { display: flex; align-items: center; gap: 12px; height: 40px; padding: 0 12px; border-bottom: 1px solid var(--border); font-weight: 600; flex-shrink: 0; }
-  .project-info { display: flex; align-items: center; gap: 8px; min-width: 0; }
-  .project-actions { margin-left: auto; display: flex; align-items: center; gap: 6px; }
-  .nav-btn { font: inherit; font-size: 12px; font-weight: 500; padding: 3px 8px; border-radius: 6px; border: 1px solid var(--border); background: var(--panel); color: var(--fg); cursor: pointer; display: flex; align-items: center; gap: 4px; }
+  header { display: flex; align-items: center; gap: 12px; height: 40px; padding: 0 12px; border-bottom: 1px solid var(--border); font-weight: 600; flex-shrink: 0; min-width: 0; }
+  .project-info { display: flex; align-items: center; gap: 8px; min-width: 0; flex-shrink: 1; }
+  .project-actions { margin-left: auto; display: flex; align-items: center; gap: 6px; flex-shrink: 0; }
+  .nav-btn { font: inherit; font-size: 12px; font-weight: 500; padding: 3px 8px; border-radius: 6px; border: 1px solid var(--border); background: var(--panel); color: var(--fg); cursor: pointer; display: flex; align-items: center; gap: 4px; white-space: nowrap; }
   .nav-btn:hover { background: var(--raised); }
   .close-project-btn { color: var(--muted); }
   .close-project-btn:hover { color: var(--danger); border-color: var(--danger); background: rgba(239, 68, 68, 0.1); }
-  .root { color: var(--muted); font-weight: 500; }
+  .root { color: var(--muted); font-weight: 500; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 140px; }
   .placeholder { color: var(--muted); padding: 12px; }
   .dev { margin: 0 12px 12px; font: inherit; font-size: 11px; background: none; border: none; color: var(--muted); cursor: pointer; text-align: left; }
-  .right { background: var(--bg); }
-  .chat-slot { flex: 1; min-height: 0; display: flex; flex-direction: column; }
+  .right { flex: 1 1 0%; min-width: 0; height: 100%; background: var(--bg); overflow: hidden; }
+  .chat-slot { flex: 1; min-height: 0; display: flex; flex-direction: column; overflow: hidden; }
   .chat-slot[hidden] { display: none; }
-  .header-actions { margin-left: auto; display: flex; align-items: center; gap: 6px; }
+  .header-actions { margin-left: auto; display: flex; align-items: center; gap: 6px; flex-shrink: 0; }
   .toggle-settings { font: inherit; font-size: 13px; padding: 3px 6px; border-radius: 6px; border: 1px solid var(--border); background: none; color: var(--fg); cursor: pointer; line-height: 1; }
   .toggle-settings[aria-pressed="true"] { background: var(--raised); }
-  .toggle { font: inherit; font-weight: 500; padding: 3px 10px; border-radius: 6px; border: 1px solid var(--border); background: none; color: var(--fg); cursor: pointer; }
+  .toggle { font: inherit; font-weight: 500; padding: 3px 10px; border-radius: 6px; border: 1px solid var(--border); background: none; color: var(--fg); cursor: pointer; white-space: nowrap; }
   .toggle[aria-pressed="true"] { background: var(--raised); }
-  .btn-export { font: inherit; font-weight: 500; padding: 3px 12px; border-radius: 6px; border: 1px solid #4f8cff; background: #4f8cff; color: white; cursor: pointer; }
+  .btn-export { font: inherit; font-weight: 500; padding: 3px 12px; border-radius: 6px; border: 1px solid #4f8cff; background: #4f8cff; color: white; cursor: pointer; white-space: nowrap; }
   .btn-export:disabled { opacity: 0.5; cursor: not-allowed; }
   .workspace { flex: 1; min-height: 0; display: grid; grid-template-columns: 1fr; }
   .workspace.with-history { grid-template-columns: 1fr 320px; }
-  .stage { display: flex; flex-direction: column; min-width: 0; min-height: 0; }
+  .stage { display: flex; flex-direction: column; min-width: 0; min-height: 0; overflow: hidden; }
 </style>

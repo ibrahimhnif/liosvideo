@@ -62,6 +62,7 @@
     const dpr = window.devicePixelRatio || 1;
     const scale = Math.min(1, (stage.clientWidth * dpr) / info.width, (stage.clientHeight * dpr) / info.height);
     host.resize(Math.max(1, Math.round(info.width * scale)), Math.max(1, Math.round(info.height * scale)));
+    host.requestFrame(frame);
   }
 
   function show(f: number) {
