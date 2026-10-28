@@ -15,7 +15,7 @@
     X,
     Zap,
   } from "@lucide/svelte";
-  import type { AgentApi, ProjectStats, SelectionContext } from "$lib/chat/api";
+  import type { AgentApi, ImageInput, ProjectStats, SelectionContext } from "$lib/chat/api";
   import { applyEvent, initialChat, type AttachedImage, type ChatEvent } from "$lib/chat/reduce";
   import { detectOutOfScopeChanges } from "$lib/chat/scope_warning";
   import { selectionLabel, type Selection } from "$lib/timeline/model";
@@ -42,7 +42,6 @@
   let saveTimer: ReturnType<typeof setTimeout> | undefined;
   let hasLoadedHistory = $state(false);
   let pendingImages = $state<AttachedImage[]>([]);
-  let isUploadingImage = $state(false);
   let fileInput: HTMLInputElement | undefined = $state();
   let isDraggingOver = $state(false);
 
@@ -314,8 +313,6 @@
   const fail = (e: unknown) => push({ type: "turn", state: "ended", error: String(e) });
 
   async function attachImageFile(file: File) {
-    if (!file.type.startsWith("image/")) return;
-    isUploadingImage = true;
     try {
       const dataUrl = await new Promise<string>((resolve, reject) => {
         const reader = new FileReader();
@@ -323,22 +320,55 @@
         reader.onerror = reject;
         reader.readAsDataURL(file);
       });
-      const pureBase64 = dataUrl.split(",")[1];
-      const saved = await api.saveImageAsset(file.name || "image.png", pureBase64);
-      pendingImages = [
-        ...pendingImages,
-        {
-          dataUrl,
-          relPath: saved.relPath,
-          filename: saved.filename,
-          data: pureBase64,
-          mimeType: file.type || "image/png",
-        },
-      ];
+
+      const commaIndex = dataUrl.indexOf(",");
+      if (commaIndex === -1) return;
+      const pureBase64 = dataUrl.slice(commaIndex + 1);
+
+      let mimeType = file.type;
+      if (!mimeType || mimeType === "application/octet-stream") {
+        const headerMatch = dataUrl.match(/^data:([^;]+);/);
+        if (headerMatch && headerMatch[1] && headerMatch[1] !== "application/octet-stream") {
+          mimeType = headerMatch[1];
+        } else {
+          mimeType = "image/png";
+        }
+      }
+
+      const displayDataUrl = `data:${mimeType};base64,${pureBase64}`;
+      const defaultName = file.name && file.name !== "image.png"
+        ? file.name
+        : `image-${Date.now().toString().slice(-6)}.png`;
+
+      // Prevent duplicate attachment of the exact same image
+      if (pendingImages.some((img) => img.data === pureBase64)) {
+        return;
+      }
+
+      // 1. Instantly display in preview! Zero delay, no loading spinner!
+      const newImage: AttachedImage = {
+        dataUrl: displayDataUrl,
+        filename: defaultName,
+        relPath: `assets/images/${defaultName}`,
+        data: pureBase64,
+        mimeType,
+      };
+      pendingImages = [...pendingImages, newImage];
+
+      // 2. Persist to project directory asynchronously
+      api.saveImageAsset(defaultName, pureBase64)
+        .then((saved) => {
+          pendingImages = pendingImages.map((img) =>
+            img.dataUrl === displayDataUrl
+              ? { ...img, relPath: saved.relPath, filename: saved.filename }
+              : img
+          );
+        })
+        .catch((e) => {
+          devLog(`save-image-asset-notice: ${e}`);
+        });
     } catch (e) {
       fail(`Failed to attach image: ${e}`);
-    } finally {
-      isUploadingImage = false;
     }
   }
 
@@ -353,12 +383,32 @@
 
   async function handlePaste(e: ClipboardEvent) {
     const items = e.clipboardData?.items;
-    if (!items) return;
-    for (const item of Array.from(items)) {
-      if (item.type.startsWith("image/")) {
-        e.preventDefault();
-        const file = item.getAsFile();
-        if (file) await attachImageFile(file);
+    const files = e.clipboardData?.files;
+    let handled = false;
+
+    if (items) {
+      for (const item of Array.from(items)) {
+        if (item.type.startsWith("image/")) {
+          e.preventDefault();
+          e.stopPropagation();
+          const file = item.getAsFile();
+          if (file) {
+            handled = true;
+            void attachImageFile(file);
+            break;
+          }
+        }
+      }
+    }
+
+    if (!handled && files && files.length > 0) {
+      for (const file of Array.from(files)) {
+        if (file.type.startsWith("image/") || /\.(png|jpe?g|webp|gif|svg|bmp)$/i.test(file.name)) {
+          e.preventDefault();
+          e.stopPropagation();
+          void attachImageFile(file);
+          break;
+        }
       }
     }
   }
@@ -404,9 +454,9 @@
       images: imagesToSend.length > 0 ? imagesToSend : undefined,
     });
 
-    const apiImages = imagesToSend.map((img) => ({
+    const apiImages: ImageInput[] = imagesToSend.map((img) => ({
       data: img.data!,
-      mimeType: img.mimeType,
+      mimeType: img.mimeType || "image/png",
       relPath: img.relPath,
     }));
 
@@ -594,20 +644,27 @@
     ondrop={handleDrop}
   >
     {#if pendingImages.length > 0}
-      <div class="pending-images">
-        {#each pendingImages as img, i (img.relPath + i)}
-          <div class="pending-chip">
-            <img src={img.dataUrl} alt={img.filename} />
-            <span class="pending-name" title={img.relPath}>{img.filename}</span>
-            <button
-              type="button"
-              class="remove-img"
-              onclick={() => removePendingImage(i)}
-              title="Remove image"
-              aria-label="Remove image"
-            ><X size={12} /></button>
-          </div>
-        {/each}
+      <div class="pending-images-section">
+        <div class="pending-images-header">
+          <span>Attached Image{pendingImages.length > 1 ? "s" : ""} ({pendingImages.length})</span>
+        </div>
+        <div class="pending-images-grid">
+          {#each pendingImages as img, i (img.relPath + i)}
+            <div class="pending-card">
+              <div class="pending-thumb">
+                <img src={img.dataUrl} alt={img.filename} />
+                <button
+                  type="button"
+                  class="remove-img"
+                  onclick={() => removePendingImage(i)}
+                  title="Remove image"
+                  aria-label="Remove image"
+                ><X size={12} /></button>
+              </div>
+              <span class="pending-name" title={img.relPath}>{img.filename}</span>
+            </div>
+          {/each}
+        </div>
       </div>
     {/if}
     <input
@@ -629,7 +686,7 @@
       <button
         type="button"
         class="attach-btn"
-        disabled={running || isUploadingImage}
+        disabled={running}
         onclick={() => fileInput?.click()}
         title="Attach image (saved to assets/images/)"
       >
@@ -770,47 +827,87 @@
     background: var(--bg);
     border-color: #4f8cff;
   }
-  .pending-images {
-    display: flex;
-    flex-wrap: wrap;
-    gap: 6px;
-    max-height: 120px;
-    overflow-y: auto;
+  .pending-images-section {
+    padding: 8px 10px 6px 10px;
+    background: rgba(0, 0, 0, 0.25);
+    border-bottom: 1px solid var(--border);
   }
-  .pending-chip {
+  .pending-images-header {
+    font-size: 11px;
+    font-weight: 600;
+    color: var(--muted);
+    margin-bottom: 6px;
     display: flex;
     align-items: center;
-    gap: 6px;
-    padding: 2px 6px 2px 2px;
+    gap: 4px;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+  }
+  .pending-images-grid {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    max-height: 140px;
+    overflow-y: auto;
+  }
+  .pending-card {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    width: 84px;
+    flex-shrink: 0;
+  }
+  .pending-thumb {
+    position: relative;
+    width: 84px;
+    height: 64px;
     border-radius: 6px;
+    overflow: hidden;
     background: var(--raised);
     border: 1px solid var(--border);
-    font-size: 11px;
+    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
   }
-  .pending-chip img {
-    width: 24px;
-    height: 24px;
+  .pending-thumb img {
+    width: 100%;
+    height: 100%;
     object-fit: cover;
-    border-radius: 4px;
+    display: block;
+    transition: transform 0.15s ease;
+  }
+  .pending-thumb:hover img {
+    transform: scale(1.05);
+  }
+  .pending-thumb .remove-img {
+    position: absolute;
+    top: 3px;
+    right: 3px;
+    width: 18px;
+    height: 18px;
+    border-radius: 50%;
+    background: rgba(17, 17, 19, 0.85);
+    color: #fff;
+    border: 1px solid rgba(255, 255, 255, 0.2);
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 0;
+    transition: all 0.15s ease;
+  }
+  .pending-thumb .remove-img:hover {
+    background: var(--danger);
+    border-color: var(--danger);
+    transform: scale(1.1);
   }
   .pending-name {
-    max-width: 120px;
+    width: 84px;
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
     font-family: ui-monospace, monospace;
     font-size: 10px;
-  }
-  .remove-img {
-    background: none;
-    border: none;
-    padding: 0 3px;
-    font-size: 11px;
     color: var(--muted);
-    cursor: pointer;
-  }
-  .remove-img:hover {
-    color: var(--danger);
+    text-align: center;
   }
 
   .cost-btn {

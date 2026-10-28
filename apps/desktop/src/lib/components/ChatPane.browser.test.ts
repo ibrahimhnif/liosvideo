@@ -257,4 +257,36 @@ describe("ChatPane", () => {
     await expect.element(screen.getByText(/Edit scenes\/code\.ts/)).toBeVisible();
     await expect.element(screen.getByText("Done editing code.ts!")).toBeVisible();
   });
+
+  it("shows image preview card with remove button before sending", async () => {
+    const { api } = fakeAgentApi();
+    api.saveImageAsset = vi.fn(async (name: string) => ({
+      relPath: `assets/images/${name}`,
+      filename: name,
+    }));
+
+    const screen = await render(ChatPane, {
+      api,
+      playhead: { frame: 0, fps: 30 },
+      onClearSelection: () => {},
+    });
+
+    const fileInput = screen.container.querySelector('input[type="file"]') as HTMLInputElement;
+    expect(fileInput).toBeTruthy();
+
+    const file = new File(["dummy"], "screenshot-test.png", { type: "image/png" });
+    Object.defineProperty(fileInput, "files", {
+      value: [file],
+      writable: false,
+    });
+    fileInput.dispatchEvent(new Event("change", { bubbles: true }));
+
+    await expect.element(screen.getByText("Attached Image (1)")).toBeVisible();
+    await expect.element(screen.getByText("screenshot-test.png")).toBeVisible();
+    const removeBtn = screen.getByRole("button", { name: "Remove image" });
+    await expect.element(removeBtn).toBeVisible();
+
+    await removeBtn.click();
+    expect(screen.container.querySelector(".pending-card")).toBeNull();
+  });
 });

@@ -27,9 +27,12 @@ pub struct SelectionContext {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct ImageInput {
     pub data: String,
+    #[serde(alias = "mime_type")]
     pub mime_type: String,
+    #[serde(alias = "rel_path")]
     pub rel_path: Option<String>,
 }
 
@@ -776,5 +779,20 @@ mod tests {
         let args = mcp_servers[0]["args"].as_array().expect("args array");
         assert!(args.iter().any(|a| a == "--mcp-bridge"));
         assert!(args.iter().any(|a| a == "8765"));
+    }
+
+    #[test]
+    fn test_image_input_deserialization() {
+        let json_camel = r#"{"data": "abc", "mimeType": "image/png", "relPath": "assets/test.png"}"#;
+        let parsed: ImageInput = serde_json::from_str(json_camel).expect("deserialize camelCase");
+        assert_eq!(parsed.data, "abc");
+        assert_eq!(parsed.mime_type, "image/png");
+        assert_eq!(parsed.rel_path.as_deref(), Some("assets/test.png"));
+
+        let json_snake = r#"{"data": "xyz", "mime_type": "image/jpeg", "rel_path": null}"#;
+        let parsed_snake: ImageInput = serde_json::from_str(json_snake).expect("deserialize snake_case");
+        assert_eq!(parsed_snake.data, "xyz");
+        assert_eq!(parsed_snake.mime_type, "image/jpeg");
+        assert_eq!(parsed_snake.rel_path, None);
     }
 }

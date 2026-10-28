@@ -22,6 +22,7 @@
     "@tauri-apps/plugin-opener": "^2",
     "esbuild-wasm": "^0.28.2",
     "liosvideo": "workspace:*",
+    "marked": "^18.1.2",
     "mediabunny": "^1.62.1",
     "source-map-js": "^1.2.2"
   },

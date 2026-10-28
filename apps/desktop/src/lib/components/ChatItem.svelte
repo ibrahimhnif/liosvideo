@@ -9,6 +9,7 @@
   } from "@lucide/svelte";
   import type { ChatItem } from "$lib/chat/reduce";
   import AssetCard from "./AssetCard.svelte";
+  import Markdown from "./Markdown.svelte";
   import PermissionCard from "./PermissionCard.svelte";
   import VoiceCard from "./VoiceCard.svelte";
 
@@ -36,17 +37,17 @@
         {/each}
       </div>
     {/if}
-    <div class="text">{item.text}</div>
+    <div class="text"><Markdown content={item.text} /></div>
   </div>
 {:else if item.kind === "agent"}
-  <div class="bubble agent"><div class="text">{item.text}</div></div>
+  <div class="bubble agent"><div class="text"><Markdown content={item.text} /></div></div>
 {:else if item.kind === "thought"}
   <details class="thought">
     <summary>
       <Brain size={12} />
       <span>Thinking</span>
     </summary>
-    <div class="text">{item.text}</div>
+    <div class="text"><Markdown content={item.text} /></div>
   </details>
 {:else if item.kind === "tool"}
   <details class="tool">
