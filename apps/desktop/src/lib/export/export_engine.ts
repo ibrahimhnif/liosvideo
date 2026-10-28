@@ -136,7 +136,7 @@ export class ExportEngine {
       fullCodecString: "avc1.420028",
       latencyMode: "realtime",
       quality: new this.QualityClass({ bitrate: this.config.bitrate ?? 10_000_000 }),
-      hardwareAcceleration: "prefer-hardware",
+      hardwareAcceleration: "no-preference",
       keyFrameInterval: 2,
     });
     output.addVideoTrack(videoSource);

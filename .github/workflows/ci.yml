@@ -23,23 +23,10 @@ concurrency:
 jobs:
   test:
     name: Test & Typecheck
-    runs-on: ubuntu-latest
+    runs-on: macos-latest
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
-
-      - name: Install Rust toolchain
-        uses: dtolnay/rust-toolchain@stable
-
-      - name: Rust Cache
-        uses: swatinem/rust-cache@v2
-        with:
-          workspaces: apps/desktop/src-tauri
-
-      - name: Install Linux build dependencies
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y libwebkit2gtk-4.1-dev libappindicator3-dev librsvg2-dev patchelf xvfb
 
       - name: Setup pnpm
         uses: pnpm/action-setup@v4
@@ -50,11 +37,19 @@ jobs:
           node-version: 22
           cache: 'pnpm'
 
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Rust Cache
+        uses: swatinem/rust-cache@v2
+        with:
+          workspaces: apps/desktop/src-tauri
+
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
       - name: Install Playwright browsers
-        run: pnpm --filter desktop exec playwright install --with-deps chromium
+        run: pnpm --filter desktop exec playwright install chromium
 
       - name: Svelte & TypeScript check
         run: pnpm --filter desktop check
@@ -64,8 +59,8 @@ jobs:
 
       - name: Browser tests (Desktop & Runtime WebGPU)
         run: |
-          xvfb-run --auto-servernum -- pnpm --filter desktop test:browser
-          xvfb-run --auto-servernum -- pnpm --filter liosvideo test:gpu
+          pnpm --filter desktop test:browser
+          pnpm --filter liosvideo test:gpu
 
       - name: Rust tests
         run: cargo test --manifest-path apps/desktop/src-tauri/Cargo.toml
