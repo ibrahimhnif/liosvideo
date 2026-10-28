@@ -10,15 +10,20 @@
   } = $props();
 
   let elevenKey = $state("");
+  let elevenVoiceId = $state("");
+  let defaultTtsVoice = $state("id-ID-Neural2-A");
   let googleKey = $state("");
   let anthropicKey = $state("");
   let elevenConfigured = $state(false);
+  let elevenVoiceIdConfigured = $state(false);
   let googleConfigured = $state(false);
   let anthropicConfigured = $state(false);
   let showEleven = $state(false);
   let showGoogle = $state(false);
   let showAnthropic = $state(false);
   let savingEleven = $state(false);
+  let savingVoiceId = $state(false);
+  let savingDefaultVoice = $state(false);
   let savingGoogle = $state(false);
   let savingAnthropic = $state(false);
   let message = $state<{ text: string; type: "success" | "error" } | null>(null);
@@ -48,6 +53,20 @@
       } else {
         elevenKey = "";
         elevenConfigured = false;
+      }
+
+      const vId = await invoke<string | null>("get_api_key", { service: "ELEVENLABS_VOICE_ID" });
+      if (vId) {
+        elevenVoiceId = vId;
+        elevenVoiceIdConfigured = true;
+      } else {
+        elevenVoiceId = "";
+        elevenVoiceIdConfigured = false;
+      }
+
+      const defVoice = await invoke<string | null>("get_api_key", { service: "DEFAULT_TTS_VOICE" });
+      if (defVoice) {
+        defaultTtsVoice = defVoice;
       }
 
       const gKey = await invoke<string | null>("get_api_key", { service: "GOOGLE_TTS_API_KEY" });
@@ -112,6 +131,45 @@
       message = { text: "ElevenLabs API key removed from Keychain.", type: "success" };
     } catch (err) {
       message = { text: `Failed to remove: ${err}`, type: "error" };
+    }
+  }
+
+  async function saveVoiceId() {
+    if (!elevenVoiceId.trim()) return;
+    savingVoiceId = true;
+    message = null;
+    try {
+      await invoke("set_api_key", { service: "ELEVENLABS_VOICE_ID", key: elevenVoiceId.trim() });
+      elevenVoiceIdConfigured = true;
+      message = { text: "Voice ID suara pribadi disimpan!", type: "success" };
+    } catch (err) {
+      message = { text: `Gagal menyimpan Voice ID: ${err}`, type: "error" };
+    } finally {
+      savingVoiceId = false;
+    }
+  }
+
+  async function clearVoiceId() {
+    try {
+      await invoke("delete_api_key", { service: "ELEVENLABS_VOICE_ID" });
+      elevenVoiceId = "";
+      elevenVoiceIdConfigured = false;
+      message = { text: "Voice ID pribadi direset ke suara bawaan.", type: "success" };
+    } catch (err) {
+      message = { text: `Gagal mereset: ${err}`, type: "error" };
+    }
+  }
+
+  async function saveDefaultVoice() {
+    savingDefaultVoice = true;
+    message = null;
+    try {
+      await invoke("set_api_key", { service: "DEFAULT_TTS_VOICE", key: defaultTtsVoice });
+      message = { text: `Default voice diatur ke: ${defaultTtsVoice}`, type: "success" };
+    } catch (err) {
+      message = { text: `Gagal menyimpan default voice: ${err}`, type: "error" };
+    } finally {
+      savingDefaultVoice = false;
     }
   }
 
@@ -249,6 +307,39 @@
           <p class="field-hint">Used for live voice narration synthesis with word-level alignment timestamps.</p>
         </div>
 
+        <!-- ElevenLabs Voice ID (Suara Pribadi / Clone) -->
+        <div class="field-group">
+          <div class="label-row">
+            <label for="eleven-voice-id">ElevenLabs Voice ID (Suara Pribadi / Clone)</label>
+            <span class="badge" class:configured={elevenVoiceIdConfigured}>
+              {elevenVoiceIdConfigured ? "✓ Configured" : "Default (Rachel)"}
+            </span>
+          </div>
+          <div class="input-row">
+            <input
+              id="eleven-voice-id"
+              data-testid="input-voice-id"
+              type="text"
+              placeholder="e.g. Voice ID kloningan dari ElevenLabs VoiceLab"
+              bind:value={elevenVoiceId}
+            />
+            <button
+              type="button"
+              class="save-btn"
+              disabled={savingVoiceId || !elevenVoiceId.trim()}
+              onclick={saveVoiceId}
+            >
+              {savingVoiceId ? "Saving..." : "Save"}
+            </button>
+            {#if elevenVoiceIdConfigured}
+              <button type="button" class="clear-btn" onclick={clearVoiceId} title="Reset">Reset</button>
+            {/if}
+          </div>
+          <p class="field-hint">
+            Masukkan Voice ID dari kloningan suara Anda di ElevenLabs. Model <code>eleven_multilingual_v2</code> otomatis membaca naskah Bahasa Indonesia dengan suara Anda!
+          </p>
+        </div>
+
         <!-- Google Cloud TTS -->
         <div class="field-group">
           <div class="label-row">
@@ -286,6 +377,42 @@
             {/if}
           </div>
           <p class="field-hint">Used for Journey and Neural2 voices from Google Cloud Text-to-Speech.</p>
+        </div>
+
+        <!-- Default Voice & Language -->
+        <div class="field-group">
+          <div class="label-row">
+            <label for="default-tts-voice">Default Voice & Bahasa Narasi</label>
+            <span class="badge configured">Active</span>
+          </div>
+          <div class="input-row">
+            <select
+              id="default-tts-voice"
+              data-testid="select-default-voice"
+              class="voice-select"
+              bind:value={defaultTtsVoice}
+              onchange={saveDefaultVoice}
+            >
+              <optgroup label="🇮🇩 Bahasa Indonesia (Google Cloud TTS)">
+                <option value="id-ID-Neural2-A">id-ID-Neural2-A (Wanita, Alami & Jernih)</option>
+                <option value="id-ID-Neural2-B">id-ID-Neural2-B (Pria, Formal & Natural)</option>
+                <option value="id-ID-Wavenet-A">id-ID-Wavenet-A (Wanita Wavenet)</option>
+                <option value="id-ID-Wavenet-B">id-ID-Wavenet-B (Pria Wavenet)</option>
+                <option value="id-ID-Wavenet-D">id-ID-Wavenet-D (Wanita Wavenet 2)</option>
+              </optgroup>
+              <optgroup label="✨ ElevenLabs (Multilingual & Suara Pribadi)">
+                <option value="21m00Tcm4TlvDq8ikWAM">Rachel (Calm & Professional, Multilingual)</option>
+                <option value="pNInz6obpgDQGcFmaJgB">Adam (Deep & Narrator, Multilingual)</option>
+                <option value="ErXwobaYiN019PkySvjV">Antoni (Natural & Crisp, Multilingual)</option>
+                <option value="EXAVITQu4vr4xnSDxMaL">Bella (Expressive & Warm, Multilingual)</option>
+              </optgroup>
+              <optgroup label="🇺🇸 English (Google Cloud TTS)">
+                <option value="en-US-Journey-F">en-US-Journey-F (Female Journey)</option>
+                <option value="en-US-Journey-D">en-US-Journey-D (Male Journey)</option>
+              </optgroup>
+            </select>
+          </div>
+          <p class="field-hint">Suara bawaan yang digunakan untuk mensintesis narasi video.</p>
         </div>
       </div>
 
@@ -430,6 +557,21 @@
   }
 
   .input-row input:focus {
+    outline: none;
+    border-color: #58a6ff;
+  }
+
+  .voice-select {
+    flex: 1;
+    background: #0d1117;
+    border: 1px solid #30363d;
+    border-radius: 6px;
+    padding: 7px 10px;
+    color: #c9d1d9;
+    font-size: 12px;
+  }
+
+  .voice-select:focus {
     outline: none;
     border-color: #58a6ff;
   }

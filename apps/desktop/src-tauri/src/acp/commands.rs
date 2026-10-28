@@ -120,19 +120,7 @@ pub async fn get_or_start_mcp_server(app: &AppHandle) -> Option<u16> {
     crate::mcp::asset_tools::register_asset_tools(&mut registry, context.clone(), asset_coordinator);
     let tts_provider: Arc<dyn crate::audio::TtsProvider> = match app.try_state::<Arc<dyn crate::audio::TtsProvider>>() {
         Some(p) => p.inner().clone(),
-        None => {
-            let eleven = crate::audio::ElevenLabsTtsProvider::new(None);
-            if eleven.has_key() {
-                Arc::new(eleven)
-            } else {
-                let google = crate::audio::GoogleCloudTtsProvider::new(None);
-                if google.has_key() {
-                    Arc::new(google)
-                } else {
-                    Arc::new(crate::audio::MockTtsProvider::new())
-                }
-            }
-        }
+        None => Arc::new(crate::audio::UnifiedTtsProvider::new()),
     };
     crate::mcp::audio_tools::register_audio_tools(&mut registry, context, tts_provider);
     match crate::mcp::McpServer::bind(Arc::new(registry)) {

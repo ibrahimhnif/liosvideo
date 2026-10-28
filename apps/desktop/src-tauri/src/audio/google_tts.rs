@@ -96,7 +96,10 @@ impl TtsProvider for GoogleCloudTtsProvider {
         let client = self.client.clone();
         let line_id = line_id.to_string();
         let text = text.to_string();
-        let voice_name = voice.unwrap_or("en-US-Journey-F").to_string();
+        let default_voice = crate::keychain::Keychain::get_secret("DEFAULT_TTS_VOICE")
+            .filter(|v| !v.trim().is_empty())
+            .unwrap_or_else(|| "id-ID-Neural2-A".to_string());
+        let voice_name = voice.unwrap_or(&default_voice).to_string();
         let project_root = project_root.to_path_buf();
 
         Box::pin(async move {
@@ -105,10 +108,17 @@ impl TtsProvider for GoogleCloudTtsProvider {
                 _ => return Err("Google Cloud TTS API key not configured (set GOOGLE_TTS_API_KEY)".to_string()),
             };
 
-            let language_code = if voice_name.starts_with("en-GB") {
-                "en-GB"
+            let language_code = if voice_name.starts_with("id-") {
+                "id-ID".to_string()
+            } else if voice_name.starts_with("en-GB") {
+                "en-GB".to_string()
             } else {
-                "en-US"
+                let parts: Vec<&str> = voice_name.split('-').collect();
+                if parts.len() >= 2 && parts[0].len() == 2 && parts[1].len() == 2 {
+                    format!("{}-{}", parts[0], parts[1])
+                } else {
+                    "en-US".to_string()
+                }
             };
 
             let payload = json!({
@@ -194,6 +204,42 @@ impl TtsProvider for GoogleCloudTtsProvider {
 
     fn list_voices(&self) -> Vec<VoiceInfo> {
         vec![
+            VoiceInfo {
+                id: "id-ID-Neural2-A".into(),
+                name: "Indonesian Neural2 Female (id-ID)".into(),
+                language: "id-ID".into(),
+                gender: Some("female".into()),
+            },
+            VoiceInfo {
+                id: "id-ID-Neural2-B".into(),
+                name: "Indonesian Neural2 Male (id-ID)".into(),
+                language: "id-ID".into(),
+                gender: Some("male".into()),
+            },
+            VoiceInfo {
+                id: "id-ID-Wavenet-A".into(),
+                name: "Indonesian Wavenet Female (id-ID)".into(),
+                language: "id-ID".into(),
+                gender: Some("female".into()),
+            },
+            VoiceInfo {
+                id: "id-ID-Wavenet-B".into(),
+                name: "Indonesian Wavenet Male (id-ID)".into(),
+                language: "id-ID".into(),
+                gender: Some("male".into()),
+            },
+            VoiceInfo {
+                id: "id-ID-Wavenet-C".into(),
+                name: "Indonesian Wavenet Male 2 (id-ID)".into(),
+                language: "id-ID".into(),
+                gender: Some("male".into()),
+            },
+            VoiceInfo {
+                id: "id-ID-Wavenet-D".into(),
+                name: "Indonesian Wavenet Female 2 (id-ID)".into(),
+                language: "id-ID".into(),
+                gender: Some("female".into()),
+            },
             VoiceInfo {
                 id: "en-US-Journey-F".into(),
                 name: "Journey Female (en-US)".into(),

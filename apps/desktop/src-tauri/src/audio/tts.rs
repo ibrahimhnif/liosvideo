@@ -151,6 +151,18 @@ impl TtsProvider for MockTtsProvider {
                 language: "en-US".to_string(),
                 gender: Some("male".to_string()),
             },
+            VoiceInfo {
+                id: "mock-id-female".to_string(),
+                name: "Mock Indonesian Female (id-ID)".to_string(),
+                language: "id-ID".to_string(),
+                gender: Some("female".to_string()),
+            },
+            VoiceInfo {
+                id: "mock-id-male".to_string(),
+                name: "Mock Indonesian Male (id-ID)".to_string(),
+                language: "id-ID".to_string(),
+                gender: Some("male".to_string()),
+            },
         ]
     }
 }

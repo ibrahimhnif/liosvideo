@@ -103,7 +103,10 @@ impl TtsProvider for ElevenLabsTtsProvider {
         };
 
         let client = self.client.clone();
-        let voice_id = voice.unwrap_or("21m00Tcm4TlvDq8ikWAM").to_string(); // Rachel default
+        let default_voice = crate::keychain::Keychain::get_secret("ELEVENLABS_VOICE_ID")
+            .filter(|v| !v.trim().is_empty())
+            .unwrap_or_else(|| "21m00Tcm4TlvDq8ikWAM".to_string());
+        let voice_id = voice.unwrap_or(&default_voice).to_string();
         let line_id = line_id.to_string();
         let text = text.to_string();
         let project_root = project_root.to_path_buf();
@@ -174,20 +177,45 @@ impl TtsProvider for ElevenLabsTtsProvider {
     }
 
     fn list_voices(&self) -> Vec<VoiceInfo> {
-        vec![
+        let mut list = Vec::new();
+        if let Some(custom_id) = crate::keychain::Keychain::get_secret("ELEVENLABS_VOICE_ID") {
+            let trimmed = custom_id.trim();
+            if !trimmed.is_empty() {
+                list.push(VoiceInfo {
+                    id: trimmed.to_string(),
+                    name: "Personal Voice Clone (ElevenLabs Custom)".to_string(),
+                    language: "multilingual (id / en)".to_string(),
+                    gender: None,
+                });
+            }
+        }
+        list.extend(vec![
             VoiceInfo {
                 id: "21m00Tcm4TlvDq8ikWAM".to_string(),
-                name: "Rachel (Calm & Professional)".to_string(),
-                language: "en-US".to_string(),
+                name: "Rachel (Calm & Professional, Multilingual)".to_string(),
+                language: "multilingual (en / id)".to_string(),
                 gender: Some("female".to_string()),
             },
             VoiceInfo {
                 id: "pNInz6obpgDQGcFmaJgB".to_string(),
-                name: "Adam (Deep & Narrator)".to_string(),
-                language: "en-US".to_string(),
+                name: "Adam (Deep & Narrator, Multilingual)".to_string(),
+                language: "multilingual (en / id)".to_string(),
                 gender: Some("male".to_string()),
             },
-        ]
+            VoiceInfo {
+                id: "ErXwobaYiN019PkySvjV".to_string(),
+                name: "Antoni (Natural & Crisp, Multilingual)".to_string(),
+                language: "multilingual (en / id)".to_string(),
+                gender: Some("male".to_string()),
+            },
+            VoiceInfo {
+                id: "EXAVITQu4vr4xnSDxMaL".to_string(),
+                name: "Bella (Expressive & Warm, Multilingual)".to_string(),
+                language: "multilingual (en / id)".to_string(),
+                gender: Some("female".to_string()),
+            },
+        ]);
+        list
     }
 }
 
