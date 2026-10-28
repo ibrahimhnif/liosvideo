@@ -414,6 +414,191 @@ pub fn asset_url_path(state: State<ProjectState>, rel: String) -> Result<String>
     Ok(resolve_in_project(&state.root()?, &rel)?.to_string_lossy().into_owned())
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Default)]
+#[serde(rename_all = "camelCase")]
+pub struct TtsItemStat {
+    pub line_id: String,
+    pub provider: String,
+    pub voice: String,
+    pub characters: usize,
+    pub cost_usd: f64,
+    pub timestamp: u64,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Default)]
+#[serde(rename_all = "camelCase")]
+pub struct TtsStats {
+    pub total_characters: usize,
+    pub total_cost_usd: f64,
+    pub items: Vec<TtsItemStat>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Default)]
+#[serde(rename_all = "camelCase")]
+pub struct TokenStats {
+    pub input_tokens: usize,
+    pub output_tokens: usize,
+    pub total_tokens: usize,
+    pub total_cost_usd: f64,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Default)]
+#[serde(rename_all = "camelCase")]
+pub struct ProjectStats {
+    pub tts: TtsStats,
+    pub tokens: TokenStats,
+    pub total_cost_usd: f64,
+}
+
+pub fn stats_file(root: &Path) -> PathBuf {
+    root.join(".liosvideo").join("stats.json")
+}
+
+pub fn conversation_file(root: &Path) -> PathBuf {
+    root.join(".liosvideo").join("conversation.json")
+}
+
+pub fn load_stats_in(root: &Path) -> ProjectStats {
+    let path = stats_file(root);
+    if let Ok(content) = fs::read_to_string(path) {
+        if let Ok(stats) = serde_json::from_str::<ProjectStats>(&content) {
+            return stats;
+        }
+    }
+    ProjectStats::default()
+}
+
+pub fn save_stats_in(root: &Path, stats: &ProjectStats) -> Result<()> {
+    let lios_dir = root.join(".liosvideo");
+    let _ = fs::create_dir_all(&lios_dir);
+    let content = serde_json::to_string_pretty(stats).map_err(|e| ProjectError::Other(e.to_string()))?;
+    fs::write(stats_file(root), content)?;
+    Ok(())
+}
+
+pub fn record_tts_usage_in(
+    root: &Path,
+    line_id: &str,
+    provider: &str,
+    voice: &str,
+    text: &str,
+) -> Result<ProjectStats> {
+    let mut stats = load_stats_in(root);
+    let chars = text.chars().count();
+    let cost = if provider.to_lowercase().contains("eleven") {
+        (chars as f64) * 0.0003
+    } else if provider.to_lowercase().contains("google") {
+        if voice.contains("Standard") {
+            (chars as f64) * 0.000004
+        } else {
+            (chars as f64) * 0.000016
+        }
+    } else {
+        0.0
+    };
+
+    let now = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_secs())
+        .unwrap_or(0);
+
+    stats.tts.total_characters += chars;
+    stats.tts.total_cost_usd = ((stats.tts.total_cost_usd + cost) * 100000.0).round() / 100000.0;
+    stats.tts.items.push(TtsItemStat {
+        line_id: line_id.to_string(),
+        provider: provider.to_string(),
+        voice: voice.to_string(),
+        characters: chars,
+        cost_usd: (cost * 100000.0).round() / 100000.0,
+        timestamp: now,
+    });
+    stats.total_cost_usd = ((stats.tts.total_cost_usd + stats.tokens.total_cost_usd) * 100000.0).round() / 100000.0;
+    save_stats_in(root, &stats)?;
+    Ok(stats)
+}
+
+pub fn record_token_usage_in(
+    root: &Path,
+    input_tokens: usize,
+    output_tokens: usize,
+    model: Option<&str>,
+) -> Result<ProjectStats> {
+    let mut stats = load_stats_in(root);
+    let m = model.unwrap_or("default").to_lowercase();
+    let (in_rate, out_rate) = if m.contains("opus") {
+        (15.0 / 1_000_000.0, 75.0 / 1_000_000.0)
+    } else if m.contains("flash") {
+        (0.10 / 1_000_000.0, 0.40 / 1_000_000.0)
+    } else {
+        (3.0 / 1_000_000.0, 15.0 / 1_000_000.0)
+    };
+
+    let cost = (input_tokens as f64 * in_rate) + (output_tokens as f64 * out_rate);
+    stats.tokens.input_tokens += input_tokens;
+    stats.tokens.output_tokens += output_tokens;
+    stats.tokens.total_tokens += input_tokens + output_tokens;
+    stats.tokens.total_cost_usd = ((stats.tokens.total_cost_usd + cost) * 100000.0).round() / 100000.0;
+    stats.total_cost_usd = ((stats.tts.total_cost_usd + stats.tokens.total_cost_usd) * 100000.0).round() / 100000.0;
+    save_stats_in(root, &stats)?;
+    Ok(stats)
+}
+
+#[tauri::command]
+pub fn load_conversation(state: State<ProjectState>) -> Result<Option<String>> {
+    let root = state.root()?;
+    let path = conversation_file(&root);
+    if path.is_file() {
+        let content = fs::read_to_string(path)?;
+        Ok(Some(content))
+    } else {
+        Ok(None)
+    }
+}
+
+#[tauri::command]
+pub fn save_conversation(state: State<ProjectState>, content: String) -> Result<()> {
+    let root = state.root()?;
+    let lios_dir = root.join(".liosvideo");
+    let _ = fs::create_dir_all(&lios_dir);
+    fs::write(conversation_file(&root), content)?;
+    Ok(())
+}
+
+#[tauri::command]
+pub fn get_project_stats(state: State<ProjectState>) -> Result<ProjectStats> {
+    let root = state.root()?;
+    Ok(load_stats_in(&root))
+}
+
+#[tauri::command]
+pub fn record_token_usage(
+    app: AppHandle,
+    state: State<ProjectState>,
+    input_tokens: usize,
+    output_tokens: usize,
+    model: Option<String>,
+) -> Result<ProjectStats> {
+    let root = state.root()?;
+    let stats = record_token_usage_in(&root, input_tokens, output_tokens, model.as_deref())?;
+    let _ = app.emit("project://stats_updated", &stats);
+    Ok(stats)
+}
+
+#[tauri::command]
+pub fn record_tts_usage(
+    app: AppHandle,
+    state: State<ProjectState>,
+    line_id: String,
+    provider: String,
+    voice: String,
+    text: String,
+) -> Result<ProjectStats> {
+    let root = state.root()?;
+    let stats = record_tts_usage_in(&root, &line_id, &provider, &voice, &text)?;
+    let _ = app.emit("project://stats_updated", &stats);
+    Ok(stats)
+}
+
 /// The non-Tauri part of opening: canonical root, history status, and a "Manual edit" commit for pending changes.
 pub fn prepare_open(root: &Path) -> Result<(PathBuf, HistoryStatus, Option<CommitInfo>)> {
     let root = root.canonicalize()?;
@@ -584,5 +769,38 @@ mod tests {
             b.await.unwrap().unwrap();
         });
         assert_eq!(overlaps.load(Ordering::SeqCst), 0);
+    }
+
+    #[test]
+    fn test_stats_and_conversation_persistence() {
+        let dir = project();
+        let root = dir.path();
+
+        // 1. Conversation saving and loading
+        let conv_file = conversation_file(root);
+        assert_eq!(conv_file, root.join(".liosvideo/conversation.json"));
+        fs::create_dir_all(root.join(".liosvideo")).unwrap();
+        fs::write(&conv_file, r#"{"items":[{"kind":"user","text":"halo"}]}"#).unwrap();
+        let loaded = fs::read_to_string(&conv_file).unwrap();
+        assert!(loaded.contains("halo"));
+
+        // 2. TTS usage recording
+        let stats = record_tts_usage_in(root, "line-1", "elevenlabs", "rachel", "Halo dunia video").unwrap();
+        assert_eq!(stats.tts.total_characters, 16);
+        assert!(stats.tts.total_cost_usd > 0.0);
+        assert_eq!(stats.tts.items.len(), 1);
+
+        // 3. Token usage recording
+        let stats2 = record_token_usage_in(root, 1000, 200, Some("claude-3-7-sonnet")).unwrap();
+        assert_eq!(stats2.tokens.input_tokens, 1000);
+        assert_eq!(stats2.tokens.output_tokens, 200);
+        assert_eq!(stats2.tokens.total_tokens, 1200);
+        assert!(stats2.tokens.total_cost_usd > 0.0);
+        assert!(stats2.total_cost_usd >= stats2.tokens.total_cost_usd);
+
+        // 4. Persistence verification
+        let loaded_stats = load_stats_in(root);
+        assert_eq!(loaded_stats.tts.total_characters, 16);
+        assert_eq!(loaded_stats.tokens.total_tokens, 1200);
     }
 }

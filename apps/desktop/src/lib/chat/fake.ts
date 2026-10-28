@@ -26,6 +26,18 @@ export function fakeAgentApi(agents: AgentStatus[] = []) {
     setConfigOption: vi.fn(async () => {}),
     setAutoApprove: vi.fn(async () => {}),
     getAutoApprove: vi.fn(async () => false),
+    loadConversation: vi.fn(async () => null),
+    saveConversation: vi.fn(async () => {}),
+    getProjectStats: vi.fn(async () => ({
+      tts: { totalCharacters: 0, totalCostUsd: 0, items: [] },
+      tokens: { inputTokens: 0, outputTokens: 0, totalTokens: 0, totalCostUsd: 0 },
+      totalCostUsd: 0,
+    })),
+    recordTokenUsage: vi.fn(async () => ({
+      tts: { totalCharacters: 0, totalCostUsd: 0, items: [] },
+      tokens: { inputTokens: 0, outputTokens: 0, totalTokens: 0, totalCostUsd: 0 },
+      totalCostUsd: 0,
+    })),
     on: (h: (e: AgentEvent) => void) => {
       handler = h;
       return () => (handler = undefined);

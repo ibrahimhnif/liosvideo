@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { render } from "vitest-browser-svelte";
 import { userEvent } from "vitest/browser";
 import { fakeAgentApi } from "$lib/chat/fake";
@@ -132,5 +132,36 @@ describe("ChatPane", () => {
     expect(api.setAutoApprove).toHaveBeenCalledWith(true);
     await yoloBtn.click();
     expect(api.setAutoApprove).toHaveBeenCalledWith(false);
+  });
+
+  it("loads saved conversation on mount", async () => {
+    const { api } = fakeAgentApi();
+    api.loadConversation = vi.fn(async () =>
+      JSON.stringify({
+        items: [
+          { kind: "user", id: "u1", text: "Tolong ubah warna background" },
+          { kind: "agent", id: "m2", text: "Background berhasil diubah." },
+        ],
+      })
+    );
+    const screen = await render(ChatPane, { api, playhead: { frame: 0, fps: 30 }, onClearSelection: () => {} });
+    await expect.element(screen.getByText("Tolong ubah warna background")).toBeVisible();
+    await expect.element(screen.getByText("Background berhasil diubah.")).toBeVisible();
+  });
+
+  it("displays cost tracing badge and toggles detail breakdown", async () => {
+    const { api } = fakeAgentApi();
+    api.getProjectStats = vi.fn(async () => ({
+      tts: { totalCharacters: 1500, totalCostUsd: 0.024, items: [] },
+      tokens: { inputTokens: 5000, outputTokens: 1000, totalTokens: 6000, totalCostUsd: 0.03 },
+      totalCostUsd: 0.054,
+    }));
+    const screen = await render(ChatPane, { api, playhead: { frame: 0, fps: 30 }, onClearSelection: () => {} });
+    const costBtn = screen.getByRole("button", { name: /💰 \$0\.054/ });
+    await expect.element(costBtn).toBeVisible();
+    await costBtn.click();
+    await expect.element(screen.getByText(/Cost & Usage Tracing/)).toBeVisible();
+    await expect.element(screen.getByText(/TTS Audio Synthesis/)).toBeVisible();
+    await expect.element(screen.getByText(/LLM Token Consumption/)).toBeVisible();
   });
 });

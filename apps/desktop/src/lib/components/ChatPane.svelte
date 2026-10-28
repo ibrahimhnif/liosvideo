@@ -1,8 +1,8 @@
 <script lang="ts">
-  import { onMount, tick } from "svelte";
+  import { onDestroy, onMount, tick } from "svelte";
   import { invoke } from "@tauri-apps/api/core";
   import { listen } from "@tauri-apps/api/event";
-  import type { AgentApi, SelectionContext } from "$lib/chat/api";
+  import type { AgentApi, ProjectStats, SelectionContext } from "$lib/chat/api";
   import { applyEvent, initialChat, type ChatEvent } from "$lib/chat/reduce";
   import { detectOutOfScopeChanges } from "$lib/chat/scope_warning";
   import { selectionLabel, type Selection } from "$lib/timeline/model";
@@ -22,6 +22,9 @@
   let list: HTMLDivElement | undefined = $state();
   let yolo = $state(false);
   let outOfScopeWarning = $state<{ files: string[]; commitId: string } | null>(null);
+  let stats = $state<ProjectStats | null>(null);
+  let showStatsDetail = $state(false);
+  let saveTimer: ReturnType<typeof setTimeout> | undefined;
 
   $effect(() => {
     if (typeof localStorage !== "undefined") {
@@ -80,9 +83,30 @@
     api.setConfigOption("model", val).catch(fail);
   }
 
+  function scheduleSave() {
+    if (saveTimer) clearTimeout(saveTimer);
+    saveTimer = setTimeout(() => {
+      if (chat.items.length > 0) {
+        api.saveConversation(JSON.stringify({ items: chat.items })).catch(() => {});
+      }
+    }, 400);
+  }
+
   async function push(e: ChatEvent) {
     const atBottom = !list || list.scrollHeight - list.scrollTop - list.clientHeight < 40;
     chat = applyEvent(chat, e);
+    scheduleSave();
+
+    if (e.type === "turn" && e.state === "ended") {
+      const lastUser = [...chat.items].reverse().find((x) => x.kind === "user");
+      const lastAgent = [...chat.items].reverse().find((x) => x.kind === "agent");
+      const inChars = (lastUser?.kind === "user" ? lastUser.text.length : 0) + 400;
+      const outChars = lastAgent?.kind === "agent" ? lastAgent.text.length : 120;
+      const inTokens = Math.max(1, Math.round(inChars / 4));
+      const outTokens = Math.max(1, Math.round(outChars / 4));
+      api.recordTokenUsage(inTokens, outTokens, modelOption?.currentValue).catch(() => {});
+    }
+
     if (atBottom) {
       await tick();
       list?.scrollTo({ top: list.scrollHeight });
@@ -92,6 +116,34 @@
   onMount(() => {
     const unsubApi = api.on(push);
     let unsubEvent: (() => void) | undefined;
+    let unsubStats: (() => void) | undefined;
+
+    api.loadConversation().then((saved) => {
+      if (saved) {
+        try {
+          const parsed = JSON.parse(saved);
+          if (Array.isArray(parsed.items) && parsed.items.length > 0) {
+            chat = {
+              ...chat,
+              items: parsed.items,
+              nextId: Math.max(...parsed.items.map((i: any) => parseInt(String(i.id).slice(1)) || 0), 0) + 1,
+            };
+          }
+        } catch {
+          // Ignore parse errors on corrupted local file
+        }
+      }
+    }).catch(() => {});
+
+    api.getProjectStats().then((s) => {
+      if (s) stats = s;
+    }).catch(() => {});
+
+    listen<ProjectStats>("project://stats_updated", (e) => {
+      if (e.payload) stats = e.payload;
+    }).then((u) => {
+      unsubStats = u;
+    }).catch(() => {});
 
     listen<{ id: string; summary: string }>("project://committed", async (e) => {
       if (!selection || e.payload.summary.startsWith("Revert out-of-scope")) return;
@@ -112,8 +164,10 @@
     }).catch(() => {});
 
     return () => {
+      if (saveTimer) clearTimeout(saveTimer);
       unsubApi();
       unsubEvent?.();
+      unsubStats?.();
     };
   });
 
@@ -188,6 +242,15 @@
     {/if}
     <span class="spacer"></span>
     <button
+      type="button"
+      class="cost-btn"
+      class:active={showStatsDetail}
+      onclick={() => (showStatsDetail = !showStatsDetail)}
+      title="Cost & Usage Tracing (TTS & Tokens)"
+    >
+      💰 {stats?.totalCostUsd ? `$${stats.totalCostUsd.toFixed(3)}` : "$0.00"}
+    </button>
+    <button
       class="yolo-btn"
       class:active={yolo}
       onclick={toggleYolo}
@@ -201,6 +264,61 @@
       <button onclick={() => api.connect().catch(fail)}>{chat.connection ? "Reconnect" : "Connect"}</button>
     {/if}
   </div>
+  {#if showStatsDetail}
+    <div class="stats-panel">
+      <div class="stats-header">
+        <span class="stats-title">💰 Cost & Usage Tracing</span>
+        <button class="stats-close" onclick={() => (showStatsDetail = false)}>✕</button>
+      </div>
+      <div class="stats-body">
+        <div class="stats-row total">
+          <span>Total Project Cost:</span>
+          <strong>${(stats?.totalCostUsd ?? 0).toFixed(4)}</strong>
+        </div>
+        <div class="stats-section">
+          <div class="stats-subhead">🎙️ TTS Audio Synthesis</div>
+          <div class="stats-row">
+            <span>Characters:</span>
+            <span>{(stats?.tts?.totalCharacters ?? 0).toLocaleString()} chars</span>
+          </div>
+          <div class="stats-row">
+            <span>Est. Cost:</span>
+            <span>${(stats?.tts?.totalCostUsd ?? 0).toFixed(4)}</span>
+          </div>
+          {#if stats?.tts?.items && stats.tts.items.length > 0}
+            <div class="tts-history">
+              {#each [...stats.tts.items].reverse().slice(0, 4) as item}
+                <div class="tts-history-item">
+                  <span class="line-id">{item.lineId}</span>
+                  <span class="voice-name">{item.provider}</span>
+                  <span class="chars">{item.characters}c (${item.costUsd.toFixed(4)})</span>
+                </div>
+              {/each}
+            </div>
+          {/if}
+        </div>
+        <div class="stats-section">
+          <div class="stats-subhead">🤖 LLM Token Consumption</div>
+          <div class="stats-row">
+            <span>Input Tokens:</span>
+            <span>{(stats?.tokens?.inputTokens ?? 0).toLocaleString()}</span>
+          </div>
+          <div class="stats-row">
+            <span>Output Tokens:</span>
+            <span>{(stats?.tokens?.outputTokens ?? 0).toLocaleString()}</span>
+          </div>
+          <div class="stats-row">
+            <span>Total Tokens:</span>
+            <span>{(stats?.tokens?.totalTokens ?? 0).toLocaleString()}</span>
+          </div>
+          <div class="stats-row">
+            <span>Est. Cost:</span>
+            <span>${(stats?.tokens?.totalCostUsd ?? 0).toFixed(4)}</span>
+          </div>
+        </div>
+      </div>
+    </div>
+  {/if}
   {#if chat.connection?.state === "auth_required"}
     <div class="auth">
       <p>The agent needs you to log in.</p>
@@ -276,4 +394,106 @@
   .working { color: var(--muted); font-size: 12px; }
   .composer { display: flex; gap: 6px; padding: 8px 12px 12px; align-items: flex-end; }
   textarea { flex: 1; resize: none; font: inherit; padding: 6px 8px; border-radius: 8px; border: 1px solid var(--border); background: var(--bg); color: var(--fg); }
+
+  .cost-btn {
+    font-size: 11px;
+    padding: 2px 7px;
+    border-radius: 4px;
+    border: 1px solid var(--border);
+    background: transparent;
+    color: var(--fg);
+    cursor: pointer;
+    transition: all 0.15s ease;
+  }
+  .cost-btn:hover, .cost-btn.active {
+    background: rgba(46, 160, 67, 0.15);
+    border-color: #2ea043;
+    color: #3fb950;
+  }
+
+  .stats-panel {
+    border-bottom: 1px solid var(--border);
+    background: #161b22;
+    padding: 10px 14px;
+    font-size: 12px;
+    animation: fadeIn 0.15s ease;
+  }
+  .stats-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 8px;
+    padding-bottom: 4px;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+  }
+  .stats-title {
+    font-weight: 600;
+    color: #f0f6fc;
+  }
+  .stats-close {
+    background: none;
+    border: none;
+    color: var(--muted);
+    font-size: 12px;
+    cursor: pointer;
+    padding: 2px 6px;
+  }
+  .stats-close:hover {
+    color: #f0f6fc;
+  }
+  .stats-body {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+  }
+  .stats-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    color: #c9d1d9;
+    font-size: 11px;
+  }
+  .stats-row.total {
+    font-size: 13px;
+    color: #3fb950;
+    font-weight: 500;
+    margin-bottom: 4px;
+  }
+  .stats-section {
+    background: #0d1117;
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    padding: 8px;
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+  }
+  .stats-subhead {
+    font-size: 11px;
+    font-weight: 600;
+    color: #58a6ff;
+    margin-bottom: 2px;
+  }
+  .tts-history {
+    margin-top: 4px;
+    padding-top: 4px;
+    border-top: 1px solid rgba(255, 255, 255, 0.05);
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+  }
+  .tts-history-item {
+    display: flex;
+    justify-content: space-between;
+    font-size: 10px;
+    color: var(--muted);
+  }
+  .tts-history-item .line-id {
+    color: #e6edf3;
+    font-family: monospace;
+  }
+  @keyframes fadeIn {
+    from { opacity: 0; transform: translateY(-4px); }
+    to { opacity: 1; transform: translateY(0); }
+  }
 </style>

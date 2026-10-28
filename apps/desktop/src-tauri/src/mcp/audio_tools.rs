@@ -73,12 +73,35 @@ impl Tool for TtsGenerateTool {
                 .generate(&line_id, &text, voice.as_deref(), &root)
                 .await?;
 
+            let provider_name = if voice.as_deref().unwrap_or("").starts_with("id-ID-")
+                || voice.as_deref().unwrap_or("").starts_with("en-US-")
+                || voice.as_deref().unwrap_or("").starts_with("en-GB-")
+            {
+                "google_cloud"
+            } else if voice.as_deref().unwrap_or("").starts_with("mock-") {
+                "mock"
+            } else {
+                "elevenlabs"
+            };
+
+            let stats = crate::project::record_tts_usage_in(
+                &root,
+                &line_id,
+                provider_name,
+                voice.as_deref().unwrap_or("default"),
+                &text,
+            ).ok();
+            if let Some(s) = &stats {
+                context.emitter.emit("project://stats_updated", json!(s));
+            }
+
             Ok(json!({
                 "line_id": result.line_id,
                 "audio_path": result.audio_rel_path,
                 "timing_path": result.timing_rel_path,
                 "duration": result.duration,
-                "words": result.words
+                "words": result.words,
+                "stats": stats
             }))
         })
     }

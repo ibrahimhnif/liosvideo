@@ -12,6 +12,34 @@ export type AgentSettings = { defaultAgent?: string; projectAgents: Record<strin
 
 export type AuthMethod = { id: string; name: string; description?: string | null };
 export type PermissionOption = { optionId: string; name: string; kind: string };
+export type TtsItemStat = {
+  lineId: string;
+  provider: string;
+  voice: string;
+  characters: number;
+  costUsd: number;
+  timestamp: number;
+};
+
+export type TtsStats = {
+  totalCharacters: number;
+  totalCostUsd: number;
+  items: TtsItemStat[];
+};
+
+export type TokenStats = {
+  inputTokens: number;
+  outputTokens: number;
+  totalTokens: number;
+  totalCostUsd: number;
+};
+
+export type ProjectStats = {
+  tts: TtsStats;
+  tokens: TokenStats;
+  totalCostUsd: number;
+};
+
 export type ConnectionState = "connecting" | "ready" | "auth_required" | "error" | "exited";
 
 /** Mirrors the Rust `SelectionContext`. */
@@ -65,6 +93,10 @@ export interface AgentApi {
   setConfigOption(configId: string, value: any): Promise<void>;
   setAutoApprove(enabled: boolean): Promise<void>;
   getAutoApprove(): Promise<boolean>;
+  loadConversation(): Promise<string | null>;
+  saveConversation(content: string): Promise<void>;
+  getProjectStats(): Promise<ProjectStats>;
+  recordTokenUsage(inputTokens: number, outputTokens: number, model?: string): Promise<ProjectStats>;
   /** Subscribes to agent events; returns an unsubscribe function. */
   on(handler: (e: AgentEvent) => void): () => void;
 }
@@ -97,6 +129,11 @@ export const tauriAgentApi: AgentApi = {
   setConfigOption: (configId, value) => invoke("agent_set_config_option", { configId, value }),
   setAutoApprove: (enabled) => invoke("agent_set_auto_approve", { enabled }),
   getAutoApprove: () => invoke<boolean>("agent_get_auto_approve"),
+  loadConversation: () => invoke<string | null>("load_conversation"),
+  saveConversation: (content) => invoke("save_conversation", { content }),
+  getProjectStats: () => invoke<ProjectStats>("get_project_stats"),
+  recordTokenUsage: (inputTokens, outputTokens, model) =>
+    invoke<ProjectStats>("record_token_usage", { inputTokens, outputTokens, model }),
   on(handler) {
     const offs = (["status", "update", "permission", "turn", "asset_request"] as const).map((type) =>
       listen<any>(`agent://${type}`, (e) => handler({ type, ...e.payload })),
