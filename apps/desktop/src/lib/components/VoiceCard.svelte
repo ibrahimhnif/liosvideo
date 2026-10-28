@@ -1,5 +1,6 @@
 <script lang="ts">
   import { invoke, convertFileSrc } from "@tauri-apps/api/core";
+  import { Mic, Pause, Play, Square, Volume2 } from "@lucide/svelte";
   import { VoiceRecorder } from "$lib/audio/recorder";
 
   let {
@@ -78,7 +79,7 @@
 
 <div class="voice-card">
   <div class="header">
-    <span class="badge">Voice Line</span>
+    <span class="badge"><Volume2 size={10} /> Voice Line</span>
     <span class="line-id">{lineId}</span>
   </div>
 
@@ -94,15 +95,23 @@
   <div class="actions">
     {#if currentAudioUrl}
       <button class="btn play" onclick={togglePlay} aria-label={isPlaying ? "Pause audio" : "Play audio"}>
-        {isPlaying ? "❚❚ Pause" : "▶ Listen"}
+        {#if isPlaying}
+          <Pause size={12} fill="currentColor" />
+          <span>Pause</span>
+        {:else}
+          <Play size={12} fill="currentColor" />
+          <span>Listen</span>
+        {/if}
       </button>
     {/if}
 
     <button class="btn record" class:recording={isRecording} onclick={toggleRecord}>
       {#if isRecording}
-        <span class="dot"></span> Stop & Save (00:{recordSeconds.toString().padStart(2, "0")})
+        <Square size={12} fill="currentColor" />
+        <span>Stop & Save (00:{recordSeconds.toString().padStart(2, "0")})</span>
       {:else}
-        🎙 Record Take
+        <Mic size={12} />
+        <span>Record Take</span>
       {/if}
     </button>
   </div>
@@ -133,6 +142,9 @@
     text-transform: uppercase;
     padding: 2px 6px;
     border-radius: 4px;
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
   }
   .line-id {
     font-family: ui-monospace, monospace;
@@ -168,17 +180,5 @@
     background: #ef4444;
     border-color: #ef4444;
     color: white;
-  }
-  .dot {
-    width: 8px;
-    height: 8px;
-    border-radius: 50%;
-    background: white;
-    display: inline-block;
-    animation: blink 1s infinite;
-  }
-  @keyframes blink {
-    0%, 100% { opacity: 1; }
-    50% { opacity: 0.3; }
   }
 </style>

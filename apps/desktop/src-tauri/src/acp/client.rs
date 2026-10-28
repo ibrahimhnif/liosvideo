@@ -60,7 +60,7 @@ impl AcpClient {
         let params = json!({
             "protocolVersion": PROTOCOL_VERSION,
             "clientCapabilities": { "fs": { "readTextFile": true, "writeTextFile": true }, "terminal": false },
-            "clientInfo": { "name": "liosvideo", "title": "liosvideo", "version": env!("CARGO_PKG_VERSION") },
+            "clientInfo": { "name": "liosvideo", "title": "Liosvideo", "version": env!("CARGO_PKG_VERSION") },
         });
         let raw = self.conn.request("initialize", params).await?;
         let caps = &raw["agentCapabilities"];

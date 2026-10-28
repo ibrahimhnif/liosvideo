@@ -19,3 +19,4 @@ export * from "./mockups/editor";
 export * from "./mockups/cursor";
 export * from "./mockups/focus";
 export * from "./mockups/phone";
+export * from "./mockups/logo";

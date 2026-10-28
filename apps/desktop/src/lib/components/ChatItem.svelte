@@ -1,4 +1,12 @@
 <script lang="ts">
+  import {
+    Brain,
+    CheckCircle2,
+    Circle,
+    Clock,
+    ListTodo,
+    Wrench,
+  } from "@lucide/svelte";
   import type { ChatItem } from "$lib/chat/reduce";
   import AssetCard from "./AssetCard.svelte";
   import PermissionCard from "./PermissionCard.svelte";
@@ -33,10 +41,20 @@
 {:else if item.kind === "agent"}
   <div class="bubble agent"><div class="text">{item.text}</div></div>
 {:else if item.kind === "thought"}
-  <details class="thought"><summary>Thinking</summary><div class="text">{item.text}</div></details>
+  <details class="thought">
+    <summary>
+      <Brain size={12} />
+      <span>Thinking</span>
+    </summary>
+    <div class="text">{item.text}</div>
+  </details>
 {:else if item.kind === "tool"}
   <details class="tool">
-    <summary><span class="status {item.status}">{item.status}</span> {item.title}</summary>
+    <summary>
+      <Wrench size={12} />
+      <span class="status {item.status}">{item.status}</span>
+      <span>{item.title}</span>
+    </summary>
     {#if item.locations}
       {#each item.locations as l, i (`${i}-${l}`)}<div class="mono">{l}</div>{/each}
     {/if}
@@ -46,9 +64,23 @@
   </details>
 {:else if item.kind === "plan"}
   <div class="plan">
-    <div class="label">Plan</div>
+    <div class="label">
+      <ListTodo size={13} />
+      <span>Plan</span>
+    </div>
     {#if item.entries}
-      {#each item.entries as e, i (i)}<div class="entry {e.status}">{e.status === "completed" ? "✓" : e.status === "in_progress" ? "▸" : "○"} {e.content}</div>{/each}
+      {#each item.entries as e, i (i)}
+        <div class="entry {e.status}">
+          {#if e.status === "completed"}
+            <CheckCircle2 size={12} />
+          {:else if e.status === "in_progress"}
+            <Clock size={12} />
+          {:else}
+            <Circle size={12} />
+          {/if}
+          <span>{e.content}</span>
+        </div>
+      {/each}
     {/if}
   </div>
 {:else if item.kind === "permission"}
@@ -73,13 +105,14 @@
   .small { font-size: 12px; color: var(--muted); }
   .sel { font-size: 11px; color: var(--muted); margin-bottom: 3px; }
   details { font-size: 12px; color: var(--muted); }
-  summary { cursor: pointer; }
+  summary { cursor: pointer; display: inline-flex; align-items: center; gap: 5px; }
   .mono { font-family: ui-monospace, monospace; font-size: 11px; word-break: break-all; }
   .status { text-transform: uppercase; font-size: 9px; padding: 1px 4px; border-radius: 3px; background: var(--raised); }
   .status.completed { color: #2e9d57; }
   .status.failed { color: var(--danger); }
   .plan { font-size: 12px; border-left: 2px solid var(--border); padding-left: 8px; }
-  .label { font-weight: 600; margin-bottom: 2px; }
+  .label { font-weight: 600; margin-bottom: 4px; display: inline-flex; align-items: center; gap: 5px; }
+  .entry { display: flex; align-items: center; gap: 6px; margin: 2px 0; }
   .entry.completed { color: var(--muted); text-decoration: line-through; }
   .notice { font-size: 12px; white-space: pre-wrap; word-break: break-word; }
   .notice.error { color: var(--danger); }

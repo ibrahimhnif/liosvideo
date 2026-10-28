@@ -1,5 +1,14 @@
 <script lang="ts">
   import { invoke } from "@tauri-apps/api/core";
+  import {
+    AlertCircle,
+    AlertTriangle,
+    Check,
+    CheckCircle2,
+    Loader2,
+    RefreshCw,
+    X,
+  } from "@lucide/svelte";
 
   export type SceneValidationIssue = {
     severity: "error" | "warning";
@@ -72,15 +81,29 @@
           <h2 id="validation-title">Scene Code Validator</h2>
           {#if !loading && results.length > 0}
             <span class="status-pill" class:success={allValid} class:failure={!allValid}>
-              {allValid ? "✓ All Scenes Valid" : `⚠️ ${totalErrors} Errors, ${totalWarnings} Warnings`}
+              {#if allValid}
+                <CheckCircle2 size={13} />
+                <span>All Scenes Valid</span>
+              {:else}
+                <AlertTriangle size={13} />
+                <span>{totalErrors} Errors, {totalWarnings} Warnings</span>
+              {/if}
             </span>
           {/if}
         </div>
         <div class="header-actions">
           <button class="btn-secondary" onclick={runValidation} disabled={loading} title="Re-run scene validation">
-            {loading ? "Validating..." : "↻ Re-validate"}
+            {#if loading}
+              <Loader2 size={13} class="spin" />
+              <span>Validating...</span>
+            {:else}
+              <RefreshCw size={13} />
+              <span>Re-validate</span>
+            {/if}
           </button>
-          <button class="close-btn" onclick={onClose} aria-label="Close modal">×</button>
+          <button class="close-btn" onclick={onClose} aria-label="Close modal">
+            <X size={16} />
+          </button>
         </div>
       </div>
 
@@ -98,7 +121,8 @@
 
         {#if loading}
           <div class="loading-state">
-            <span class="spinner">⏳</span> Checking scene files...
+            <Loader2 size={16} class="spin" />
+            <span>Checking scene files...</span>
           </div>
         {:else if results.length === 0}
           <div class="empty-state">
@@ -116,7 +140,13 @@
                     {/if}
                   </div>
                   <span class="file-status" class:pass={r.valid} class:fail={!r.valid}>
-                    {r.valid ? "✓ Pass" : "✕ Issues"}
+                    {#if r.valid}
+                      <CheckCircle2 size={12} />
+                      <span>Pass</span>
+                    {:else}
+                      <AlertCircle size={12} />
+                      <span>Issues</span>
+                    {/if}
                   </span>
                 </div>
 
@@ -124,7 +154,13 @@
                   <div class="issues-list">
                     {#each r.issues as issue}
                       <div class="issue-item {issue.severity}">
-                        <span class="issue-icon">{issue.severity === "error" ? "❌" : "⚠️"}</span>
+                        <span class="issue-icon">
+                          {#if issue.severity === "error"}
+                            <AlertCircle size={14} />
+                          {:else}
+                            <AlertTriangle size={14} />
+                          {/if}
+                        </span>
                         <div class="issue-body">
                           {#if issue.line}
                             <span class="line-badge">Line {issue.line}</span>
@@ -135,7 +171,10 @@
                     {/each}
                   </div>
                 {:else}
-                  <p class="clean-note">✓ Fully deterministic, valid imports, and correct scene export structure.</p>
+                  <p class="clean-note">
+                    <Check size={13} />
+                    <span>Fully deterministic, valid imports, and correct scene export structure.</span>
+                  </p>
                 {/if}
               </div>
             {/each}
@@ -205,6 +244,9 @@
     font-weight: 600;
     padding: 3px 8px;
     border-radius: 12px;
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
   }
   .status-pill.success {
     background: rgba(34, 197, 94, 0.15);
@@ -224,6 +266,9 @@
     background: var(--raised);
     color: var(--fg);
     cursor: pointer;
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
   }
   .btn-secondary:hover:not(:disabled) {
     background: var(--bg);
@@ -232,16 +277,25 @@
   .close-btn {
     background: none;
     border: none;
-    font-size: 20px;
-    line-height: 1;
     color: var(--muted);
     cursor: pointer;
-    padding: 4px 8px;
+    padding: 4px;
     border-radius: 4px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
   }
   .close-btn:hover {
     color: var(--fg);
     background: var(--raised);
+  }
+
+  :global(.spin) {
+    animation: spin 1s linear infinite;
+  }
+  @keyframes spin {
+    from { transform: rotate(0deg); }
+    to { transform: rotate(360deg); }
   }
 
   .content {
@@ -327,6 +381,9 @@
   .file-status {
     font-size: 11px;
     font-weight: 600;
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
   }
   .file-status.pass {
     color: #22c55e;
@@ -348,6 +405,12 @@
     gap: 8px;
     font-size: 12px;
     line-height: 1.4;
+  }
+
+  .issue-icon {
+    display: inline-flex;
+    align-items: center;
+    margin-top: 1px;
   }
 
   .issue-body {
@@ -379,6 +442,9 @@
     padding: 10px 14px;
     font-size: 12px;
     color: #22c55e;
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
   }
 
   .footer {

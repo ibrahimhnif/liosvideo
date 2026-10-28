@@ -1,0 +1,26 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512">
+  <rect
+    name="plate"
+    x="12"
+    y="12"
+    width="488"
+    height="488"
+    rx="133"
+    ry="133"
+    fill="#16161e"
+    stroke="#7aa2f7"
+    stroke-width="16"
+  />
+  <path
+    name="playGlyph"
+    d="M 204.8 153.6 L 368.64 256 L 204.8 358.4 Z"
+    fill="#7aa2f7"
+  />
+  <circle
+    name="sparkDot"
+    cx="409.6"
+    cy="102.4"
+    r="25.6"
+    fill="#9ece6a"
+  />
+</svg>

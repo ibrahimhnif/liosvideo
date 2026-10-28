@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { CheckCircle2, FileUp, SkipForward } from "@lucide/svelte";
   import type { ChatItem } from "$lib/chat/reduce";
   import { open } from "@tauri-apps/plugin-dialog";
 
@@ -77,8 +78,14 @@
     aria-label="File drop zone"
   >
     <div class="actions">
-      <button class="choose" disabled={answered} onclick={chooseFile}>Choose File</button>
-      <button class="skip" disabled={answered} onclick={skip}>Skip</button>
+      <button class="choose" disabled={answered} onclick={chooseFile}>
+        <FileUp size={12} />
+        <span>Choose File</span>
+      </button>
+      <button class="skip" disabled={answered} onclick={skip}>
+        <SkipForward size={12} />
+        <span>Skip</span>
+      </button>
       <input
         type="file"
         bind:this={fileInput}
@@ -89,9 +96,15 @@
   </div>
 
   {#if item.answer === "provided"}
-    <div class="status provided">✓ Provided: {item.filePath ?? item.assetId}</div>
+    <div class="status provided">
+      <CheckCircle2 size={12} />
+      <span>Provided: {item.filePath ?? item.assetId}</span>
+    </div>
   {:else if item.answer === "skipped"}
-    <div class="status skipped">Skipped</div>
+    <div class="status skipped">
+      <SkipForward size={12} />
+      <span>Skipped</span>
+    </div>
   {:else if item.answer === "cancelled"}
     <div class="status cancelled">Cancelled</div>
   {/if}
@@ -167,6 +180,9 @@
     background: var(--raised);
     color: var(--fg);
     cursor: pointer;
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
   }
   button.choose {
     background: color-mix(in srgb, #4f8cff 18%, var(--raised));
@@ -182,6 +198,9 @@
   .status {
     font-size: 11px;
     margin-top: 2px;
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
   }
   .status.provided {
     color: #2e9d57;

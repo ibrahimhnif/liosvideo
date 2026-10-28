@@ -1,42 +1,68 @@
-# liosvideo
+<p align="center">
+  <img src="apps/desktop/static/logo.svg" alt="Liosvideo Logo" width="96" height="96" />
+</p>
 
-> **Deterministic, code-first video platform powered by WebGPU, Web Audio, and WebCodecs, built for pair-programming with AI coding agents.**
+<h1 align="center">Liosvideo</h1>
+
+<p align="center">
+  <strong>Deterministic, code-first video creation engine powered by WebGPU, Web Audio, and WebCodecs, built for pair-programming with AI coding agents.</strong>
+</p>
+
+<p align="center">
+  <a href="#key-features">Features</a> •
+  <a href="#getting-started">Getting Started</a> •
+  <a href="#agent-guidance">Agent Guidance</a> •
+  <a href="#custom-skills">Custom Skills</a> •
+  <a href="#license">License</a>
+</p>
 
 ---
 
 ## Overview
 
-**liosvideo** turns technical video production into a software engineering workflow. Instead of clicking around a timeline in a heavy GUI video editor, videos are authored as pure, deterministic TypeScript code.
+**Liosvideo** turns technical video production into a software engineering workflow. Instead of clicking around a timeline in a traditional GUI video editor, videos are authored as pure, deterministic TypeScript code.
 
-An AI coding agent (Claude Code, Gemini CLI, Codex, or custom ACP agents) researches topics, writes scripts, builds scenes, generates realistic app/desktop mockups, coordinates speech narration, and refines animations. The desktop app provides a live hot-reloading WebGPU preview, synchronized audio playback, scrubbable multi-track timeline, visual diff verification, and hardware-accelerated MP4 export.
+An AI coding agent (Claude Code, Gemini CLI, Codex, Antigravity, or custom ACP agents) researches topics, writes scripts, builds scenes, creates realistic mockups, coordinates speech narration, and refines animations. The desktop app provides a live hot-reloading WebGPU preview, synchronized audio playback, scrubbable multi-track timeline, visual diff verification, and hardware-accelerated MP4 export.
 
 ---
 
 ## Key Features
 
 - **Pure Deterministic Runtime (`@liosvideo/runtime`)**:
-  - Declarative scene graph with nested transforms, anchors, clipping, opacity, blur, and custom easing curves.
+  - Declarative scene graph with nested transforms, anchors, clipping, opacity, blur, custom shaders, and easing curves.
   - Seeking to any frame produces the exact same pixels as real-time playback.
-  - Scene Transitions: `fade`, `slide`, `zoom`, `wipe`.
+  - Built-in transitions: `fade`, `slide`, `zoom`, `wipe`, and custom transition callbacks.
+  - Built-in `logoMark(name, size, x, y)` helper with Tokyo Night palette for branding & channel openers.
 - **Pixel-Perfect Realistic Mockups**:
   - Built-in components: macOS `desktop`, `window`, `chrome`, `terminal`, `editor` (VS Code style), `cursor`, `focus()` depth-of-field, and `phone` (9:16 mobile frame).
 - **ACP (Agent Client Protocol) & Editor MCP Server**:
-  - Connects to any ACP agent the user has installed.
-  - Embedded MCP server gives the agent tools to inspect project state, capture rendered frames (`render_frame`), evaluate timelines, and synthesize narration.
+  - Connects to any ACP agent installed on your machine.
+  - Embedded MCP server provides tools to inspect project state, capture rendered frames (`render_frame`), evaluate timelines, and synthesize narration.
   - Interactive chat stream cards for permissions, asset requests, and voice lines.
+- **Persistent Git-Tracked History & Chat Sessions**:
+  - Conversation history with AI agents is automatically stored in the project repository and persists across reloads.
+  - Git checkpoints commit changes at the end of every agent turn and recording take.
+  - Visual diff viewer and lossless "Restore to here" checkpointing.
+  - Out-of-scope revision warning banner with one-click revert.
+- **Cost & Usage Tracing**:
+  - Real-time cost tracing dialog for TTS audio generation (character counting & provider pricing).
+  - LLM token consumption tracking (input, output, and estimated USD total cost).
+- **Asset Attachment & Image Ingestion**:
+  - Drag-and-drop, clipboard paste, or file upload directly into the chat composer.
+  - Images are automatically organized in `assets/images/` and ready for scene integration.
 - **Narration & Speech Synchronization**:
   - Word-level audio alignment synchronization with `vo(id).wordTime(...)`.
-  - Built-in TTS support (ElevenLabs live cloud, Google Cloud TTS, and mock offline engine).
-  - In-app microphone recording with waveform visualizer and git checkpoints.
-  - Secure API key management backed by macOS Keychain (`/usr/bin/security`).
+  - Multi-provider TTS: ElevenLabs (live cloud, multilingual, and custom voice clones) & Google Cloud TTS (Bahasa Indonesia Neural2/Wavenet, Journey voices).
+  - In-app microphone voice recording with live waveform and take management.
+  - Secure API key storage via macOS Keychain (`/usr/bin/security`).
 - **Hardware-Accelerated MP4 Export**:
   - Offline frame rendering with WebCodecs H.264 video encoding.
   - Web Audio `OfflineAudioContext` mixdown with AAC encoding and `mp4-muxer`.
-  - Resolution presets for 1080p, 4K, and 9:16 mobile formats.
-- **Git-Tracked History**:
-  - Automatic commits at the end of every agent turn and recording take.
-  - Visual diff viewer and lossless "Restore to here" checkpointing.
-  - Out-of-scope revision warning banner with one-click revert.
+  - Presets for 1080p, 4K, and 9:16 vertical shorts/reels.
+- **Modern & Responsive Desktop UI**:
+  - Svelte 5 and Tauri 2 architecture.
+  - Draggable, resizable sidebar with persistent width settings.
+  - Uniform vector iconography powered by `@lucide/svelte`.
 
 ---
 
@@ -45,8 +71,8 @@ An AI coding agent (Claude Code, Gemini CLI, Codex, or custom ACP agents) resear
 ```
 ├── apps/
 │   └── desktop/            # Tauri 2 + Svelte 5 desktop application
-│       ├── src/            # Svelte frontend UI (preview, timeline, chat, export)
-│       └── src-tauri/      # Rust backend (ACP client, MCP server, git, TTS, audio)
+│       ├── src/            # Svelte frontend UI (preview, timeline, chat, export, settings)
+│       └── src-tauri/      # Rust backend (ACP client, MCP server, git, TTS, keychain)
 ├── packages/
 │   └── runtime/            # @liosvideo/runtime declarative TypeScript video engine
 ├── skills/
@@ -75,11 +101,12 @@ cd liosvideo
 # Install dependencies
 pnpm install
 
-# Run tests across all workspaces
+# Run unit and browser tests
 pnpm test
+pnpm --filter desktop test:browser
 ```
 
-### Development
+### Running Desktop in Development
 
 ```bash
 # Start the desktop application in development mode
@@ -90,9 +117,20 @@ pnpm --filter desktop tauri dev
 
 ## Agent Guidance
 
-liosvideo includes a universal agent guide and skill designed to work out-of-the-box with ACP agents:
+Liosvideo includes universal agent guidance and skills designed to pair program with ACP agents out-of-the-box:
+
 - See [`AGENTS.md`](./AGENTS.md) for the complete developer and agent reference.
-- See [`skills/liosvideo/SKILL.md`](./skills/liosvideo/SKILL.md) for the master director skill.
+- See [`skills/liosvideo/SKILL.md`](./skills/liosvideo/SKILL.md) for the master video director skill.
+
+---
+
+## Custom Skills
+
+You can establish consistent styles, palettes, character animations, or company brand guidelines by creating custom skills:
+
+1. Add your custom skill under `.agents/skills/<skill-name>/SKILL.md` (project-level) or `skills/<skill-name>/SKILL.md` (repository-level).
+2. Define preferred typography, layout rules, reusable helper functions (e.g. `logoMark`), and voice choices.
+3. Your ACP agent will automatically load and adhere to the skill instructions when generating or revising scenes.
 
 ---
 

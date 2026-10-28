@@ -2,6 +2,19 @@
   import { onDestroy, onMount, tick } from "svelte";
   import { invoke } from "@tauri-apps/api/core";
   import { listen } from "@tauri-apps/api/event";
+  import {
+    Coins,
+    Cpu,
+    ImagePlus,
+    Mic,
+    Plug,
+    RefreshCw,
+    SendHorizontal,
+    Square,
+    Trash2,
+    X,
+    Zap,
+  } from "@lucide/svelte";
   import type { AgentApi, ProjectStats, SelectionContext } from "$lib/chat/api";
   import { applyEvent, initialChat, type AttachedImage, type ChatEvent } from "$lib/chat/reduce";
   import { detectOutOfScopeChanges } from "$lib/chat/scope_warning";
@@ -451,16 +464,20 @@
       class:active={showStatsDetail}
       onclick={() => (showStatsDetail = !showStatsDetail)}
       title="Cost & Usage Tracing (TTS & Tokens)"
+      aria-label="💰 {stats?.totalCostUsd ? `$${stats.totalCostUsd.toFixed(3)}` : '$0.00'}"
     >
-      💰 {stats?.totalCostUsd ? `$${stats.totalCostUsd.toFixed(3)}` : "$0.00"}
+      <Coins size={12} />
+      <span>{stats?.totalCostUsd ? `$${stats.totalCostUsd.toFixed(3)}` : "$0.00"}</span>
     </button>
     <button
       class="yolo-btn"
       class:active={yolo}
       onclick={toggleYolo}
       title={yolo ? "Yolo mode active: permissions are auto-approved" : "Yolo mode off: prompt for permissions"}
+      aria-label="⚡ Yolo"
     >
-      ⚡ Yolo
+      <Zap size={12} />
+      <span>Yolo</span>
     </button>
     <button
       type="button"
@@ -470,19 +487,32 @@
       title="Clear conversation history"
       aria-label="Clear conversation history"
     >
-      🗑️
+      <Trash2 size={13} />
     </button>
     {#if running}
-      <button onclick={() => api.cancel().catch(fail)}>Cancel</button>
+      <button onclick={() => api.cancel().catch(fail)} class="action-btn">
+        <Square size={12} />
+        <span>Cancel</span>
+      </button>
     {:else}
-      <button onclick={() => api.connect().catch(fail)}>{chat.connection ? "Reconnect" : "Connect"}</button>
+      <button onclick={() => api.connect().catch(fail)} class="action-btn">
+        {#if chat.connection}
+          <RefreshCw size={12} />
+          <span>Reconnect</span>
+        {:else}
+          <Plug size={12} />
+          <span>Connect</span>
+        {/if}
+      </button>
     {/if}
   </div>
   {#if showStatsDetail}
     <div class="stats-panel">
       <div class="stats-header">
-        <span class="stats-title">💰 Cost & Usage Tracing</span>
-        <button class="stats-close" onclick={() => (showStatsDetail = false)}>✕</button>
+        <span class="stats-title"><Coins size={13} /> Cost & Usage Tracing</span>
+        <button class="stats-close" onclick={() => (showStatsDetail = false)} aria-label="Close stats">
+          <X size={14} />
+        </button>
       </div>
       <div class="stats-body">
         <div class="stats-row total">
@@ -490,7 +520,7 @@
           <strong>${(stats?.totalCostUsd ?? 0).toFixed(4)}</strong>
         </div>
         <div class="stats-section">
-          <div class="stats-subhead">🎙️ TTS Audio Synthesis</div>
+          <div class="stats-subhead"><Mic size={12} /> TTS Audio Synthesis</div>
           <div class="stats-row">
             <span>Characters:</span>
             <span>{(stats?.tts?.totalCharacters ?? 0).toLocaleString()} chars</span>
@@ -512,7 +542,7 @@
           {/if}
         </div>
         <div class="stats-section">
-          <div class="stats-subhead">🤖 LLM Token Consumption</div>
+          <div class="stats-subhead"><Cpu size={12} /> LLM Token Consumption</div>
           <div class="stats-row">
             <span>Input Tokens:</span>
             <span>{(stats?.tokens?.inputTokens ?? 0).toLocaleString()}</span>
@@ -574,7 +604,8 @@
               class="remove-img"
               onclick={() => removePendingImage(i)}
               title="Remove image"
-            >✕</button>
+              aria-label="Remove image"
+            ><X size={12} /></button>
           </div>
         {/each}
       </div>
@@ -602,11 +633,17 @@
         onclick={() => fileInput?.click()}
         title="Attach image (saved to assets/images/)"
       >
-        🖼️ Attach
+        <ImagePlus size={13} />
+        <span>Attach</span>
       </button>
       <span class="spacer"></span>
-      <button type="submit" disabled={!ready || running || (!text.trim() && pendingImages.length === 0)}>
-        Send
+      <button
+        type="submit"
+        class="send-btn"
+        disabled={!ready || running || (!text.trim() && pendingImages.length === 0)}
+      >
+        <span>Send</span>
+        <SendHorizontal size={13} />
       </button>
     </div>
   </form>
@@ -639,6 +676,9 @@
     color: var(--muted);
     cursor: pointer;
     transition: all 0.15s ease;
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
   }
   .yolo-btn.active {
     background: color-mix(in srgb, #e0a100 20%, transparent);
@@ -654,16 +694,29 @@
   .dot.error, .dot.exited { background: var(--danger); }
   button { font: inherit; font-size: 12px; padding: 3px 10px; border-radius: 6px; border: 1px solid var(--border); background: var(--raised); color: var(--fg); cursor: pointer; }
   button:disabled { opacity: 0.5; cursor: default; }
+  .action-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+  }
+  .send-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+  }
   .auth { padding: 8px 12px; display: flex; flex-wrap: wrap; gap: 6px; align-items: center; border-bottom: 1px solid var(--border); }
   .auth p { margin: 0; width: 100%; color: var(--muted); font-size: 12px; }
   .clear-btn {
     font-size: 11px;
-    padding: 2px 5px;
+    padding: 3px 6px;
     border-radius: 4px;
     border: 1px solid var(--border);
     background: transparent;
     color: var(--muted);
     cursor: pointer;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
   }
   .clear-btn:hover:not(:disabled) {
     color: var(--danger);
@@ -769,6 +822,9 @@
     color: var(--fg);
     cursor: pointer;
     transition: all 0.15s ease;
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
   }
   .cost-btn:hover, .cost-btn.active {
     background: rgba(46, 160, 67, 0.15);
@@ -794,6 +850,9 @@
   .stats-title {
     font-weight: 600;
     color: #f0f6fc;
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
   }
   .stats-close {
     background: none;
@@ -801,7 +860,11 @@
     color: var(--muted);
     font-size: 12px;
     cursor: pointer;
-    padding: 2px 6px;
+    padding: 2px 4px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 4px;
   }
   .stats-close:hover {
     color: #f0f6fc;
@@ -838,6 +901,9 @@
     font-weight: 600;
     color: #58a6ff;
     margin-bottom: 2px;
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
   }
   .tts-history {
     margin-top: 4px;

@@ -1,4 +1,11 @@
 <script lang="ts">
+  import {
+    AlertCircle,
+    CheckCircle2,
+    Film,
+    FolderOpen,
+    X,
+  } from "@lucide/svelte";
   import type { ExportConfig } from "$lib/export/export_engine";
 
   let {
@@ -119,8 +126,13 @@
   <div class="backdrop" role="dialog" aria-modal="true" aria-labelledby="export-title">
     <div class="modal">
       <div class="header">
-        <h2 id="export-title">Export Composition</h2>
-        <button class="close" onclick={handleCancel} aria-label="Close modal">×</button>
+        <h2 id="export-title">
+          <Film size={16} />
+          <span>Export Composition</span>
+        </h2>
+        <button class="close" onclick={handleCancel} aria-label="Close modal">
+          <X size={16} />
+        </button>
       </div>
 
       <div class="content">
@@ -173,13 +185,13 @@
           </div>
         {:else if status === "done"}
           <div class="done-view">
-            <span class="success-icon">✓</span>
+            <span class="success-icon"><CheckCircle2 size={40} /></span>
             <h3>Export Completed!</h3>
             <p class="file-path">{outputPath}</p>
           </div>
         {:else if status === "error"}
           <div class="error-view">
-            <span class="error-icon">⚠</span>
+            <span class="error-icon"><AlertCircle size={40} /></span>
             <h3>Export Failed</h3>
             <p class="error-msg">{errorMessage}</p>
           </div>
@@ -189,12 +201,18 @@
       <div class="footer">
         {#if status === "idle"}
           <button class="btn secondary" onclick={onClose}>Cancel</button>
-          <button class="btn primary" onclick={handleStart}>Start Export</button>
+          <button class="btn primary" onclick={handleStart}>
+            <Film size={14} />
+            <span>Start Export</span>
+          </button>
         {:else if status === "exporting"}
           <button class="btn danger" onclick={handleCancel}>Cancel Export</button>
         {:else if status === "done"}
           {#if onShowInFinder}
-            <button class="btn secondary" onclick={handleFinder}>Show in Finder</button>
+            <button class="btn secondary" onclick={handleFinder}>
+              <FolderOpen size={14} />
+              <span>Show in Finder</span>
+            </button>
           {/if}
           <button class="btn primary" onclick={onClose}>Close</button>
         {:else if status === "error"}
@@ -237,15 +255,23 @@
     margin: 0;
     font-size: 15px;
     font-weight: 600;
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
   }
   .close {
     background: none;
     border: none;
     color: var(--muted, #8d8d98);
-    font-size: 20px;
     cursor: pointer;
-    line-height: 1;
-    padding: 0;
+    padding: 2px;
+    border-radius: 4px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+  }
+  .close:hover {
+    color: var(--fg, #ececf0);
   }
   .content {
     padding: 18px;
@@ -351,26 +377,16 @@
     font-style: italic;
   }
   .success-icon {
-    display: grid;
-    place-items: center;
-    width: 44px;
-    height: 44px;
-    border-radius: 50%;
-    background: #10b981;
-    color: white;
-    font-size: 24px;
-    font-weight: bold;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    color: #10b981;
   }
   .error-icon {
-    display: grid;
-    place-items: center;
-    width: 44px;
-    height: 44px;
-    border-radius: 50%;
-    background: var(--danger, #ff5a5a);
-    color: white;
-    font-size: 24px;
-    font-weight: bold;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    color: var(--danger, #ff5a5a);
   }
   .file-path {
     font-size: 11px;
@@ -394,6 +410,9 @@
     font-weight: 500;
     cursor: pointer;
     border: 1px solid var(--border, #2e2e34);
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
   }
   .btn.primary {
     background: #4f8cff;

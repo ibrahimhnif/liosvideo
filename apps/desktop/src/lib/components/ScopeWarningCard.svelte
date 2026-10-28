@@ -1,4 +1,6 @@
 <script lang="ts">
+  import { AlertTriangle, Undo2, X } from "@lucide/svelte";
+
   let {
     files,
     onRevert,
@@ -24,10 +26,12 @@
 
 <div class="scope-warning-card" data-testid="scope-warning-card">
   <div class="header">
-    <span class="icon">⚠️</span>
+    <AlertTriangle size={15} color="#fbbf24" />
     <span class="title">Out-of-Scope Files Modified</span>
     {#if onDismiss}
-      <button class="dismiss-btn" onclick={onDismiss} title="Dismiss warning">×</button>
+      <button class="dismiss-btn" onclick={onDismiss} title="Dismiss warning" aria-label="Dismiss warning">
+        <X size={14} />
+      </button>
     {/if}
   </div>
   <p class="description">
@@ -45,7 +49,8 @@
         disabled={reverting}
         onclick={handleRevert}
       >
-        {reverting ? "Reverting..." : "Revert Out-of-Scope Files"}
+        <Undo2 size={13} />
+        <span>{reverting ? "Reverting..." : "Revert Out-of-Scope Files"}</span>
       </button>
     </div>
   {/if}
@@ -79,14 +84,18 @@
     background: transparent;
     border: none;
     color: #fef3c7;
-    font-size: 16px;
     cursor: pointer;
-    padding: 0 4px;
+    padding: 2px;
     opacity: 0.7;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 4px;
   }
 
   .dismiss-btn:hover {
     opacity: 1;
+    background: rgba(255, 255, 255, 0.1);
   }
 
   .description {
@@ -124,6 +133,9 @@
     font-weight: 500;
     cursor: pointer;
     transition: background 0.15s ease;
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
   }
 
   .revert-btn:hover:not(:disabled) {

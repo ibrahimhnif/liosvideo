@@ -1,5 +1,6 @@
 <script lang="ts">
   import type { SceneSpan } from "liosvideo";
+  import { Pause, Play } from "@lucide/svelte";
   import { formatTimecode } from "$lib/preview/clock";
 
   let {
@@ -13,7 +14,13 @@
 </script>
 
 <div class="transport">
-  <button class="play" onclick={onToggle} aria-label={playing ? "Pause" : "Play"}>{playing ? "❚❚" : "▶"}</button>
+  <button class="play" onclick={onToggle} aria-label={playing ? "Pause" : "Play"}>
+    {#if playing}
+      <Pause size={13} fill="currentColor" />
+    {:else}
+      <Play size={13} fill="currentColor" />
+    {/if}
+  </button>
   <span class="tc">{formatTimecode(frame, fps)}</span>
   <div class="scrub">
     <div class="markers">
@@ -34,7 +41,7 @@
 
 <style>
   .transport { display: flex; align-items: center; gap: 10px; padding: 8px 12px; border-top: 1px solid var(--border); }
-  .play { width: 32px; height: 28px; border-radius: 6px; border: 1px solid var(--border); background: var(--raised); color: var(--fg); cursor: pointer; }
+  .play { width: 32px; height: 28px; border-radius: 6px; border: 1px solid var(--border); background: var(--raised); color: var(--fg); cursor: pointer; display: inline-flex; align-items: center; justify-content: center; }
   .tc { font: 12px ui-monospace, Menlo, monospace; font-variant-numeric: tabular-nums; }
   .muted { color: var(--muted); }
   .scrub { flex: 1; display: grid; gap: 2px; min-width: 0; }

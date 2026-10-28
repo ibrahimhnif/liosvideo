@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { BookmarkPlus, GitCommit, History, RotateCcw } from "@lucide/svelte";
   import type { CommitInfo, FileDiff, HistoryApi, HistoryStatus } from "$lib/history/api";
   import { diffLines } from "$lib/history/diff";
 
@@ -61,19 +62,31 @@
 </script>
 
 <aside class="history">
-  <header>History</header>
+  <header>
+    <History size={14} />
+    <span>History</span>
+  </header>
   {#if status.kind === "off"}
     <p class="note">History is off for this folder.</p>
-    <button class="primary" onclick={enable}>Enable history</button>
+    <button class="primary" onclick={enable}>
+      <GitCommit size={13} />
+      <span>Enable history</span>
+    </button>
   {:else if status.kind === "unmanaged"}
     <p class="note">This folder is already a git repository. If liosvideo manages its history, it will commit changes here on your current branch.</p>
-    <button class="primary" onclick={enable}>Manage history here</button>
+    <button class="primary" onclick={enable}>
+      <GitCommit size={13} />
+      <span>Manage history here</span>
+    </button>
   {:else if status.kind === "nested"}
     <p class="note">This folder is inside another git repository ({status.repo}). History is disabled.</p>
   {:else}
     <form class="checkpoint" onsubmit={(e) => (e.preventDefault(), checkpoint())}>
       <input placeholder="Checkpoint message" bind:value={message} />
-      <button type="submit">Checkpoint</button>
+      <button type="submit">
+        <BookmarkPlus size={13} />
+        <span>Checkpoint</span>
+      </button>
     </form>
     <ul>
       {#each commits as c (c.id)}
@@ -86,11 +99,19 @@
             <div class="detail">
               {#if confirming}
                 <div class="actions">
-                  <button class="danger" onclick={() => restore(c.id)}>Confirm restore</button>
+                  <button class="danger" onclick={() => restore(c.id)}>
+                    <RotateCcw size={12} />
+                    <span>Confirm restore</span>
+                  </button>
                   <button onclick={() => (confirming = false)}>Cancel</button>
                 </div>
               {:else if c.id !== commits[0]?.id}
-                <div class="actions"><button onclick={() => (confirming = true)}>Restore to here</button></div>
+                <div class="actions">
+                  <button onclick={() => (confirming = true)}>
+                    <RotateCcw size={12} />
+                    <span>Restore to here</span>
+                  </button>
+                </div>
               {/if}
               {#each files as f (f.path)}
                 <div class="file">
@@ -114,10 +135,10 @@
 
 <style>
   .history { display: flex; flex-direction: column; min-height: 0; height: 100%; border-left: 1px solid var(--border); background: var(--panel); }
-  header { height: 32px; display: flex; align-items: center; padding: 0 12px; font-weight: 600; border-bottom: 1px solid var(--border); flex-shrink: 0; }
+  header { height: 32px; display: flex; align-items: center; gap: 6px; padding: 0 12px; font-weight: 600; border-bottom: 1px solid var(--border); flex-shrink: 0; }
   .note { color: var(--muted); margin: 8px 12px; font-size: 12px; }
   .error { color: var(--danger); margin: 8px 12px; font-size: 12px; }
-  button { font: inherit; padding: 4px 10px; border-radius: 6px; border: 1px solid var(--border); background: var(--raised); color: var(--fg); cursor: pointer; }
+  button { font: inherit; padding: 4px 10px; border-radius: 6px; border: 1px solid var(--border); background: var(--raised); color: var(--fg); cursor: pointer; display: inline-flex; align-items: center; gap: 4px; }
   .primary { margin: 0 12px; align-self: flex-start; }
   .danger { color: var(--danger); }
   .checkpoint { display: flex; gap: 6px; padding: 8px 12px; border-bottom: 1px solid var(--border); }

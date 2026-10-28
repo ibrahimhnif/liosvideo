@@ -1,5 +1,16 @@
 <script lang="ts">
   import { invoke } from "@tauri-apps/api/core";
+  import {
+    Check,
+    Cpu,
+    Eye,
+    EyeOff,
+    KeyRound,
+    RotateCcw,
+    Trash2,
+    X,
+  } from "@lucide/svelte";
+  import Probe from "$lib/probe/Probe.svelte";
 
   let {
     open = false,
@@ -9,6 +20,7 @@
     onClose: () => void;
   } = $props();
 
+  let activeTab = $state<"keys" | "probe">("keys");
   let elevenKey = $state("");
   let elevenVoiceId = $state("");
   let defaultTtsVoice = $state("id-ID-Neural2-A");
@@ -214,206 +226,283 @@
   <div class="backdrop" onclick={(e) => e.target === e.currentTarget && onClose()} data-testid="settings-modal-backdrop">
     <div class="modal" role="dialog" aria-modal="true" aria-labelledby="settings-title">
       <div class="header">
-        <h2 id="settings-title">API Keys & TTS Settings</h2>
-        <button class="close-btn" onclick={onClose} aria-label="Close modal">×</button>
+        <h2 id="settings-title">
+          <KeyRound size={16} />
+          <span>API Keys & TTS Settings</span>
+        </h2>
+        <button class="close-btn" onclick={onClose} aria-label="Close modal">
+          <X size={16} />
+        </button>
+      </div>
+
+      <div class="tabs">
+        <button
+          type="button"
+          class="tab-btn"
+          class:active={activeTab === "keys"}
+          onclick={() => (activeTab = "keys")}
+        >
+          <KeyRound size={13} />
+          <span>API Keys & TTS</span>
+        </button>
+        <button
+          type="button"
+          class="tab-btn"
+          class:active={activeTab === "probe"}
+          onclick={() => (activeTab = "probe")}
+        >
+          <Cpu size={13} />
+          <span>Compatibility Probe</span>
+        </button>
       </div>
 
       <div class="content">
-        <p class="description">
-          API keys are securely stored in your local <strong>macOS Keychain</strong>. They are never written to project files or pushed to Git.
-        </p>
+        {#if activeTab === "probe"}
+          <Probe />
+        {:else}
+          <p class="description">
+            API keys are securely stored in your local <strong>macOS Keychain</strong>. They are never written to project files or pushed to Git.
+          </p>
 
-        {#if message}
-          <div class="alert {message.type}">
-            {message.text}
+          {#if message}
+            <div class="alert {message.type}">
+              {message.text}
+            </div>
+          {/if}
+
+          <!-- Anthropic (Claude Agent) -->
+          <div class="field-group">
+            <div class="label-row">
+              <label for="anthropic-key">Anthropic API Key (Claude)</label>
+              <span class="badge" class:configured={anthropicConfigured}>
+                {#if anthropicConfigured}
+                  <Check size={11} />
+                  <span>Configured</span>
+                {:else}
+                  <span>Not Set</span>
+                {/if}
+              </span>
+            </div>
+            <div class="input-row">
+              <input
+                id="anthropic-key"
+                data-testid="input-anthropic"
+                type={showAnthropic ? "text" : "password"}
+                placeholder="sk-ant-api..."
+                bind:value={anthropicKey}
+              />
+              <button
+                type="button"
+                class="icon-btn"
+                onclick={() => (showAnthropic = !showAnthropic)}
+                title={showAnthropic ? "Hide key" : "Show key"}
+                aria-label={showAnthropic ? "Hide key" : "Show key"}
+              >
+                {#if showAnthropic}
+                  <EyeOff size={14} />
+                {:else}
+                  <Eye size={14} />
+                {/if}
+              </button>
+              <button
+                type="button"
+                class="save-btn"
+                disabled={savingAnthropic || !anthropicKey.trim()}
+                onclick={saveAnthropic}
+              >
+                {savingAnthropic ? "Saving..." : "Save"}
+              </button>
+              {#if anthropicConfigured}
+                <button type="button" class="clear-btn" onclick={clearAnthropic} title="Remove key">
+                  <Trash2 size={12} />
+                  <span>Clear</span>
+                </button>
+              {/if}
+            </div>
+            <p class="field-hint">Allows Claude Agent ACP to operate directly with your API key, bypassing OAuth session expiration.</p>
+          </div>
+
+          <!-- ElevenLabs -->
+          <div class="field-group">
+            <div class="label-row">
+              <label for="elevenlabs-key">ElevenLabs API Key</label>
+              <span class="badge" class:configured={elevenConfigured}>
+                {#if elevenConfigured}
+                  <Check size={11} />
+                  <span>Configured</span>
+                {:else}
+                  <span>Not Set</span>
+                {/if}
+              </span>
+            </div>
+            <div class="input-row">
+              <input
+                id="elevenlabs-key"
+                data-testid="input-elevenlabs"
+                type={showEleven ? "text" : "password"}
+                placeholder="sk_..."
+                bind:value={elevenKey}
+              />
+              <button
+                type="button"
+                class="icon-btn"
+                onclick={() => (showEleven = !showEleven)}
+                title={showEleven ? "Hide key" : "Show key"}
+                aria-label={showEleven ? "Hide key" : "Show key"}
+              >
+                {#if showEleven}
+                  <EyeOff size={14} />
+                {:else}
+                  <Eye size={14} />
+                {/if}
+              </button>
+              <button
+                type="button"
+                class="save-btn"
+                disabled={savingEleven || !elevenKey.trim()}
+                onclick={saveEleven}
+              >
+                {savingEleven ? "Saving..." : "Save"}
+              </button>
+              {#if elevenConfigured}
+                <button type="button" class="clear-btn" onclick={clearEleven} title="Remove key">
+                  <Trash2 size={12} />
+                  <span>Clear</span>
+                </button>
+              {/if}
+            </div>
+            <p class="field-hint">Used for live voice narration synthesis with word-level alignment timestamps.</p>
+          </div>
+
+          <!-- ElevenLabs Voice ID (Suara Pribadi / Clone) -->
+          <div class="field-group">
+            <div class="label-row">
+              <label for="eleven-voice-id">ElevenLabs Voice ID (Suara Pribadi / Clone)</label>
+              <span class="badge" class:configured={elevenVoiceIdConfigured}>
+                {#if elevenVoiceIdConfigured}
+                  <Check size={11} />
+                  <span>Configured</span>
+                {:else}
+                  <span>Default (Rachel)</span>
+                {/if}
+              </span>
+            </div>
+            <div class="input-row">
+              <input
+                id="eleven-voice-id"
+                data-testid="input-voice-id"
+                type="text"
+                placeholder="e.g. Voice ID kloningan dari ElevenLabs VoiceLab"
+                bind:value={elevenVoiceId}
+              />
+              <button
+                type="button"
+                class="save-btn"
+                disabled={savingVoiceId || !elevenVoiceId.trim()}
+                onclick={saveVoiceId}
+              >
+                {savingVoiceId ? "Saving..." : "Save"}
+              </button>
+              {#if elevenVoiceIdConfigured}
+                <button type="button" class="clear-btn" onclick={clearVoiceId} title="Reset">
+                  <RotateCcw size={12} />
+                  <span>Reset</span>
+                </button>
+              {/if}
+            </div>
+            <p class="field-hint">
+              Masukkan Voice ID dari kloningan suara Anda di ElevenLabs. Model <code>eleven_multilingual_v2</code> otomatis membaca naskah Bahasa Indonesia dengan suara Anda!
+            </p>
+          </div>
+
+          <!-- Google Cloud TTS -->
+          <div class="field-group">
+            <div class="label-row">
+              <label for="google-tts-key">Google Cloud TTS API Key</label>
+              <span class="badge" class:configured={googleConfigured}>
+                {#if googleConfigured}
+                  <Check size={11} />
+                  <span>Configured</span>
+                {:else}
+                  <span>Not Set</span>
+                {/if}
+              </span>
+            </div>
+            <div class="input-row">
+              <input
+                id="google-tts-key"
+                data-testid="input-google"
+                type={showGoogle ? "text" : "password"}
+                placeholder="AIza..."
+                bind:value={googleKey}
+              />
+              <button
+                type="button"
+                class="icon-btn"
+                onclick={() => (showGoogle = !showGoogle)}
+                title={showGoogle ? "Hide key" : "Show key"}
+                aria-label={showGoogle ? "Hide key" : "Show key"}
+              >
+                {#if showGoogle}
+                  <EyeOff size={14} />
+                {:else}
+                  <Eye size={14} />
+                {/if}
+              </button>
+              <button
+                type="button"
+                class="save-btn"
+                disabled={savingGoogle || !googleKey.trim()}
+                onclick={saveGoogle}
+              >
+                {savingGoogle ? "Saving..." : "Save"}
+              </button>
+              {#if googleConfigured}
+                <button type="button" class="clear-btn" onclick={clearGoogle} title="Remove key">
+                  <Trash2 size={12} />
+                  <span>Clear</span>
+                </button>
+              {/if}
+            </div>
+            <p class="field-hint">Used for Journey and Neural2 voices from Google Cloud Text-to-Speech.</p>
+          </div>
+
+          <!-- Default Voice & Language -->
+          <div class="field-group">
+            <div class="label-row">
+              <label for="default-tts-voice">Default Voice & Bahasa Narasi</label>
+              <span class="badge configured">Active</span>
+            </div>
+            <div class="input-row">
+              <select
+                id="default-tts-voice"
+                data-testid="select-default-voice"
+                class="voice-select"
+                bind:value={defaultTtsVoice}
+                onchange={saveDefaultVoice}
+              >
+                <optgroup label="🇮🇩 Bahasa Indonesia (Google Cloud TTS)">
+                  <option value="id-ID-Neural2-A">id-ID-Neural2-A (Wanita, Alami & Jernih)</option>
+                  <option value="id-ID-Neural2-B">id-ID-Neural2-B (Pria, Formal & Natural)</option>
+                  <option value="id-ID-Wavenet-A">id-ID-Wavenet-A (Wanita Wavenet)</option>
+                  <option value="id-ID-Wavenet-B">id-ID-Wavenet-B (Pria Wavenet)</option>
+                  <option value="id-ID-Wavenet-D">id-ID-Wavenet-D (Wanita Wavenet 2)</option>
+                </optgroup>
+                <optgroup label="✨ ElevenLabs (Multilingual & Suara Pribadi)">
+                  <option value="21m00Tcm4TlvDq8ikWAM">Rachel (Calm & Professional, Multilingual)</option>
+                  <option value="pNInz6obpgDQGcFmaJgB">Adam (Deep & Narrator, Multilingual)</option>
+                  <option value="ErXwobaYiN019PkySvjV">Antoni (Natural & Crisp, Multilingual)</option>
+                  <option value="EXAVITQu4vr4xnSDxMaL">Bella (Expressive & Warm, Multilingual)</option>
+                </optgroup>
+                <optgroup label="🇺🇸 English (Google Cloud TTS)">
+                  <option value="en-US-Journey-F">en-US-Journey-F (Female Journey)</option>
+                  <option value="en-US-Journey-D">en-US-Journey-D (Male Journey)</option>
+                </optgroup>
+              </select>
+            </div>
+            <p class="field-hint">Suara bawaan yang digunakan untuk mensintesis narasi video.</p>
           </div>
         {/if}
-
-        <!-- Anthropic (Claude Agent) -->
-        <div class="field-group">
-          <div class="label-row">
-            <label for="anthropic-key">Anthropic API Key (Claude)</label>
-            <span class="badge" class:configured={anthropicConfigured}>
-              {anthropicConfigured ? "✓ Configured" : "Not Set"}
-            </span>
-          </div>
-          <div class="input-row">
-            <input
-              id="anthropic-key"
-              data-testid="input-anthropic"
-              type={showAnthropic ? "text" : "password"}
-              placeholder="sk-ant-api..."
-              bind:value={anthropicKey}
-            />
-            <button
-              type="button"
-              class="icon-btn"
-              onclick={() => (showAnthropic = !showAnthropic)}
-              title={showAnthropic ? "Hide key" : "Show key"}
-            >
-              {showAnthropic ? "🙈" : "👁️"}
-            </button>
-            <button
-              type="button"
-              class="save-btn"
-              disabled={savingAnthropic || !anthropicKey.trim()}
-              onclick={saveAnthropic}
-            >
-              {savingAnthropic ? "Saving..." : "Save"}
-            </button>
-            {#if anthropicConfigured}
-              <button type="button" class="clear-btn" onclick={clearAnthropic} title="Remove key">Clear</button>
-            {/if}
-          </div>
-          <p class="field-hint">Allows Claude Agent ACP to operate directly with your API key, bypassing OAuth session expiration.</p>
-        </div>
-
-        <!-- ElevenLabs -->
-        <div class="field-group">
-          <div class="label-row">
-            <label for="elevenlabs-key">ElevenLabs API Key</label>
-            <span class="badge" class:configured={elevenConfigured}>
-              {elevenConfigured ? "✓ Configured" : "Not Set"}
-            </span>
-          </div>
-          <div class="input-row">
-            <input
-              id="elevenlabs-key"
-              data-testid="input-elevenlabs"
-              type={showEleven ? "text" : "password"}
-              placeholder="sk_..."
-              bind:value={elevenKey}
-            />
-            <button
-              type="button"
-              class="icon-btn"
-              onclick={() => (showEleven = !showEleven)}
-              title={showEleven ? "Hide key" : "Show key"}
-            >
-              {showEleven ? "🙈" : "👁️"}
-            </button>
-            <button
-              type="button"
-              class="save-btn"
-              disabled={savingEleven || !elevenKey.trim()}
-              onclick={saveEleven}
-            >
-              {savingEleven ? "Saving..." : "Save"}
-            </button>
-            {#if elevenConfigured}
-              <button type="button" class="clear-btn" onclick={clearEleven} title="Remove key">Clear</button>
-            {/if}
-          </div>
-          <p class="field-hint">Used for live voice narration synthesis with word-level alignment timestamps.</p>
-        </div>
-
-        <!-- ElevenLabs Voice ID (Suara Pribadi / Clone) -->
-        <div class="field-group">
-          <div class="label-row">
-            <label for="eleven-voice-id">ElevenLabs Voice ID (Suara Pribadi / Clone)</label>
-            <span class="badge" class:configured={elevenVoiceIdConfigured}>
-              {elevenVoiceIdConfigured ? "✓ Configured" : "Default (Rachel)"}
-            </span>
-          </div>
-          <div class="input-row">
-            <input
-              id="eleven-voice-id"
-              data-testid="input-voice-id"
-              type="text"
-              placeholder="e.g. Voice ID kloningan dari ElevenLabs VoiceLab"
-              bind:value={elevenVoiceId}
-            />
-            <button
-              type="button"
-              class="save-btn"
-              disabled={savingVoiceId || !elevenVoiceId.trim()}
-              onclick={saveVoiceId}
-            >
-              {savingVoiceId ? "Saving..." : "Save"}
-            </button>
-            {#if elevenVoiceIdConfigured}
-              <button type="button" class="clear-btn" onclick={clearVoiceId} title="Reset">Reset</button>
-            {/if}
-          </div>
-          <p class="field-hint">
-            Masukkan Voice ID dari kloningan suara Anda di ElevenLabs. Model <code>eleven_multilingual_v2</code> otomatis membaca naskah Bahasa Indonesia dengan suara Anda!
-          </p>
-        </div>
-
-        <!-- Google Cloud TTS -->
-        <div class="field-group">
-          <div class="label-row">
-            <label for="google-tts-key">Google Cloud TTS API Key</label>
-            <span class="badge" class:configured={googleConfigured}>
-              {googleConfigured ? "✓ Configured" : "Not Set"}
-            </span>
-          </div>
-          <div class="input-row">
-            <input
-              id="google-tts-key"
-              data-testid="input-google"
-              type={showGoogle ? "text" : "password"}
-              placeholder="AIza..."
-              bind:value={googleKey}
-            />
-            <button
-              type="button"
-              class="icon-btn"
-              onclick={() => (showGoogle = !showGoogle)}
-              title={showGoogle ? "Hide key" : "Show key"}
-            >
-              {showGoogle ? "🙈" : "👁️"}
-            </button>
-            <button
-              type="button"
-              class="save-btn"
-              disabled={savingGoogle || !googleKey.trim()}
-              onclick={saveGoogle}
-            >
-              {savingGoogle ? "Saving..." : "Save"}
-            </button>
-            {#if googleConfigured}
-              <button type="button" class="clear-btn" onclick={clearGoogle} title="Remove key">Clear</button>
-            {/if}
-          </div>
-          <p class="field-hint">Used for Journey and Neural2 voices from Google Cloud Text-to-Speech.</p>
-        </div>
-
-        <!-- Default Voice & Language -->
-        <div class="field-group">
-          <div class="label-row">
-            <label for="default-tts-voice">Default Voice & Bahasa Narasi</label>
-            <span class="badge configured">Active</span>
-          </div>
-          <div class="input-row">
-            <select
-              id="default-tts-voice"
-              data-testid="select-default-voice"
-              class="voice-select"
-              bind:value={defaultTtsVoice}
-              onchange={saveDefaultVoice}
-            >
-              <optgroup label="🇮🇩 Bahasa Indonesia (Google Cloud TTS)">
-                <option value="id-ID-Neural2-A">id-ID-Neural2-A (Wanita, Alami & Jernih)</option>
-                <option value="id-ID-Neural2-B">id-ID-Neural2-B (Pria, Formal & Natural)</option>
-                <option value="id-ID-Wavenet-A">id-ID-Wavenet-A (Wanita Wavenet)</option>
-                <option value="id-ID-Wavenet-B">id-ID-Wavenet-B (Pria Wavenet)</option>
-                <option value="id-ID-Wavenet-D">id-ID-Wavenet-D (Wanita Wavenet 2)</option>
-              </optgroup>
-              <optgroup label="✨ ElevenLabs (Multilingual & Suara Pribadi)">
-                <option value="21m00Tcm4TlvDq8ikWAM">Rachel (Calm & Professional, Multilingual)</option>
-                <option value="pNInz6obpgDQGcFmaJgB">Adam (Deep & Narrator, Multilingual)</option>
-                <option value="ErXwobaYiN019PkySvjV">Antoni (Natural & Crisp, Multilingual)</option>
-                <option value="EXAVITQu4vr4xnSDxMaL">Bella (Expressive & Warm, Multilingual)</option>
-              </optgroup>
-              <optgroup label="🇺🇸 English (Google Cloud TTS)">
-                <option value="en-US-Journey-F">en-US-Journey-F (Female Journey)</option>
-                <option value="en-US-Journey-D">en-US-Journey-D (Male Journey)</option>
-              </optgroup>
-            </select>
-          </div>
-          <p class="field-hint">Suara bawaan yang digunakan untuk mensintesis narasi video.</p>
-        </div>
       </div>
 
       <div class="footer">
@@ -436,57 +525,103 @@
   }
 
   .modal {
-    background: #161b22;
-    border: 1px solid #30363d;
+    background: var(--panel);
+    border: 1px solid var(--border);
     border-radius: 12px;
-    width: 520px;
-    max-width: 90vw;
-    box-shadow: 0 16px 32px rgba(0, 0, 0, 0.5);
+    width: 580px;
+    max-width: calc(100vw - 32px);
+    max-height: 85vh;
+    box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.4), 0 10px 10px -5px rgba(0, 0, 0, 0.3);
     display: flex;
     flex-direction: column;
-    color: #c9d1d9;
+    color: var(--fg);
     font-size: 13px;
+    overflow: hidden;
   }
 
   .header {
     display: flex;
     align-items: center;
     justify-content: space-between;
-    padding: 16px 20px;
-    border-bottom: 1px solid #30363d;
+    padding: 14px 20px;
+    border-bottom: 1px solid var(--border);
+    background: var(--panel);
   }
 
   .header h2 {
     margin: 0;
-    font-size: 16px;
+    font-size: 15px;
     font-weight: 600;
-    color: #f0f6fc;
+    color: var(--fg);
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
   }
 
   .close-btn {
     background: none;
     border: none;
-    color: #8b949e;
-    font-size: 20px;
+    color: var(--muted);
     cursor: pointer;
-    line-height: 1;
     padding: 4px;
+    border-radius: 4px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
   }
 
   .close-btn:hover {
-    color: #f0f6fc;
+    color: var(--fg);
+    background: var(--raised);
+  }
+
+  .tabs {
+    display: flex;
+    gap: 6px;
+    padding: 0 16px;
+    border-bottom: 1px solid var(--border);
+    background: var(--panel);
+  }
+
+  .tab-btn {
+    background: none;
+    border: none;
+    border-bottom: 2px solid transparent;
+    padding: 8px 12px;
+    color: var(--muted);
+    font: inherit;
+    font-size: 12px;
+    font-weight: 500;
+    cursor: pointer;
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    margin-bottom: -1px;
+    transition: all 0.15s ease;
+  }
+
+  .tab-btn:hover {
+    color: var(--fg);
+  }
+
+  .tab-btn.active {
+    color: #4f8cff;
+    border-bottom-color: #4f8cff;
   }
 
   .content {
     padding: 20px;
+    overflow-y: auto;
+    flex: 1;
     display: flex;
     flex-direction: column;
     gap: 18px;
+    background: var(--panel);
   }
 
   .description {
     margin: 0;
-    color: #8b949e;
+    color: var(--muted);
     line-height: 1.4;
     font-size: 12px;
   }
@@ -499,14 +634,14 @@
 
   .alert.success {
     background: rgba(46, 160, 67, 0.15);
-    border: 1px solid #2ea043;
+    border: 1px solid rgba(46, 160, 67, 0.35);
     color: #3fb950;
   }
 
   .alert.error {
-    background: rgba(248, 81, 73, 0.15);
-    border: 1px solid #f85149;
-    color: #ff7b72;
+    background: rgba(239, 68, 68, 0.15);
+    border: 1px solid rgba(239, 68, 68, 0.35);
+    color: var(--danger);
   }
 
   .field-group {
@@ -523,19 +658,24 @@
 
   .label-row label {
     font-weight: 500;
-    color: #f0f6fc;
+    color: var(--fg);
   }
 
   .badge {
     font-size: 11px;
-    padding: 2px 6px;
+    padding: 2px 7px;
     border-radius: 10px;
-    background: #21262d;
-    color: #8b949e;
+    background: var(--raised);
+    border: 1px solid var(--border);
+    color: var(--muted);
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
   }
 
   .badge.configured {
-    background: rgba(46, 160, 67, 0.2);
+    background: rgba(46, 160, 67, 0.15);
+    border-color: rgba(46, 160, 67, 0.35);
     color: #3fb950;
   }
 
@@ -547,47 +687,55 @@
 
   .input-row input {
     flex: 1;
-    background: #0d1117;
-    border: 1px solid #30363d;
+    background: var(--bg);
+    border: 1px solid var(--border);
     border-radius: 6px;
     padding: 7px 10px;
-    color: #c9d1d9;
+    color: var(--fg);
     font-family: ui-monospace, monospace;
     font-size: 12px;
   }
 
   .input-row input:focus {
     outline: none;
-    border-color: #58a6ff;
+    border-color: #4f8cff;
   }
 
   .voice-select {
     flex: 1;
-    background: #0d1117;
-    border: 1px solid #30363d;
+    background: var(--bg);
+    border: 1px solid var(--border);
     border-radius: 6px;
     padding: 7px 10px;
-    color: #c9d1d9;
+    color: var(--fg);
     font-size: 12px;
   }
 
   .voice-select:focus {
     outline: none;
-    border-color: #58a6ff;
+    border-color: #4f8cff;
   }
 
   .icon-btn {
-    background: #21262d;
-    border: 1px solid #30363d;
+    background: var(--raised);
+    border: 1px solid var(--border);
     border-radius: 6px;
-    padding: 6px 10px;
+    padding: 6px 8px;
     cursor: pointer;
     font-size: 12px;
+    color: var(--muted);
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+  }
+  .icon-btn:hover {
+    color: var(--fg);
+    border-color: var(--muted);
   }
 
   .save-btn {
-    background: #238636;
-    border: 1px solid rgba(240, 246, 252, 0.1);
+    background: #2e9d57;
+    border: 1px solid #2e9d57;
     border-radius: 6px;
     color: #ffffff;
     padding: 7px 14px;
@@ -598,7 +746,7 @@
   }
 
   .save-btn:hover:not(:disabled) {
-    background: #2ea043;
+    background: #27854a;
   }
 
   .save-btn:disabled {
@@ -607,46 +755,50 @@
   }
 
   .clear-btn {
-    background: #21262d;
-    border: 1px solid #30363d;
+    background: var(--raised);
+    border: 1px solid var(--border);
     border-radius: 6px;
-    color: #f85149;
-    padding: 7px 10px;
+    color: var(--danger);
+    padding: 6px 9px;
     cursor: pointer;
     font-size: 12px;
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
   }
 
   .clear-btn:hover {
-    background: rgba(248, 81, 73, 0.1);
+    background: rgba(239, 68, 68, 0.1);
+    border-color: var(--danger);
   }
 
   .field-hint {
     margin: 0;
     font-size: 11px;
-    color: #8b949e;
+    color: var(--muted);
   }
 
   .footer {
     display: flex;
     justify-content: flex-end;
     padding: 12px 20px;
-    border-top: 1px solid #30363d;
-    background: #0d1117;
-    border-bottom-left-radius: 12px;
-    border-bottom-right-radius: 12px;
+    border-top: 1px solid var(--border);
+    background: var(--panel);
   }
 
   .done-btn {
-    background: #30363d;
-    border: 1px solid #8b949e;
+    background: #4f8cff;
+    border: none;
     border-radius: 6px;
-    color: #f0f6fc;
+    color: #ffffff;
     padding: 6px 16px;
     cursor: pointer;
     font-size: 13px;
+    font-weight: 500;
+    transition: background 0.15s ease;
   }
 
   .done-btn:hover {
-    background: #484f58;
+    background: #3b76e1;
   }
 </style>

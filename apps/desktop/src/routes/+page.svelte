@@ -18,12 +18,21 @@
   import ExportModal from "$lib/components/ExportModal.svelte";
   import SettingsModal from "$lib/components/SettingsModal.svelte";
   import ValidationModal from "$lib/components/ValidationModal.svelte";
+  import Logo from "$lib/components/Logo.svelte";
   import { revealItemInDir } from "@tauri-apps/plugin-opener";
-  import Probe from "$lib/probe/Probe.svelte";
+  import {
+    Settings,
+    Bot,
+    FolderOpen,
+    RefreshCw,
+    CheckCircle2,
+    Film,
+    History,
+    X,
+  } from "@lucide/svelte";
 
   let project = $state<ProjectInfo | null>(null);
   let entry = $state("");
-  let showProbe = $state(false);
   let showAgents = $state(false);
   let showSettings = $state(false);
   let showValidation = $state(false);
@@ -162,10 +171,17 @@
 <main class:resizing={isResizing}>
   <section class="chat" style="width: {sidebarWidth}px">
     <header>
-      liosvideo
+      <div class="brand">
+        <Logo size={20} />
+        <span class="brand-title">Liosvideo</span>
+      </div>
       <div class="header-actions">
-        <button class="toggle-settings" aria-pressed={showSettings} onclick={() => (showSettings = !showSettings)} title="API Key & TTS Settings">⚙️</button>
-        <button class="toggle" aria-pressed={showAgents} onclick={() => (showAgents = !showAgents)}>Agents</button>
+        <button class="toggle-settings" aria-pressed={showSettings} onclick={() => (showSettings = !showSettings)} title="API Key & TTS Settings">
+          <Settings size={14} />
+        </button>
+        <button class="toggle" aria-pressed={showAgents} onclick={() => (showAgents = !showAgents)}>
+          <Bot size={13} /> Agents
+        </button>
       </div>
     </header>
     {#if showAgents}<AgentSetup api={tauriAgentApi} />{/if}
@@ -186,15 +202,11 @@
         <p class="placeholder">Open a project to chat with an agent.</p>
       {/if}
     </div>
-    <button class="dev" onclick={() => (showProbe = !showProbe)}>{showProbe ? "Hide" : "Show"} capability probe</button>
-    {#if showProbe}<Probe />{/if}
   </section>
   <div
     class="sidebar-resizer"
     class:active={isResizing}
-    role="separator"
-    aria-orientation="vertical"
-    tabindex="0"
+    aria-hidden="true"
     onpointerdown={startResize}
     title="Drag to resize sidebar"
   ></div>
@@ -208,12 +220,24 @@
           <CompositionSwitcher compositions={project.compositions} selected={entry} onSelect={(c) => (entry = c)} />
         </div>
         <div class="project-actions">
-          <button class="nav-btn" onclick={openProjectDialog} title="Open another project folder">📂 Open</button>
-          <button class="nav-btn" onclick={refreshProject} title="Reload compositions and preview">🔄 Refresh</button>
-          <button class="nav-btn" onclick={() => (showValidation = true)} title="Validate scene code & constraints">✓ Validate</button>
-          <button class="btn-export" onclick={() => (showExport = true)} disabled={!loadedInfo}>Export</button>
-          <button class="toggle" aria-pressed={showHistory} onclick={() => (showHistory = !showHistory)}>History</button>
-          <button class="nav-btn close-project-btn" onclick={closeProject} title="Close current project">✕ Close</button>
+          <button class="nav-btn" onclick={openProjectDialog} title="Open another project folder">
+            <FolderOpen size={13} /> Open
+          </button>
+          <button class="nav-btn" onclick={refreshProject} title="Reload compositions and preview">
+            <RefreshCw size={13} /> Refresh
+          </button>
+          <button class="nav-btn" onclick={() => (showValidation = true)} title="Validate scene code & constraints">
+            <CheckCircle2 size={13} /> Validate
+          </button>
+          <button class="btn-export" onclick={() => (showExport = true)} disabled={!loadedInfo}>
+            <Film size={13} /> Export
+          </button>
+          <button class="toggle" aria-pressed={showHistory} onclick={() => (showHistory = !showHistory)}>
+            <History size={13} /> History
+          </button>
+          <button class="nav-btn close-project-btn" onclick={closeProject} title="Close current project">
+            <X size={13} /> Close
+          </button>
         </div>
       </header>
       <div class="workspace" class:with-history={showHistory}>
@@ -276,9 +300,9 @@
   :global(html, body) { margin: 0; height: 100%; background: var(--bg); color: var(--fg); font: 13px system-ui, -apple-system, sans-serif; }
   main { display: flex; height: 100vh; overflow: hidden; }
   main.resizing { user-select: none; cursor: col-resize; }
-  main.resizing iframe,
-  main.resizing canvas,
-  main.resizing .items {
+  :global(main.resizing canvas),
+  :global(main.resizing iframe),
+  :global(main.resizing .items) {
     pointer-events: none;
   }
   section { display: flex; flex-direction: column; min-width: 0; min-height: 0; }
@@ -299,6 +323,8 @@
     opacity: 1;
   }
   header { display: flex; align-items: center; gap: 12px; height: 40px; padding: 0 12px; border-bottom: 1px solid var(--border); font-weight: 600; flex-shrink: 0; min-width: 0; }
+  .brand { display: flex; align-items: center; gap: 8px; font-weight: 700; font-size: 14px; letter-spacing: -0.01em; color: var(--fg); user-select: none; }
+  .brand-title { font-weight: 700; }
   .project-info { display: flex; align-items: center; gap: 8px; min-width: 0; flex-shrink: 1; }
   .project-actions { margin-left: auto; display: flex; align-items: center; gap: 6px; flex-shrink: 0; }
   .nav-btn { font: inherit; font-size: 12px; font-weight: 500; padding: 3px 8px; border-radius: 6px; border: 1px solid var(--border); background: var(--panel); color: var(--fg); cursor: pointer; display: flex; align-items: center; gap: 4px; white-space: nowrap; }
@@ -307,16 +333,15 @@
   .close-project-btn:hover { color: var(--danger); border-color: var(--danger); background: rgba(239, 68, 68, 0.1); }
   .root { color: var(--muted); font-weight: 500; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 140px; }
   .placeholder { color: var(--muted); padding: 12px; }
-  .dev { margin: 0 12px 12px; font: inherit; font-size: 11px; background: none; border: none; color: var(--muted); cursor: pointer; text-align: left; }
   .right { flex: 1 1 0%; min-width: 0; height: 100%; background: var(--bg); overflow: hidden; }
   .chat-slot { flex: 1; min-height: 0; display: flex; flex-direction: column; overflow: hidden; }
   .chat-slot[hidden] { display: none; }
   .header-actions { margin-left: auto; display: flex; align-items: center; gap: 6px; flex-shrink: 0; }
-  .toggle-settings { font: inherit; font-size: 13px; padding: 3px 6px; border-radius: 6px; border: 1px solid var(--border); background: none; color: var(--fg); cursor: pointer; line-height: 1; }
+  .toggle-settings { font: inherit; font-size: 13px; padding: 4px 6px; border-radius: 6px; border: 1px solid var(--border); background: none; color: var(--fg); cursor: pointer; display: flex; align-items: center; justify-content: center; }
   .toggle-settings[aria-pressed="true"] { background: var(--raised); }
-  .toggle { font: inherit; font-weight: 500; padding: 3px 10px; border-radius: 6px; border: 1px solid var(--border); background: none; color: var(--fg); cursor: pointer; white-space: nowrap; }
+  .toggle { font: inherit; font-weight: 500; padding: 3px 10px; border-radius: 6px; border: 1px solid var(--border); background: none; color: var(--fg); cursor: pointer; white-space: nowrap; display: flex; align-items: center; gap: 5px; }
   .toggle[aria-pressed="true"] { background: var(--raised); }
-  .btn-export { font: inherit; font-weight: 500; padding: 3px 12px; border-radius: 6px; border: 1px solid #4f8cff; background: #4f8cff; color: white; cursor: pointer; white-space: nowrap; }
+  .btn-export { font: inherit; font-weight: 500; padding: 3px 12px; border-radius: 6px; border: 1px solid #4f8cff; background: #4f8cff; color: white; cursor: pointer; white-space: nowrap; display: flex; align-items: center; gap: 5px; }
   .btn-export:disabled { opacity: 0.5; cursor: not-allowed; }
   .workspace { flex: 1; min-height: 0; display: grid; grid-template-columns: 1fr; }
   .workspace.with-history { grid-template-columns: 1fr 320px; }

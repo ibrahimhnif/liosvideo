@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { Plus, RefreshCw } from "@lucide/svelte";
   import { openUrl } from "@tauri-apps/plugin-opener";
   import { onMount } from "svelte";
   import type { AgentApi, AgentSettings, AgentStatus } from "$lib/chat/api";
@@ -60,7 +61,10 @@
 <div class="setup">
   <div class="head">
     <h3>Agents</h3>
-    <button onclick={rescan}>Rescan</button>
+    <button onclick={rescan}>
+      <RefreshCw size={12} />
+      <span>Rescan</span>
+    </button>
   </div>
   <ul>
     {#each agents as a (a.id)}
@@ -94,7 +98,10 @@
     <label>Command <input bind:value={form.command} placeholder="/path/to/agent" /></label>
     <label>Arguments <input bind:value={form.args} placeholder="--acp" /></label>
     <label>Environment <textarea rows="2" bind:value={form.env} placeholder="KEY=value"></textarea></label>
-    <button type="submit" disabled={!form.name.trim() || !form.command.trim()}>Add agent</button>
+    <button type="submit" disabled={!form.name.trim() || !form.command.trim()}>
+      <Plus size={13} />
+      <span>Add agent</span>
+    </button>
   </form>
   {#if error}<p class="error">{error}</p>{/if}
 </div>
@@ -110,7 +117,7 @@
   .pick { display: flex; align-items: center; gap: 6px; flex: 1; }
   .name { font-weight: 500; }
   .meta { color: var(--muted); font-size: 11px; flex: 1; }
-  button { font: inherit; font-size: 12px; padding: 3px 10px; border-radius: 6px; border: 1px solid var(--border); background: var(--raised); color: var(--fg); cursor: pointer; }
+  button { font: inherit; font-size: 12px; padding: 3px 10px; border-radius: 6px; border: 1px solid var(--border); background: var(--raised); color: var(--fg); cursor: pointer; display: inline-flex; align-items: center; gap: 4px; }
   button:disabled { opacity: 0.5; cursor: default; }
   .small { font-size: 11px; padding: 2px 8px; }
   a { font-size: 12px; color: #4f8cff; }
