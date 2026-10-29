@@ -1,3 +1,7 @@
+pub mod progress;
+
+pub use progress::RenderProgressBar;
+
 use clap::{Parser, Subcommand};
 use std::path::PathBuf;
 
