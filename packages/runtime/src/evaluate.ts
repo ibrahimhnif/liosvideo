@@ -1,6 +1,6 @@
 import { applyTransition } from "./anim/transition";
 import { clampFrame, instantiateScene, layoutComposition, type Composition } from "./composition";
-import { CircleNode, ImageNode, PathNode, RectNode, ShaderNode, TextNode, VideoNode } from "./graph/kinds";
+import { CircleNode, ImageNode, PathNode, RectNode, ShaderNode, TextNode, ThreeNode, VideoNode } from "./graph/kinds";
 import type { Node } from "./graph/node";
 import { multiply, type Affine } from "./math/affine";
 import type { RenderItem, RenderList } from "./renderlist";
@@ -51,6 +51,10 @@ function drawable(node: Node<any>, t: number, matrix: Affine, opacity: number): 
     const p = node.propsAt(t);
     const time = t * p.speed + p.startOffset;
     return { kind: "video", path, matrix, src: p.src, time, width: p.width, height: p.height, fit: p.fit, opacity };
+  }
+  if (node instanceof ThreeNode) {
+    const p = node.propsAt(t);
+    return { kind: "three", path, matrix, width: p.width, height: p.height, opacity };
   }
   return undefined;
 }
