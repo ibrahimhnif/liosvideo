@@ -7,6 +7,10 @@ edition = "2021"
 name = "liosvideo"
 path = "src/main.rs"
 
+[lib]
+name = "liosvideo_cli"
+path = "src/lib.rs"
+
 [dependencies]
 clap = { version = "4.5", features = ["derive"] }
 tokio = { version = "1", features = ["full"] }
@@ -18,3 +22,5 @@ indicatif = "0.17"
 deno_core = "0.334"
 deno_error = "0.5"
 deno_ast = { version = "0.53", features = ["transpiling"] }
+wgpu = "24.0"
+bytemuck = { version = "1.21", features = ["derive"] }

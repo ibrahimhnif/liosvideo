@@ -1,7 +1,5 @@
-pub mod cli;
-pub mod runtime;
-
 use clap::Parser;
+use liosvideo_cli::{cli, pipeline};
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
@@ -11,7 +9,7 @@ async fn main() -> anyhow::Result<()> {
             println!("Rendering {} to {}", entry.display(), out.display());
         }
         cli::Commands::Snapshot { entry, out, frame } => {
-            println!("Snapshot frame {} of {} to {}", frame, entry.display(), out.display());
+            pipeline::render_snapshot(&entry, frame, &out).await?;
         }
         cli::Commands::Info { entry, .. } => {
             println!("Inspecting {}", entry.display());
