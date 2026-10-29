@@ -130,3 +130,4 @@ export const shader = (init: NodeInit<ShaderProps> & { code: string }) => new Sh
 export const text = (init: NodeInit<TextProps>) => new TextNode(init);
 export const image = (init: NodeInit<ImageProps> & { src: string }) => new ImageNode(init);
 export const video = (init: NodeInit<VideoProps> & { src: string }) => new VideoNode(init);
+export { three, ThreeNode, type ThreeProps, type ThreeSetupContext } from "./three";

@@ -87,6 +87,16 @@ export type ShaderItem = {
   opacity: number;
 };
 
+export type ThreeItem = {
+  kind: "three";
+  path: string;
+  matrix: Affine;
+  width: number;
+  height: number;
+  bitmap?: ImageBitmap;
+  opacity: number;
+};
+
 export type LayerItem = {
   kind: "layer";
   path: string;
@@ -96,6 +106,6 @@ export type LayerItem = {
   clip?: { matrix: Affine; width: number; height: number; radius: number };
 };
 
-export type RenderItem = RectItem | CircleItem | PathItem | ShaderItem | TextItem | ImageItem | VideoItem | LayerItem;
+export type RenderItem = RectItem | CircleItem | PathItem | ShaderItem | TextItem | ImageItem | VideoItem | ThreeItem | LayerItem;
 
 export type RenderList = { width: number; height: number; background: string; items: RenderItem[]; assets: string[] };
