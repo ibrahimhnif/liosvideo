@@ -29,7 +29,7 @@
       id: "minimal-dev",
       title: "Minimal Dev Screencast",
       tag: "16:9",
-      desc: "Terminal & browser window with code spotlights",
+      desc: "Terminal & browser with code spotlights",
       icon: Terminal
     },
     {
@@ -89,9 +89,23 @@
 
 <div class="picker">
   <div class="hero">
-    <Logo size={52} />
+    <Logo size={48} />
     <h1>Liosvideo</h1>
     <p class="tagline">Deterministic Code-First Video Engine</p>
+  </div>
+
+  <div class="create-box">
+    <form class="new" onsubmit={(e) => (e.preventDefault(), create())}>
+      <input placeholder="New project name" bind:value={name} />
+      <button type="submit" disabled={!name.trim()} class="primary-btn">
+        <FolderPlus size={14} />
+        <span>New project…</span>
+      </button>
+      <button type="button" class="open-btn" onclick={pick}>
+        <FolderOpen size={14} />
+        <span>Open folder…</span>
+      </button>
+    </form>
   </div>
 
   <div class="template-section">
@@ -104,6 +118,7 @@
         <button
           type="button"
           class="template-card"
+          class:featured={t.id === "blank"}
           class:selected={selectedTemplate === t.id}
           data-testid={`template-${t.id}`}
           role="radio"
@@ -113,11 +128,11 @@
           <div class="card-top">
             <div class="icon-wrap">
               <Icon size={14} />
+              <span class="title">{t.title}</span>
             </div>
             <span class="tag">{t.tag}</span>
           </div>
           <div class="card-body">
-            <span class="title">{t.title}</span>
             <span class="desc">{t.desc}</span>
           </div>
         </button>
@@ -125,17 +140,6 @@
     </div>
   </div>
 
-  <form class="new" onsubmit={(e) => (e.preventDefault(), create())}>
-    <input placeholder="New project name" bind:value={name} />
-    <button type="submit" disabled={!name.trim()}>
-      <FolderPlus size={14} />
-      <span>New project…</span>
-    </button>
-  </form>
-  <button class="open-btn" onclick={pick}>
-    <FolderOpen size={14} />
-    <span>Open folder…</span>
-  </button>
   {#if recent.length}
     <div class="recent">
       <h3><Clock size={12} /> Recent</h3>
@@ -151,21 +155,35 @@
 </div>
 
 <style>
-  .picker { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 14px; min-height: 100%; padding: 24px; max-width: 680px; margin: 0 auto; }
-  .hero { display: flex; flex-direction: column; align-items: center; text-align: center; margin-bottom: 4px; }
-  .hero h1 { margin: 10px 0 2px; font-size: 22px; font-weight: 700; letter-spacing: -0.02em; color: var(--fg); }
+  .picker { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 14px; min-height: 100%; padding: 24px; max-width: 580px; margin: 0 auto; }
+  .hero { display: flex; flex-direction: column; align-items: center; text-align: center; margin-bottom: 2px; }
+  .hero h1 { margin: 8px 0 2px; font-size: 22px; font-weight: 700; letter-spacing: -0.02em; color: var(--fg); }
   .tagline { margin: 0; font-size: 13px; color: var(--muted); }
 
-  .template-section { width: 100%; display: flex; flex-direction: column; gap: 8px; margin: 4px 0 6px; }
+  .create-box { width: 100%; display: flex; justify-content: center; margin-top: 4px; }
+  .new { display: flex; gap: 8px; width: 100%; }
+  input { font: inherit; padding: 9px 12px; border-radius: 6px; border: 1px solid var(--border); background: var(--bg); color: var(--fg); flex: 1; min-width: 180px; }
+  button { font: inherit; padding: 8px 14px; border-radius: 6px; border: 1px solid var(--border); background: var(--raised); color: var(--fg); cursor: pointer; display: inline-flex; align-items: center; justify-content: center; gap: 6px; white-space: nowrap; }
+  button:disabled { opacity: 0.5; cursor: default; }
+  .primary-btn { background: var(--raised); border-color: var(--border); font-weight: 500; }
+  .primary-btn:not(:disabled):hover { border-color: var(--primary); color: var(--primary); }
+  .open-btn:hover { background: var(--raised); border-color: var(--border); }
+
+  .template-section { width: 100%; display: flex; flex-direction: column; gap: 8px; margin-top: 4px; }
   .template-header { display: flex; justify-content: space-between; align-items: center; }
   .section-title { font-size: 11px; text-transform: uppercase; color: var(--muted); letter-spacing: 0.05em; font-weight: 600; }
-  .template-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(190px, 1fr)); gap: 8px; width: 100%; }
+  .template-grid {
+    display: grid;
+    grid-template-columns: repeat(2, 1fr);
+    gap: 8px;
+    width: 100%;
+  }
 
   .template-card {
     display: flex;
     flex-direction: column;
     align-items: flex-start;
-    gap: 8px;
+    gap: 6px;
     padding: 10px 12px;
     border-radius: 8px;
     border: 1px solid var(--border);
@@ -175,6 +193,9 @@
     text-align: left;
     transition: all 0.15s ease;
   }
+  .template-card.featured {
+    grid-column: span 2;
+  }
   .template-card:hover { border-color: var(--primary); background: var(--raised); }
   .template-card.selected {
     border-color: var(--primary);
@@ -183,22 +204,17 @@
   }
 
   .card-top { display: flex; align-items: center; justify-content: space-between; width: 100%; }
-  .icon-wrap { color: var(--primary); display: flex; align-items: center; }
+  .icon-wrap { color: var(--primary); display: flex; align-items: center; gap: 6px; }
+  .title { font-size: 12px; font-weight: 600; color: var(--fg); }
   .tag { font-size: 10px; font-weight: 600; padding: 2px 6px; border-radius: 4px; background: var(--raised); color: var(--muted); letter-spacing: 0.02em; }
-  .card-body { display: flex; flex-direction: column; gap: 2px; }
-  .title { font-size: 12px; font-weight: 600; color: var(--fg); line-height: 1.3; }
+  .card-body { display: flex; flex-direction: column; }
   .desc { font-size: 11px; color: var(--muted); line-height: 1.3; }
 
-  button { font: inherit; padding: 8px 16px; border-radius: 6px; border: 1px solid var(--border); background: var(--raised); color: var(--fg); cursor: pointer; display: inline-flex; align-items: center; justify-content: center; gap: 6px; }
-  button:disabled { opacity: 0.5; cursor: default; }
-  .open-btn { width: 100%; max-width: 380px; }
-  .new { display: flex; gap: 8px; width: 100%; max-width: 380px; justify-content: center; }
-  input { font: inherit; padding: 8px 12px; border-radius: 6px; border: 1px solid var(--border); background: var(--bg); color: var(--fg); flex: 1; }
-  .recent { display: flex; flex-direction: column; gap: 4px; width: min(420px, 100%); margin-top: 8px; }
+  .recent { display: flex; flex-direction: column; gap: 4px; width: 100%; margin-top: 6px; }
   h3 { margin: 0 0 4px; font-size: 11px; text-transform: uppercase; color: var(--muted); letter-spacing: 0.04em; display: inline-flex; align-items: center; gap: 5px; }
-  .link { display: flex; flex-direction: column; align-items: flex-start; gap: 2px; text-align: left; border: none; background: none; padding: 6px 8px; }
+  .link { display: flex; flex-direction: column; align-items: flex-start; gap: 2px; text-align: left; border: none; background: none; padding: 6px 8px; border-radius: 6px; }
   .link:hover { background: var(--raised); }
   .name { font-weight: 500; }
   .path { color: var(--muted); font-size: 11px; max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-  .error { color: var(--danger); max-width: 420px; text-align: center; }
+  .error { color: var(--danger); width: 100%; text-align: center; }
 </style>
