@@ -54,6 +54,12 @@ export type ImageInput = {
   relPath?: string;
 };
 
+export type SavedVideoAsset = {
+  relPath: string;
+  filename: string;
+  sizeBytes: number;
+};
+
 export type ConfigOptionValue = { value: string; name?: string; description?: string };
 export type ConfigOption = {
   id: string;
@@ -102,6 +108,7 @@ export interface AgentApi {
   loadConversation(root?: string): Promise<string | null>;
   saveConversation(content: string, root?: string): Promise<void>;
   saveImageAsset(name: string, base64Data: string): Promise<{ relPath: string; filename: string }>;
+  saveVideoAsset(name: string, base64Data?: string, sourcePath?: string): Promise<SavedVideoAsset>;
   getProjectStats(root?: string): Promise<ProjectStats>;
   recordTokenUsage(inputTokens: number, outputTokens: number, model?: string): Promise<ProjectStats>;
   openTerminal(command?: string): Promise<void>;
@@ -142,6 +149,12 @@ export const tauriAgentApi: AgentApi = {
   saveConversation: (content, root) => invoke("save_conversation", { content, root: root ?? null }),
   saveImageAsset: (name, base64Data) =>
     invoke<{ relPath: string; filename: string }>("save_image_asset", { name, base64Data }),
+  saveVideoAsset: (name, base64Data, sourcePath) =>
+    invoke<SavedVideoAsset>("save_video_asset", {
+      name,
+      base64Data: base64Data ?? null,
+      sourcePath: sourcePath ?? null,
+    }),
   getProjectStats: (root) => invoke<ProjectStats>("get_project_stats", { root: root ?? null }),
   recordTokenUsage: (inputTokens, outputTokens, model) =>
     invoke<ProjectStats>("record_token_usage", { inputTokens, outputTokens, model }),

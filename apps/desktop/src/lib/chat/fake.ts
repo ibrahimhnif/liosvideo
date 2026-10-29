@@ -29,6 +29,11 @@ export function fakeAgentApi(agents: AgentStatus[] = []) {
     loadConversation: vi.fn(async (_root?: string): Promise<string | null> => null),
     saveConversation: vi.fn(async (_content: string, _root?: string) => {}),
     saveImageAsset: vi.fn(async (name: string) => ({ relPath: `assets/images/${name}`, filename: name })),
+    saveVideoAsset: vi.fn(async (name: string, _base64?: string, _src?: string) => ({
+      relPath: `assets/video/${name}`,
+      filename: name,
+      sizeBytes: 1024,
+    })),
     getProjectStats: vi.fn(async (_root?: string) => ({
       tts: { totalCharacters: 0, totalCostUsd: 0, items: [] },
       tokens: { inputTokens: 0, outputTokens: 0, totalTokens: 0, totalCostUsd: 0 },

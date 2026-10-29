@@ -4,6 +4,7 @@
     CheckCircle2,
     Circle,
     Clock,
+    Film,
     Key,
     ListTodo,
     RefreshCw,
@@ -56,6 +57,16 @@
           <div class="img-preview">
             <img src={img.dataUrl || img.relPath} alt={img.filename} />
             <span class="img-tag">{img.relPath}</span>
+          </div>
+        {/each}
+      </div>
+    {/if}
+    {#if item.videos && item.videos.length > 0}
+      <div class="attached-videos">
+        {#each item.videos as vid, i (i)}
+          <div class="vid-preview" title={vid.relPath}>
+            <Film size={13} class="vid-icon" />
+            <span class="vid-tag">{vid.relPath}</span>
           </div>
         {/each}
       </div>
@@ -151,9 +162,13 @@
   .bubble { border-radius: 10px; padding: 7px 10px; max-width: 92%; }
   .user { align-self: flex-end; background: color-mix(in srgb, #4f8cff 18%, var(--panel)); }
   .attached-images { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 6px; }
+  .attached-videos { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 6px; }
   .img-preview { display: flex; flex-direction: column; gap: 2px; max-width: 140px; }
   .img-preview img { width: 100%; max-height: 100px; object-fit: cover; border-radius: 6px; border: 1px solid var(--border); }
   .img-tag { font-family: ui-monospace, monospace; font-size: 10px; color: var(--muted); word-break: break-all; }
+  .vid-preview { display: inline-flex; align-items: center; gap: 5px; padding: 3px 8px; border-radius: 6px; background: color-mix(in srgb, #38bdf8 15%, var(--panel)); border: 1px solid color-mix(in srgb, #38bdf8 30%, transparent); }
+  :global(.vid-icon) { color: #38bdf8; flex-shrink: 0; }
+  .vid-tag { font-family: ui-monospace, monospace; font-size: 11px; color: #7dd3fc; word-break: break-all; }
   .agent { align-self: flex-start; background: var(--raised); }
   .text { white-space: pre-wrap; word-break: break-word; }
   .small { font-size: 12px; color: var(--muted); }

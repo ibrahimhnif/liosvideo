@@ -327,4 +327,41 @@ describe("ChatPane", () => {
     await settingsBtn.click();
     expect(onOpenSettings).toHaveBeenCalled();
   });
+
+  it("handles video attachment without sending binary data to the agent prompt", async () => {
+    const { api, emit } = fakeAgentApi();
+    const screen = await render(ChatPane, {
+      api,
+      playhead: { frame: 0, fps: 30 },
+      onClearSelection: () => {},
+    });
+
+    emit({ type: "status", state: "ready", agentId: "claude" });
+
+    const fileInput = screen.container.querySelector('input[type="file"]') as HTMLInputElement;
+    expect(fileInput).not.toBeNull();
+
+    const videoFile = new File(["fake-mp4-data"], "intro-clip.mp4", { type: "video/mp4" });
+    Object.defineProperty(fileInput, "files", {
+      value: [videoFile],
+      writable: false,
+    });
+    fileInput.dispatchEvent(new Event("change", { bubbles: true }));
+
+    await expect.element(screen.getByText("New Video Asset (1)")).toBeVisible();
+    await expect.element(screen.getByText("intro-clip.mp4")).toBeVisible();
+    expect(api.saveVideoAsset).toHaveBeenCalled();
+
+    const input = screen.getByRole("textbox");
+    await input.fill("Use this footage in scene 1");
+    await userEvent.keyboard("{Enter}");
+
+    expect(api.prompt).toHaveBeenCalledTimes(1);
+    const [sentPrompt, , sentImages] = (api.prompt as any).mock.calls[0];
+    expect(sentPrompt).toContain("Use this footage in scene 1");
+    expect(sentPrompt).toContain("assets/video/intro-clip.mp4");
+    expect(sentPrompt).toContain("video({ src: \"assets/video/intro-clip.mp4\" })");
+    // Verify NO binary images/videos payload was passed
+    expect(sentImages).toBeUndefined();
+  });
 });

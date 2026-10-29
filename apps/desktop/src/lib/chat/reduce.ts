@@ -8,8 +8,14 @@ export type AttachedImage = {
   mimeType: string;
 };
 
+export type AttachedVideo = {
+  relPath: string;
+  filename: string;
+  sizeBytes?: number;
+};
+
 export type ChatItem =
-  | { kind: "user"; id: string; text: string; selection?: string; images?: AttachedImage[] }
+  | { kind: "user"; id: string; text: string; selection?: string; images?: AttachedImage[]; videos?: AttachedVideo[] }
   | { kind: "agent"; id: string; text: string; messageId?: string }
   | { kind: "thought"; id: string; text: string; messageId?: string }
   | { kind: "tool"; id: string; toolCallId: string; gen: number; title: string; toolKind: string; status: string; locations: string[]; content: string[] }
@@ -33,7 +39,7 @@ export type ChatState = { items: ChatItem[]; turn: "idle" | "running"; connectio
 /** Events the UI adds on its own, next to the agent's. */
 export type ChatEvent =
   | AgentEvent
-  | { type: "user"; text: string; selection?: string; images?: AttachedImage[] }
+  | { type: "user"; text: string; selection?: string; images?: AttachedImage[]; videos?: AttachedVideo[] }
   | { type: "answered"; requestId: string; optionId: string | null }
   | { type: "asset_resolved"; requestId: string; answer: "provided" | "skipped" | "cancelled"; filePath?: string };
 
@@ -126,7 +132,14 @@ export function applyEvent(s: ChatState, e: ChatEvent): ChatState {
         ...s,
         items: [
           ...s.items,
-          { kind: "user", id: `u${s.nextId}`, text: e.text, selection: e.selection, images: e.images },
+          {
+            kind: "user",
+            id: `u${s.nextId}`,
+            text: e.text,
+            selection: e.selection,
+            images: e.images,
+            videos: e.videos,
+          },
         ],
         nextId: s.nextId + 1,
       };

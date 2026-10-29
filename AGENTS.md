@@ -149,6 +149,7 @@ export default scene(
 | **Shader** | `shader(props)` | Group properties plus `code (raw WGSL fragment shader), uniforms` (procedural effects, gradients, noise) |
 | **Text** | `text(props)` | Group properties plus `text, fontFamily, fontSize, fontWeight, color, lineHeight, letterSpacing` |
 | **Image** | `image(props)` | Group properties plus `src` (project-relative path), `fit ("fill" \| "contain" \| "cover")` |
+| **Video** | `video(props)` | Group properties plus `src` (project-relative path, e.g. `"assets/video/clip.mp4"`), `fit ("fill" \| "contain" \| "cover")`, `startOffset`, `speed`, `loop` |
 | **Three (3D)** | `three(props)` | Group properties plus `camera ("perspective" \| "orthographic"), fov, setup({ scene, camera, width, height }), update(state, progress, time)` (Three.js 3D scenes, meshes, lights, materials) |
 | **Phone** | `phone(props)` | Smartphone device frame for 9:16 mobile compositions with bezel, screen, dynamic island, and home indicator |
 
@@ -257,6 +258,54 @@ node.set({ fill: "#22c55e" }, 2.5);
 4. **Timing Sync with `vo(id)`**:
    - `vo(id).duration`: Exact audio duration in seconds.
    - `vo(id).wordTime(word)`: Second offset when a specific word is spoken.
+
+---
+
+## External Assets, Media & Attributions
+
+### When to Download External Assets
+- When a video scene requires real-world footage, b-roll, photos, icons, custom fonts, sound effects, or brand logos that cannot be cleanly synthesized via vector shapes (`rect`, `circle`, `path`) or 3D meshes.
+- Source high-quality, royalty-free, or permissively licensed media (Unsplash, Pexels, Wikimedia Commons, FreeSound, Google Fonts, GitHub raw assets).
+- Store deterministic assets in standard directories:
+  - Images / logos: `assets/images/<filename>`
+  - Video clips / b-roll: `assets/video/<filename>`
+  - Fonts: `assets/fonts/<filename>`
+  - Audio & SFX: `assets/audio/music/<filename>`
+
+### Mandatory Asset Attribution (`assets/ATTRIBUTIONS.md`)
+- Whenever you download or incorporate external assets, maintain an attribution record in `assets/ATTRIBUTIONS.md`:
+  ```markdown
+  # Project Asset Attributions
+
+  | Asset | Source / URL | Author / Creator | License | Notes / Usage |
+  | :--- | :--- | :--- | :--- | :--- |
+  | `assets/video/skyline.mp4` | https://pexels.com/video/12345 | Jane Doe | Pexels License | Scene 1 Background |
+  | `assets/images/logo.svg` | https://github.com/my-org/brand | MyOrg | MIT | Scene 2 Navbar |
+  ```
+
+### User Video Attachments & Chat Workflow
+- The desktop app allows users to drag-and-drop, paste, or attach video files directly in the chat panel.
+- To prevent prompt token overflow and ACP failures, videos are **never sent as binary/base64 in the LLM prompt**.
+- Instead, the file is saved directly to `assets/video/<filename>` and the user prompt includes a notice:
+  `[New video asset added: assets/video/<filename>. Use it in scene code with: video({ src: "assets/video/<filename>" })]`
+- When receiving this notice, integrate the video in the scene using `video(...)`:
+  ```ts
+  import { scene, video } from "liosvideo";
+
+  export default scene("showcase", { duration: 5 }, ({ root, width, height }) => {
+    root.add(
+      video({
+        name: "hero-clip",
+        src: "assets/video/filename.mp4",
+        width,
+        height,
+        fit: "cover", // "cover" | "contain" | "fill"
+        startOffset: 0,
+        loop: true
+      })
+    );
+  });
+  ```
 
 ---
 

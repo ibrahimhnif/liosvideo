@@ -139,6 +139,7 @@ pub fn run() {
             project::load_conversation,
             project::save_conversation,
             project::save_image_asset,
+            project::save_video_asset,
             project::get_project_stats,
             project::get_vo_timings,
             project::record_token_usage,

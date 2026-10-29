@@ -107,3 +107,13 @@ chips.forEach((chip, i) => {
   - Floating badges / chips: `8px – 12px`
   - Pill badges: `9999px` (fully rounded)
 - **Border Stroke**: Standard subtle stroke is `1px` or `1.5px` with a contrast-appropriate border color (`#30363d` or `#27272a`).
+
+---
+
+## 5. Media & Asset Attribution Standards
+
+When incorporating external imagery, background videos, b-roll footage, sound effects, or custom web fonts:
+- Prefer royalty-free and open platforms (Unsplash, Pexels, Wikimedia Commons, FreeSound, Google Fonts).
+- Store deterministic assets under `assets/images/`, `assets/video/`, `assets/audio/music/`, or `assets/fonts/`.
+- Maintain complete attributions in `assets/ATTRIBUTIONS.md` listing File, Source URL, Author/Creator, License, and Usage.
+- When the user adds video footage through the desktop chat, it is saved directly to `assets/video/<name>` and referenced in the prompt without binary token overhead. Integrate it with `video({ name: "...", src: "assets/video/<name>", fit: "cover" })`.

@@ -5,6 +5,7 @@
   import {
     Coins,
     Cpu,
+    Film,
     ImagePlus,
     Mic,
     Plug,
@@ -16,7 +17,13 @@
     Zap,
   } from "@lucide/svelte";
   import type { AgentApi, ImageInput, ProjectStats, SelectionContext } from "$lib/chat/api";
-  import { applyEvent, initialChat, type AttachedImage, type ChatEvent } from "$lib/chat/reduce";
+  import {
+    applyEvent,
+    initialChat,
+    type AttachedImage,
+    type AttachedVideo,
+    type ChatEvent,
+  } from "$lib/chat/reduce";
   import { detectOutOfScopeChanges } from "$lib/chat/scope_warning";
   import { selectionLabel, type Selection } from "$lib/timeline/model";
   import { devLog } from "$lib/devlog";
@@ -50,6 +57,7 @@
   let saveTimer: ReturnType<typeof setTimeout> | undefined;
   let hasLoadedHistory = $state(false);
   let pendingImages = $state<AttachedImage[]>([]);
+  let pendingVideos = $state<AttachedVideo[]>([]);
   let fileInput: HTMLInputElement | undefined = $state();
   let isDraggingOver = $state(false);
 
@@ -380,11 +388,75 @@
     }
   }
 
+  function isVideoFile(file: File): boolean {
+    if (file.type && file.type.startsWith("video/")) return true;
+    return /\.(mp4|webm|mov|mkv|avi|m4v)$/i.test(file.name);
+  }
+
+  function formatBytes(bytes?: number): string {
+    if (!bytes || bytes <= 0) return "0 B";
+    const units = ["B", "KB", "MB", "GB"];
+    const i = Math.floor(Math.log(bytes) / Math.log(1024));
+    return `${(bytes / Math.pow(1024, i)).toFixed(1)} ${units[i]}`;
+  }
+
+  async function attachVideoFile(file: File) {
+    try {
+      const defaultName = file.name && file.name !== "video.mp4"
+        ? file.name
+        : `video-${Date.now().toString().slice(-6)}.mp4`;
+
+      if (pendingVideos.some((v) => v.filename === defaultName)) {
+        return;
+      }
+
+      const filePath = typeof (file as any).path === "string" && (file as any).path.length > 0
+        ? (file as any).path
+        : undefined;
+
+      let saved: { relPath: string; filename: string; sizeBytes: number };
+
+      if (filePath) {
+        saved = await api.saveVideoAsset(defaultName, undefined, filePath);
+      } else {
+        const dataUrl = await new Promise<string>((resolve, reject) => {
+          const reader = new FileReader();
+          reader.onload = () => resolve(reader.result as string);
+          reader.onerror = () => reject(reader.error);
+          reader.readAsDataURL(file);
+        });
+
+        const commaIndex = dataUrl.indexOf(",");
+        if (commaIndex === -1) return;
+        const pureBase64 = dataUrl.slice(commaIndex + 1);
+        saved = await api.saveVideoAsset(defaultName, pureBase64);
+      }
+
+      const newVideo: AttachedVideo = {
+        relPath: saved.relPath,
+        filename: saved.filename,
+        sizeBytes: saved.sizeBytes || file.size,
+      };
+
+      pendingVideos = [...pendingVideos, newVideo];
+    } catch (e) {
+      fail(`Failed to attach video: ${e}`);
+    }
+  }
+
+  function removePendingVideo(index: number) {
+    pendingVideos = pendingVideos.filter((_, i) => i !== index);
+  }
+
   async function onFileInputChange(e: Event) {
     const input = e.target as HTMLInputElement;
     if (!input.files) return;
     for (const file of Array.from(input.files)) {
-      await attachImageFile(file);
+      if (isVideoFile(file)) {
+        await attachVideoFile(file);
+      } else {
+        await attachImageFile(file);
+      }
     }
     input.value = "";
   }
@@ -396,7 +468,16 @@
 
     if (items) {
       for (const item of Array.from(items)) {
-        if (item.type.startsWith("image/")) {
+        if (item.type.startsWith("video/")) {
+          e.preventDefault();
+          e.stopPropagation();
+          const file = item.getAsFile();
+          if (file) {
+            handled = true;
+            void attachVideoFile(file);
+            break;
+          }
+        } else if (item.type.startsWith("image/")) {
           e.preventDefault();
           e.stopPropagation();
           const file = item.getAsFile();
@@ -411,7 +492,12 @@
 
     if (!handled && files && files.length > 0) {
       for (const file of Array.from(files)) {
-        if (file.type.startsWith("image/") || /\.(png|jpe?g|webp|gif|svg|bmp)$/i.test(file.name)) {
+        if (isVideoFile(file)) {
+          e.preventDefault();
+          e.stopPropagation();
+          void attachVideoFile(file);
+          break;
+        } else if (file.type.startsWith("image/") || /\.(png|jpe?g|webp|gif|svg|bmp)$/i.test(file.name)) {
           e.preventDefault();
           e.stopPropagation();
           void attachImageFile(file);
@@ -427,7 +513,9 @@
     const files = e.dataTransfer?.files;
     if (!files) return;
     for (const file of Array.from(files)) {
-      if (file.type.startsWith("image/")) {
+      if (isVideoFile(file)) {
+        void attachVideoFile(file);
+      } else if (file.type.startsWith("image/")) {
         void attachImageFile(file);
       }
     }
@@ -449,17 +537,32 @@
 
   function send() {
     const prompt = text.trim();
-    if ((!prompt && pendingImages.length === 0) || !ready || running) return;
-    const promptToSend = prompt || "Use the attached image in the scene";
+    if ((!prompt && pendingImages.length === 0 && pendingVideos.length === 0) || !ready || running) return;
+
+    let promptToSend = prompt;
+    if (pendingVideos.length > 0) {
+      const videoNotes = pendingVideos
+        .map((v) => `[New video asset added: ${v.relPath}. Use it in scene code with: video({ src: "${v.relPath}" })]`)
+        .join("\n");
+      promptToSend = promptToSend
+        ? `${promptToSend}\n\n${videoNotes}`
+        : `I've added the following video asset(s) to the project:\n${videoNotes}\nPlease use them in the video scene.`;
+    } else if (!promptToSend && pendingImages.length > 0) {
+      promptToSend = "Use the attached image in the scene";
+    }
+
     text = "";
     const imagesToSend = [...pendingImages];
+    const videosToSend = [...pendingVideos];
     pendingImages = [];
+    pendingVideos = [];
 
     push({
       type: "user",
       text: promptToSend,
       selection: selection ? selectionLabel(selection) : undefined,
       images: imagesToSend.length > 0 ? imagesToSend : undefined,
+      videos: videosToSend.length > 0 ? videosToSend : undefined,
     });
 
     const apiImages: ImageInput[] = imagesToSend.map((img) => ({
@@ -675,33 +778,58 @@
     ondragleave={() => (isDraggingOver = false)}
     ondrop={handleDrop}
   >
-    {#if pendingImages.length > 0}
-      <div class="pending-images-section">
-        <div class="pending-images-header">
-          <span>Attached Image{pendingImages.length > 1 ? "s" : ""} ({pendingImages.length})</span>
-        </div>
-        <div class="pending-images-grid">
-          {#each pendingImages as img, i (img.relPath + i)}
-            <div class="pending-card">
-              <div class="pending-thumb">
-                <img src={img.dataUrl} alt={img.filename} />
+    {#if pendingImages.length > 0 || pendingVideos.length > 0}
+      <div class="pending-assets-section">
+        {#if pendingImages.length > 0}
+          <div class="pending-images-header">
+            <span>Attached Image{pendingImages.length > 1 ? "s" : ""} ({pendingImages.length})</span>
+          </div>
+          <div class="pending-images-grid">
+            {#each pendingImages as img, i (img.relPath + i)}
+              <div class="pending-card">
+                <div class="pending-thumb">
+                  <img src={img.dataUrl} alt={img.filename} />
+                  <button
+                    type="button"
+                    class="remove-img"
+                    onclick={() => removePendingImage(i)}
+                    title="Remove image"
+                    aria-label="Remove image"
+                  ><X size={12} /></button>
+                </div>
+                <span class="pending-name" title={img.relPath}>{img.filename}</span>
+              </div>
+            {/each}
+          </div>
+        {/if}
+
+        {#if pendingVideos.length > 0}
+          <div class="pending-videos-header">
+            <span>New Video Asset{pendingVideos.length > 1 ? "s" : ""} ({pendingVideos.length})</span>
+            <span class="pending-note">Copied to assets/video/</span>
+          </div>
+          <div class="pending-videos-list">
+            {#each pendingVideos as vid, i (vid.relPath + i)}
+              <div class="pending-video-chip">
+                <Film size={13} class="video-chip-icon" />
+                <span class="video-chip-name" title={vid.relPath}>{vid.filename}</span>
+                <span class="video-chip-size">{formatBytes(vid.sizeBytes)}</span>
                 <button
                   type="button"
-                  class="remove-img"
-                  onclick={() => removePendingImage(i)}
-                  title="Remove image"
-                  aria-label="Remove image"
+                  class="remove-video-btn"
+                  onclick={() => removePendingVideo(i)}
+                  title="Remove video reference"
+                  aria-label="Remove video reference"
                 ><X size={12} /></button>
               </div>
-              <span class="pending-name" title={img.relPath}>{img.filename}</span>
-            </div>
-          {/each}
-        </div>
+            {/each}
+          </div>
+        {/if}
       </div>
     {/if}
     <input
       type="file"
-      accept="image/*"
+      accept="image/*,video/*,.mp4,.webm,.mov,.mkv"
       multiple
       hidden
       bind:this={fileInput}
@@ -709,7 +837,7 @@
     />
     <textarea
       rows="3"
-      placeholder={ready ? "Ask the agent… (Enter to send, Shift+Enter for newline, paste/drop images)" : "Ask the agent… (connect first)"}
+      placeholder={ready ? "Ask the agent… (Enter to send, Shift+Enter for newline, paste/drop images or videos)" : "Ask the agent… (connect first)"}
       bind:value={text}
       onkeydown={onKey}
       onpaste={handlePaste}
@@ -720,7 +848,7 @@
         class="attach-btn"
         disabled={running}
         onclick={() => fileInput?.click()}
-        title="Attach image (saved to assets/images/)"
+        title="Attach image or video (saved to assets/)"
       >
         <ImagePlus size={13} />
         <span>Attach</span>
@@ -729,7 +857,7 @@
       <button
         type="submit"
         class="send-btn"
-        disabled={!ready || running || (!text.trim() && pendingImages.length === 0)}
+        disabled={!ready || running || (!text.trim() && pendingImages.length === 0 && pendingVideos.length === 0)}
       >
         <span>Send</span>
         <SendHorizontal size={13} />
@@ -859,21 +987,82 @@
     background: var(--bg);
     border-color: #4f8cff;
   }
-  .pending-images-section {
+  .pending-assets-section {
     padding: 8px 10px 6px 10px;
     background: rgba(0, 0, 0, 0.25);
     border-bottom: 1px solid var(--border);
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
   }
-  .pending-images-header {
+  .pending-images-header,
+  .pending-videos-header {
     font-size: 11px;
     font-weight: 600;
     color: var(--muted);
     margin-bottom: 6px;
     display: flex;
     align-items: center;
-    gap: 4px;
+    gap: 6px;
     text-transform: uppercase;
     letter-spacing: 0.04em;
+  }
+  .pending-note {
+    font-size: 10px;
+    color: var(--muted);
+    text-transform: none;
+    letter-spacing: normal;
+    font-weight: 400;
+  }
+  .pending-videos-list {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+    max-height: 100px;
+    overflow-y: auto;
+  }
+  .pending-video-chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 4px 8px;
+    border-radius: 6px;
+    background: color-mix(in srgb, #38bdf8 15%, var(--panel));
+    border: 1px solid color-mix(in srgb, #38bdf8 30%, transparent);
+    font-size: 11px;
+    max-width: 100%;
+  }
+  :global(.video-chip-icon) {
+    color: #38bdf8;
+    flex-shrink: 0;
+  }
+  .video-chip-name {
+    font-family: ui-monospace, monospace;
+    color: #e0f2fe;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    max-width: 140px;
+  }
+  .video-chip-size {
+    font-size: 10px;
+    color: var(--muted);
+    flex-shrink: 0;
+  }
+  .remove-video-btn {
+    border: none;
+    background: transparent;
+    color: var(--muted);
+    cursor: pointer;
+    padding: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 3px;
+    transition: color 0.15s ease;
+  }
+  .remove-video-btn:hover {
+    color: var(--danger);
   }
   .pending-images-grid {
     display: flex;

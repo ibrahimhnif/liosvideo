@@ -735,6 +735,87 @@ pub async fn save_image_asset(
     })
 }
 
+#[derive(Serialize, Clone, Debug)]
+#[serde(rename_all = "camelCase")]
+pub struct SavedVideoAsset {
+    pub rel_path: String,
+    pub filename: String,
+    pub size_bytes: u64,
+}
+
+#[tauri::command]
+pub async fn save_video_asset(
+    state: State<'_, ProjectState>,
+    name: String,
+    base64_data: Option<String>,
+    source_path: Option<String>,
+) -> Result<SavedVideoAsset> {
+    let root = state.root()?;
+    let video_dir = root.join("assets").join("video");
+    tokio::fs::create_dir_all(&video_dir)
+        .await
+        .map_err(|e| ProjectError::Other(format!("Failed to create assets/video: {e}")))?;
+
+    let raw_name = Path::new(&name)
+        .file_name()
+        .and_then(|n| n.to_str())
+        .unwrap_or("video.mp4");
+    let clean_name = raw_name
+        .chars()
+        .map(|c| if c.is_alphanumeric() || c == '.' || c == '-' || c == '_' { c } else { '_' })
+        .collect::<String>();
+    let clean_name = if clean_name.is_empty() { "video.mp4".to_string() } else { clean_name };
+
+    let target_path = video_dir.join(&clean_name);
+    let final_name = if target_path.exists() {
+        let stem = Path::new(&clean_name).file_stem().and_then(|s| s.to_str()).unwrap_or("video");
+        let ext = Path::new(&clean_name).extension().and_then(|e| e.to_str()).unwrap_or("mp4");
+        let timestamp = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_secs();
+        format!("{stem}-{timestamp}.{ext}")
+    } else {
+        clean_name
+    };
+
+    let final_path = video_dir.join(&final_name);
+
+    let size_bytes = if let Some(src) = source_path {
+        let src_path = Path::new(&src);
+        if !src_path.exists() {
+            return Err(ProjectError::Other(format!("Source video path does not exist: {src}")));
+        }
+        tokio::fs::copy(src_path, &final_path)
+            .await
+            .map_err(|e| ProjectError::Other(format!("Failed to copy video file: {e}")))?
+    } else if let Some(b64) = base64_data {
+        let pure_base64 = if let Some(idx) = b64.find(";base64,") {
+            &b64[idx + 8..]
+        } else {
+            &b64
+        };
+        use base64::Engine;
+        let bytes = base64::engine::general_purpose::STANDARD
+            .decode(pure_base64.trim())
+            .map_err(|e| ProjectError::Other(format!("Invalid base64 video data: {e}")))?;
+        let len = bytes.len() as u64;
+        tokio::fs::write(&final_path, bytes)
+            .await
+            .map_err(|e| ProjectError::Other(format!("Failed to write video file: {e}")))?;
+        len
+    } else {
+        return Err(ProjectError::Other("Neither base64Data nor sourcePath provided".into()));
+    };
+
+    let rel_path = format!("assets/video/{final_name}");
+    Ok(SavedVideoAsset {
+        rel_path,
+        filename: final_name,
+        size_bytes,
+    })
+}
+
 #[tauri::command]
 pub fn record_token_usage(
     app: AppHandle,
