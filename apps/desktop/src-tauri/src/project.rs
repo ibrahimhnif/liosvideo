@@ -347,8 +347,14 @@ pub async fn close_project(app: AppHandle, state: State<'_, ProjectState>) -> Re
 }
 
 #[tauri::command]
-pub async fn create_project(app: AppHandle, state: State<'_, ProjectState>, parent: String, name: String) -> Result<ProjectInfo> {
-    let root = git_job(move || crate::scaffold::create_project_in(Path::new(&parent), &name)).await?;
+pub async fn create_project(
+    app: AppHandle,
+    state: State<'_, ProjectState>,
+    parent: String,
+    name: String,
+    template: Option<String>,
+) -> Result<ProjectInfo> {
+    let root = git_job(move || crate::scaffold::create_project_in(Path::new(&parent), &name, template.as_deref())).await?;
     open_at(&app, &state, root).await
 }
 
