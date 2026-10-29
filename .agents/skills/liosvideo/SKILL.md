@@ -67,6 +67,16 @@ The liosvideo desktop application features three distinct stage tabs for seamles
 - **[ 📝 Script ]**: Dedicated script viewer for `script.md`. Visualizes narration lines (`<!-- vo:id -->`) as interactive cards with audio durations, word counts, and estimated reading speeds.
 - **[ 💻 Code ]**: In-app code viewer with file explorer sidebar (`long.ts`, `short.ts`, `scenes/*.ts`), syntax highlighting, line numbers, and fast copy/reload capabilities.
 
+### Archetypes & Creative Style Guides
+When creating or restyling scenes, consult the modular skill guides inspired by HyperFrames:
+- **`skills/creative/SKILL.md`**: Color harmony tokens (`Tokyo Night`, `Dark Tech 3D`, `SaaS Slate`, `Kinetic High-Contrast`), typography ratios, and motion easing standards.
+- **`theme.ts`**: Use semantic tokens (`theme.colors.*`, `theme.fonts.*`, `theme.easing.*`) to keep scenes consistent.
+- **Scene Blueprints (`skills/blueprints/`)**:
+  - `screencast.md`: Terminal prompt typing, code spotlight, and micro-zoom.
+  - `product-3d.md`: Three.js 3D hero setup, lighting, and floating spec chips.
+  - `kinetic-short.md`: 9:16 mobile phone mockup, word-sync highlighting, and pop animations.
+  - `saas-launch.md`: macOS browser window (`chrome()`), metric chips, and CTA banner.
+
 ---
 
 ## 3. Compositions & Scene Transitions
