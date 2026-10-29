@@ -24,3 +24,4 @@ deno_error = "0.5"
 deno_ast = { version = "0.53", features = ["transpiling"] }
 wgpu = "24.0"
 bytemuck = { version = "1.21", features = ["derive"] }
+symphonia = { version = "0.5", features = ["mp3", "wav", "isomp4", "alac", "flac"] }
