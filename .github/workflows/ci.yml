@@ -43,7 +43,9 @@ jobs:
       - name: Rust Cache
         uses: swatinem/rust-cache@v2
         with:
-          workspaces: apps/desktop/src-tauri
+          workspaces: |
+            apps/desktop/src-tauri
+            apps/cli
 
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
@@ -63,7 +65,9 @@ jobs:
           pnpm --filter liosvideo test:gpu
 
       - name: Rust tests
-        run: cargo test --manifest-path apps/desktop/src-tauri/Cargo.toml
+        run: |
+          cargo test --manifest-path apps/desktop/src-tauri/Cargo.toml
+          cargo test -p liosvideo-cli
 
   build-desktop:
     name: Build Desktop Image (${{ matrix.platform }})
@@ -102,7 +106,9 @@ jobs:
       - name: Rust Cache
         uses: swatinem/rust-cache@v2
         with:
-          workspaces: apps/desktop/src-tauri
+          workspaces: |
+            apps/desktop/src-tauri
+            apps/cli
 
       - name: Install Linux build dependencies
         if: matrix.platform == 'ubuntu-22.04'
@@ -112,6 +118,19 @@ jobs:
 
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
+
+      - name: Build Standalone CLI
+        run: cargo build --release -p liosvideo-cli
+
+      - name: Stage CLI binary
+        shell: bash
+        run: |
+          mkdir -p out/cli
+          if [ -f target/release/liosvideo ]; then
+            cp target/release/liosvideo out/cli/
+          elif [ -f target/release/liosvideo.exe ]; then
+            cp target/release/liosvideo.exe out/cli/
+          fi
 
       - name: Build Tauri Desktop App
         if: startsWith(github.ref, 'refs/tags/v')
@@ -126,6 +145,23 @@ jobs:
           releaseDraft: false
           prerelease: false
           args: ${{ matrix.args }}
+
+      - name: Upload CLI to Release
+        if: startsWith(github.ref, 'refs/tags/v')
+        shell: bash
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          if [ "${{ matrix.platform }}" = "macos-latest" ]; then
+            tar -czf out/cli/liosvideo-cli-macos.tar.gz -C target/release liosvideo
+            gh release upload "${{ github.ref_name }}" out/cli/liosvideo-cli-macos.tar.gz --clobber
+          elif [ "${{ matrix.platform }}" = "ubuntu-22.04" ]; then
+            tar -czf out/cli/liosvideo-cli-linux-x64.tar.gz -C target/release liosvideo
+            gh release upload "${{ github.ref_name }}" out/cli/liosvideo-cli-linux-x64.tar.gz --clobber
+          elif [ "${{ matrix.platform }}" = "windows-latest" ]; then
+            tar -czf out/cli/liosvideo-cli-windows-x64.tar.gz -C target/release liosvideo.exe
+            gh release upload "${{ github.ref_name }}" out/cli/liosvideo-cli-windows-x64.tar.gz --clobber
+          fi
 
       - name: Build Tauri Desktop App (workflow artifact)
         if: ${{ !startsWith(github.ref, 'refs/tags/v') }}
@@ -142,6 +178,7 @@ jobs:
           path: |
             apps/desktop/src-tauri/target/release/bundle/**
             apps/desktop/src-tauri/target/universal-apple-darwin/release/bundle/**
+            out/cli/**
           if-no-files-found: error
 
   update-readme:
