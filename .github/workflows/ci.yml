@@ -120,7 +120,16 @@ jobs:
         run: pnpm install --frozen-lockfile
 
       - name: Build Standalone CLI
-        run: cargo build --release -p liosvideo-cli
+        shell: bash
+        run: |
+          if [ "${{ matrix.platform }}" = "macos-latest" ]; then
+            cargo build --release -p liosvideo-cli --target aarch64-apple-darwin
+            cargo build --release -p liosvideo-cli --target x86_64-apple-darwin
+            mkdir -p target/release
+            lipo -create -output target/release/liosvideo target/aarch64-apple-darwin/release/liosvideo target/x86_64-apple-darwin/release/liosvideo
+          else
+            cargo build --release -p liosvideo-cli
+          fi
 
       - name: Stage CLI binary
         shell: bash

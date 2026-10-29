@@ -418,7 +418,7 @@ mod tests {
     #[test]
     fn test_mix_pcm_tracks_volume_and_offset() {
         let sample_rate = 1000;
-        let track1_samples = vec![0.5, 0.5, 0.5, 0.5]; // 2 stereo frames
+        let track1_samples = [0.5, 0.5, 0.5, 0.5]; // 2 stereo frames
 
         let track1_info = AudioTrackInfo {
             id: "track-1".into(),
@@ -452,7 +452,7 @@ mod tests {
     #[test]
     fn test_mix_pcm_tracks_duration_clipping_and_looping() {
         let sample_rate = 1000;
-        let short_clip = vec![0.4, 0.4]; // 1 stereo frame
+        let short_clip = [0.4, 0.4]; // 1 stereo frame
 
         // Looping track: repeats for the entire composition duration (3 frames)
         let loop_info = AudioTrackInfo {
@@ -500,8 +500,8 @@ mod tests {
     #[test]
     fn test_mix_pcm_tracks_clamping() {
         let sample_rate = 1000;
-        let loud_track1 = vec![0.8, 0.8];
-        let loud_track2 = vec![0.8, 0.8];
+        let loud_track1 = [0.8, 0.8];
+        let loud_track2 = [0.8, 0.8];
 
         let track1 = AudioTrackInfo {
             id: "t1".into(),

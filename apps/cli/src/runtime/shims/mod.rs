@@ -1,3 +1,5 @@
+#![allow(clippy::result_large_err)]
+
 use deno_core::error::CoreError;
 use deno_core::JsRuntime;
 

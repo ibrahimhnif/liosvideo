@@ -50,7 +50,7 @@ impl Seek for Mp4Output {
 /// - Y: `width * height`
 /// - U: `(width / 2) * (height / 2)`
 /// - V: `(width / 2) * (height / 2)`
-/// Total: `width * height * 3 / 2`
+/// - Total: `width * height * 3 / 2`
 pub fn rgba_to_yuv420p(rgba: &[u8], width: usize, height: usize, yuv_out: &mut [u8]) {
     assert_eq!(width % 2, 0, "width must be even");
     assert_eq!(height % 2, 0, "height must be even");
@@ -280,7 +280,7 @@ impl Mp4Encoder {
         if width == 0 || height == 0 {
             anyhow::bail!("Width and height must be greater than zero");
         }
-        if width % 2 != 0 || height % 2 != 0 {
+        if !width.is_multiple_of(2) || !height.is_multiple_of(2) {
             anyhow::bail!("Width and height must be even, got {}x{}", width, height);
         }
         if fps <= 0.0 {
