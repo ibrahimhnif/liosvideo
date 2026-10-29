@@ -1,4 +1,5 @@
-mod cli;
+pub mod cli;
+pub mod runtime;
 
 use clap::Parser;
 
