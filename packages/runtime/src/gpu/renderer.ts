@@ -1,6 +1,6 @@
 import { multiply, type Affine } from "../math/affine";
 import { parseColor } from "../math/color";
-import type { ImageItem, LayerItem, RenderItem, RenderList, TextItem, VideoItem } from "../renderlist";
+import type { ImageItem, LayerItem, RenderItem, RenderList, TextItem, ThreeItem, VideoItem } from "../renderlist";
 import blurSrc from "./shaders/blur.wgsl?raw";
 import commonSrc from "./shaders/common.wgsl?raw";
 import compositeSrc from "./shaders/composite.wgsl?raw";
@@ -335,6 +335,23 @@ export async function createRenderer(
       texture = tex;
       w = raster.width;
       h = raster.height;
+    } else if (leaf.kind === "three") {
+      const threeItem = leaf as ThreeItem;
+      const bitmap = threeItem.bitmap;
+      if (!bitmap) {
+        w = threeItem.width || 100;
+        h = threeItem.height || 100;
+        color = [0, 0, 0, 0];
+        params = [0, 0, 0, MODE_SOLID];
+      } else {
+        let tex = imageTextures.get(bitmap);
+        if (!tex) imageTextures.set(bitmap, (tex = uploadSource(bitmap)));
+        texture = tex;
+        w = threeItem.width || bitmap.width;
+        h = threeItem.height || bitmap.height;
+        color = [1, 1, 1, 1];
+        params = [0, 0, threeItem.opacity, MODE_TEXTURE];
+      }
     } else {
       const media = leaf as ImageItem | VideoItem;
       const bitmap = assets.get(media.src);

@@ -119,6 +119,23 @@ describe("renderer", () => {
     expect(px(await r.readPixels(), 30, 30)).toEqual([255, 0, 255, 255]);
   });
 
+  it("draws a three.js item with bitmap", async () => {
+    const r = await make();
+    const c = new OffscreenCanvas(30, 30);
+    const ctx = c.getContext("2d")!;
+    ctx.fillStyle = "#38bdf8";
+    ctx.fillRect(0, 0, 30, 30);
+    const bmp = await createImageBitmap(c);
+    r.render(
+      list([{ kind: "three", path: "3d", matrix: at(10, 10), width: 50, height: 50, bitmap: bmp, opacity: 1 }]),
+      new Map(),
+    );
+    const p = px(await r.readPixels(), 30, 30);
+    expect(p[0]).toBeGreaterThan(40);
+    expect(p[1]).toBeGreaterThan(160);
+    expect(p[2]).toBeGreaterThan(220);
+  });
+
   it("renders a frame identically whether seeked directly or played up to", async () => {
     const r = await make();
     const c = composition({
