@@ -39,7 +39,7 @@
       const match = line.match(/<!--\s*vo:([a-zA-Z0-9_-]+)\s*-->/);
       if (match) {
         currentId = match[1];
-      } else if (currentId && line.length > 0 && !line.startsWith("#") && !line.startsWith("<!--")) {
+      } else if (currentId && line.length > 0 && !line.startsWith("#") && !line.startsWith("\x3c!--")) {
         const timing = voTimings[currentId];
         result.push({
           id: currentId,
