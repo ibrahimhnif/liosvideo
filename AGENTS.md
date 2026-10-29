@@ -149,7 +149,46 @@ export default scene(
 | **Shader** | `shader(props)` | Group properties plus `code (raw WGSL fragment shader), uniforms` (procedural effects, gradients, noise) |
 | **Text** | `text(props)` | Group properties plus `text, fontFamily, fontSize, fontWeight, color, lineHeight, letterSpacing` |
 | **Image** | `image(props)` | Group properties plus `src` (project-relative path), `fit ("fill" \| "contain" \| "cover")` |
+| **Three (3D)** | `three(props)` | Group properties plus `camera ("perspective" \| "orthographic"), fov, setup({ scene, camera, width, height }), update(state, progress, time)` (Three.js 3D scenes, meshes, lights, materials) |
 | **Phone** | `phone(props)` | Smartphone device frame for 9:16 mobile compositions with bezel, screen, dynamic island, and home indicator |
+
+### 3D Scenes with Three.js
+Liosvideo supports deterministic 3D scenes via Three.js. You can import Three.js with `import * as THREE from "three"` and use the `three(...)` primitive:
+
+```ts
+import { scene, three } from "liosvideo";
+import * as THREE from "three";
+
+export default scene("showcase-3d", { duration: 5 }, ({ root, width, height }) => {
+  const cube = root.add(
+    three({
+      name: "cube-3d",
+      width: 600,
+      height: 600,
+      x: width / 2,
+      y: height / 2,
+      anchorX: 0.5,
+      anchorY: 0.5,
+      setup({ scene, camera }) {
+        camera.position.z = 4;
+        const mesh = new THREE.Mesh(
+          new THREE.BoxGeometry(1.5, 1.5, 1.5),
+          new THREE.MeshStandardMaterial({ color: "#7aa2f7" })
+        );
+        scene.add(mesh);
+        const light = new THREE.DirectionalLight(0xffffff, 2);
+        light.position.set(2, 2, 5);
+        scene.add(light);
+        return { mesh };
+      },
+      update({ mesh }, progress, time) {
+        mesh.rotation.x = time * 1.2;
+        mesh.rotation.y = time * 1.8;
+      }
+    })
+  );
+});
+```
 
 ### Custom Mockups & Components
 Agents can create domain-specific mockups (smartwatches, tablet frames, notification bubbles, custom app UIs) by authoring composite functions or classes extending `GroupNode` using `group()`, `rect()`, `circle()`, `path()`, and `text()`.
