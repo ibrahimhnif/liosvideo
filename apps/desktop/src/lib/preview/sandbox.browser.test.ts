@@ -1,4 +1,5 @@
 import { afterEach, describe, expect, it } from "vitest";
+import { bundleComposition } from "../bundle/bundler";
 import { PreviewHost } from "./host";
 
 const project = (body: string) =>
@@ -101,7 +102,6 @@ describe("text layout in the worker", () => {
 
 describe("scene error locations", () => {
   it("reports the project file and line of a throw in scene code", async () => {
-    const { bundleComposition } = await import("../bundle/bundler");
     const files: Record<string, string> = {
       "long.ts": `import { composition } from "liosvideo";\nimport x from "./scenes/x";\nexport default composition({ width: 64, height: 64, fps: 30, scenes: [x] });\n`,
       "scenes/x.ts": `import { scene } from "liosvideo";\nexport default scene("x", { duration: 1 }, () => {\n  throw new Error("boom");\n});\n`,
@@ -116,7 +116,6 @@ describe("scene error locations", () => {
 
 describe("scene source files", () => {
   it("maps each manifest scene to the project file that defines it", async () => {
-    const { bundleComposition } = await import("../bundle/bundler");
     const files: Record<string, string> = {
       "long.ts": `import { composition } from "liosvideo";\nimport intro from "./scenes/intro";\nimport { outro } from "./scenes/more";\nexport default composition({ width: 64, height: 64, fps: 30, scenes: [intro, outro] });\n`,
       "scenes/intro.ts": `import { scene } from "liosvideo";\nexport default scene("intro", { duration: 1 }, () => {});\n`,

@@ -6,6 +6,17 @@ import { defineConfig } from "vitest/config";
 export default defineConfig({
   plugins: [svelte()],
   resolve: { alias: { $lib: fileURLToPath(new URL("./src/lib", import.meta.url)) } },
+  optimizeDeps: {
+    include: [
+      "vitest-browser-svelte",
+      "@lucide/svelte",
+      "esbuild-wasm",
+      "source-map-js",
+      "marked",
+      "mediabunny",
+      "three",
+    ],
+  },
   test: {
     include: ["src/**/*.browser.test.ts"],
     fileParallelism: false,

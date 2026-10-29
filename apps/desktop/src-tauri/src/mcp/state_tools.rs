@@ -387,8 +387,8 @@ mod tests {
 
     fn setup_test_project() -> (tempfile::TempDir, Arc<EditorContext>, Arc<MockEventEmitter>) {
         let dir = tempfile::tempdir().unwrap();
-        fs::write(dir.path().join("main.ts"), "export default {}").unwrap();
-        fs::write(dir.path().join("intro.ts"), "export default {}").unwrap();
+        fs::write(dir.path().join("main.ts"), "export default composition({})").unwrap();
+        fs::write(dir.path().join("intro.ts"), "export default composition({})").unwrap();
 
         let state = ProjectState::default();
         state.open_for_test(dir.path().to_path_buf());

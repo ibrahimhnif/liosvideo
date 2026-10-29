@@ -40,7 +40,7 @@ Use this skill whenever:
 5. **Git Commit Co-Author Attribution**:
    - Always attribute the AI assistant as a co-author trailer in git commits:
      ```
-     Co-authored-by: Antigravity <antigravity@google.com>
+     Co-authored-by: Antigravity <antigravity@deepmind.google>
      ```
      (or matching the active agent: `Co-authored-by: Claude <noreply@anthropic.com>`, etc.).
 
