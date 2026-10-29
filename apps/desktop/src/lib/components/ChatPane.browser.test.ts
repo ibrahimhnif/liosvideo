@@ -289,4 +289,42 @@ describe("ChatPane", () => {
     await removeBtn.click();
     expect(screen.container.querySelector(".pending-card")).toBeNull();
   });
+
+  it("renders interactive auth card when OAuth session expired error occurs", async () => {
+    const { api, emit } = fakeAgentApi();
+    const onOpenSettings = vi.fn();
+    const screen = await render(ChatPane, {
+      api,
+      playhead: { frame: 0, fps: 30 },
+      onClearSelection: () => {},
+      onOpenSettings,
+    });
+
+    emit({
+      type: "status",
+      state: "error",
+      agentId: "claude",
+      message: "Failed to authenticate: OAuth session expired and could not be refreshed",
+    });
+
+    const card = screen.getByTestId("auth-notice-card");
+    await expect.element(card).toBeVisible();
+    await expect.element(card.getByText("Authentication Required")).toBeVisible();
+    await expect.element(card.getByText(/OAuth session expired and could not be refreshed/)).toBeVisible();
+
+    const reconnectBtn = card.getByRole("button", { name: "Reconnect" });
+    await expect.element(reconnectBtn).toBeVisible();
+    await reconnectBtn.click();
+    expect(api.connect).toHaveBeenCalled();
+
+    const terminalBtn = card.getByRole("button", { name: "Login via Terminal" });
+    await expect.element(terminalBtn).toBeVisible();
+    await terminalBtn.click();
+    expect(api.openTerminal).toHaveBeenCalledWith("claude login");
+
+    const settingsBtn = card.getByRole("button", { name: "Set API Key" });
+    await expect.element(settingsBtn).toBeVisible();
+    await settingsBtn.click();
+    expect(onOpenSettings).toHaveBeenCalled();
+  });
 });

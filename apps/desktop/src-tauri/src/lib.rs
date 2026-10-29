@@ -40,6 +40,53 @@ fn dev_write_snapshot(name: String, bytes: Vec<u8>) -> Result<(), String> {
     std::fs::write(std::path::Path::new(&dir).join(file), bytes).map_err(|e| e.to_string())
 }
 
+/// Opens the system terminal, optionally executing an initial command.
+#[tauri::command]
+fn open_system_terminal(command: Option<String>) -> Result<(), String> {
+    #[cfg(target_os = "macos")]
+    {
+        if let Some(cmd) = command {
+            let escaped = cmd.replace('\\', "\\\\").replace('"', "\\\"");
+            let script = format!(
+                "tell application \"Terminal\" to do script \"{escaped}\"\ntell application \"Terminal\" to activate"
+            );
+            tokio::process::Command::new("osascript")
+                .args(["-e", &script])
+                .spawn()
+                .map_err(|e| e.to_string())?;
+        } else {
+            tokio::process::Command::new("open")
+                .args(["-a", "Terminal"])
+                .spawn()
+                .map_err(|e| e.to_string())?;
+        }
+        return Ok(());
+    }
+
+    #[cfg(target_os = "windows")]
+    {
+        let cmd = command.unwrap_or_default();
+        tokio::process::Command::new("cmd")
+            .args(["/C", "start", "cmd", "/K", &cmd])
+            .spawn()
+            .map_err(|e| e.to_string())?;
+        return Ok(());
+    }
+
+    #[cfg(target_os = "linux")]
+    {
+        let cmd = command.unwrap_or_default();
+        tokio::process::Command::new("x-terminal-emulator")
+            .args(["-e", &cmd])
+            .spawn()
+            .map_err(|e| e.to_string())?;
+        return Ok(());
+    }
+
+    #[allow(unreachable_code)]
+    Ok(())
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
@@ -54,6 +101,7 @@ pub fn run() {
             initial_project,
             dev_snapshot_dir,
             dev_write_snapshot,
+            open_system_terminal,
             mcp::render_tools::report_captured_frame,
             mcp::render_tools::report_timeline_manifest,
             mcp::asset_tools::resolve_asset_request,
@@ -85,6 +133,7 @@ pub fn run() {
             project::restore_commit,
             project::revert_commit_files,
             project::list_compositions,
+            project::list_code_files,
             project::read_project_file,
             project::asset_url_path,
             project::load_conversation,

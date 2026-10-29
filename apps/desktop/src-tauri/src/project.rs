@@ -108,6 +108,33 @@ pub fn list_compositions_in(root: &Path) -> Result<Vec<String>> {
     Ok(names)
 }
 
+pub fn list_code_files_in(root: &Path) -> Result<Vec<String>> {
+    let mut files = Vec::new();
+    if let Ok(entries) = fs::read_dir(root) {
+        for entry in entries.flatten() {
+            if let Ok(name) = entry.file_name().into_string() {
+                if name.ends_with(".ts") && !name.ends_with(".d.ts") {
+                    files.push(name);
+                }
+            }
+        }
+    }
+    let scenes_dir = root.join("scenes");
+    if scenes_dir.is_dir() {
+        if let Ok(entries) = fs::read_dir(&scenes_dir) {
+            for entry in entries.flatten() {
+                if let Ok(name) = entry.file_name().into_string() {
+                    if name.ends_with(".ts") && !name.ends_with(".d.ts") {
+                        files.push(format!("scenes/{name}"));
+                    }
+                }
+            }
+        }
+    }
+    files.sort();
+    Ok(files)
+}
+
 pub fn read_file_in(root: &Path, rel: &str) -> Result<String> {
     Ok(fs::read_to_string(resolve_in_project(root, rel)?)?)
 }
@@ -408,6 +435,11 @@ pub async fn revert_commit_files(app: AppHandle, state: State<'_, ProjectState>,
 #[tauri::command]
 pub fn list_compositions(state: State<ProjectState>) -> Result<Vec<String>> {
     list_compositions_in(&state.root()?)
+}
+
+#[tauri::command]
+pub fn list_code_files(state: State<ProjectState>) -> Result<Vec<String>> {
+    list_code_files_in(&state.root()?)
 }
 
 #[tauri::command]
@@ -766,6 +798,13 @@ mod tests {
         let dir = project();
         let p = resolve_in_project(dir.path(), "scenes/a.ts").unwrap();
         assert!(p.ends_with("scenes/a.ts"));
+    }
+
+    #[test]
+    fn lists_code_files_in_root_and_scenes() {
+        let dir = project();
+        let files = list_code_files_in(dir.path()).unwrap();
+        assert_eq!(files, vec!["long.ts", "scenes/a.ts", "scenes/intro.ts", "short.ts"]);
     }
 
     #[test]

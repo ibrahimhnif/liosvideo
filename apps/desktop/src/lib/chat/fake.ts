@@ -39,6 +39,7 @@ export function fakeAgentApi(agents: AgentStatus[] = []) {
       tokens: { inputTokens: 0, outputTokens: 0, totalTokens: 0, totalCostUsd: 0 },
       totalCostUsd: 0,
     })),
+    openTerminal: vi.fn(async () => {}),
     on: (h: (e: AgentEvent) => void) => {
       handler = h;
       return () => (handler = undefined);

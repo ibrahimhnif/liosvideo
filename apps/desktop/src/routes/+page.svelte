@@ -18,6 +18,8 @@
   import ExportModal from "$lib/components/ExportModal.svelte";
   import SettingsModal from "$lib/components/SettingsModal.svelte";
   import ValidationModal from "$lib/components/ValidationModal.svelte";
+  import ScriptViewer from "$lib/components/ScriptViewer.svelte";
+  import CodeViewer from "$lib/components/CodeViewer.svelte";
   import Logo from "$lib/components/Logo.svelte";
   import { revealItemInDir } from "@tauri-apps/plugin-opener";
   import {
@@ -27,12 +29,15 @@
     RefreshCw,
     CheckCircle2,
     Film,
+    FileText,
+    Code,
     History,
     X,
   } from "@lucide/svelte";
 
   let project = $state<ProjectInfo | null>(null);
   let entry = $state("");
+  let activeTab = $state<"preview" | "script" | "code">("preview");
   let showAgents = $state(false);
   let showSettings = $state(false);
   let showValidation = $state(false);
@@ -196,6 +201,7 @@
             selection={selection.current}
             {playhead}
             onClearSelection={() => select(undefined)}
+            onOpenSettings={() => (showSettings = true)}
           />
         {/key}
       {:else}
@@ -218,6 +224,35 @@
         <div class="project-info">
           <span class="root" title={project.root}>{project.root.split("/").at(-1)}</span>
           <CompositionSwitcher compositions={project.compositions} selected={entry} onSelect={(c) => (entry = c)} />
+        </div>
+        <div class="workspace-tabs">
+          <button
+            class="tab-btn"
+            class:active={activeTab === "preview"}
+            onclick={() => (activeTab = "preview")}
+            title="Video preview & timeline"
+          >
+            <Film size={13} />
+            <span>Preview</span>
+          </button>
+          <button
+            class="tab-btn"
+            class:active={activeTab === "script"}
+            onclick={() => (activeTab = "script")}
+            title="Script narration (script.md)"
+          >
+            <FileText size={13} />
+            <span>Script</span>
+          </button>
+          <button
+            class="tab-btn"
+            class:active={activeTab === "code"}
+            onclick={() => (activeTab = "code")}
+            title="View TypeScript scenes and code"
+          >
+            <Code size={13} />
+            <span>Code</span>
+          </button>
         </div>
         <div class="project-actions">
           <button class="nav-btn" onclick={openProjectDialog} title="Open another project folder">
@@ -242,17 +277,29 @@
       </header>
       <div class="workspace" class:with-history={showHistory}>
         <div class="stage">
-          {#if entry}
-            {#key entry}
-              <Preview
-                bind:this={previewInstance}
-                {entry}
-                onRootFilesChanged={refreshCompositions}
-                onInfoChanged={(i) => (loadedInfo = i)}
-              />
-            {/key}
-          {:else}
-            <p class="placeholder">No composition files (*.ts) in the project root.</p>
+          <div class="stage-pane" class:active-pane={activeTab === "preview"} hidden={activeTab !== "preview"}>
+            {#if entry}
+              {#key entry}
+                <Preview
+                  bind:this={previewInstance}
+                  {entry}
+                  onRootFilesChanged={refreshCompositions}
+                  onInfoChanged={(i) => (loadedInfo = i)}
+                />
+              {/key}
+            {:else}
+              <p class="placeholder">No composition files (*.ts) in the project root.</p>
+            {/if}
+          </div>
+          {#if activeTab === "script"}
+            <div class="stage-pane active-pane">
+              <ScriptViewer projectRoot={project.root} />
+            </div>
+          {/if}
+          {#if activeTab === "code"}
+            <div class="stage-pane active-pane">
+              <CodeViewer projectRoot={project.root} activeComposition={entry} />
+            </div>
           {/if}
         </div>
         {#if showHistory}
@@ -345,5 +392,49 @@
   .btn-export:disabled { opacity: 0.5; cursor: not-allowed; }
   .workspace { flex: 1; min-height: 0; display: grid; grid-template-columns: 1fr; }
   .workspace.with-history { grid-template-columns: 1fr 320px; }
-  .stage { display: flex; flex-direction: column; min-width: 0; min-height: 0; overflow: hidden; }
+  .stage { display: flex; flex-direction: column; min-width: 0; min-height: 0; overflow: hidden; height: 100%; width: 100%; position: relative; }
+  .workspace-tabs {
+    display: flex;
+    align-items: center;
+    background: var(--panel);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    padding: 2px;
+    margin-left: 4px;
+  }
+  .tab-btn {
+    font: inherit;
+    font-size: 12px;
+    padding: 3px 10px;
+    border: none;
+    background: transparent;
+    color: var(--muted);
+    cursor: pointer;
+    border-radius: 4px;
+    display: flex;
+    align-items: center;
+    gap: 5px;
+    transition: background 0.15s ease, color 0.15s ease;
+  }
+  .tab-btn:hover {
+    color: var(--fg);
+    background: color-mix(in srgb, var(--fg) 5%, transparent);
+  }
+  .tab-btn.active {
+    background: var(--raised);
+    color: var(--fg);
+    font-weight: 600;
+  }
+  .stage-pane {
+    width: 100%;
+    height: 100%;
+    display: flex;
+    flex-direction: column;
+    min-width: 0;
+    min-height: 0;
+    overflow: hidden;
+  }
+  .stage-pane[hidden] {
+    display: none !important;
+  }
 </style>

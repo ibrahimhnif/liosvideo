@@ -24,12 +24,20 @@
   import ScopeWarningCard from "./ScopeWarningCard.svelte";
   import SelectionChip from "./SelectionChip.svelte";
 
-  let { api, projectRoot, selection, playhead, onClearSelection }: {
+  let {
+    api,
+    projectRoot,
+    selection,
+    playhead,
+    onClearSelection,
+    onOpenSettings,
+  }: {
     api: AgentApi;
     projectRoot?: string;
     selection?: Selection;
     playhead: { frame: number; fps: number };
     onClearSelection: () => void;
+    onOpenSettings?: () => void;
   } = $props();
 
   let chat = $state(initialChat());
@@ -474,6 +482,23 @@
     }
   }
 
+  function reconnect() {
+    api.connect().catch(fail);
+  }
+
+  async function loginTerminal() {
+    try {
+      await api.openTerminal("claude login");
+    } catch {
+      try {
+        await navigator.clipboard.writeText("claude login");
+        devLog("Copied 'claude login' to clipboard");
+      } catch (e) {
+        devLog(`Failed to copy to clipboard: ${e}`);
+      }
+    }
+  }
+
   function answer(requestId: string, optionId: string) {
     push({ type: "answered", requestId, optionId });
     api.respond(requestId, optionId).catch(fail);
@@ -623,7 +648,14 @@
   {/if}
   <div class="items" bind:this={list}>
     {#each chat.items as item (item.id)}
-      <ChatItem {item} onAnswer={answer} onResolveAsset={resolveAsset} />
+      <ChatItem
+        {item}
+        onAnswer={answer}
+        onResolveAsset={resolveAsset}
+        onReconnect={reconnect}
+        onLoginTerminal={loginTerminal}
+        {onOpenSettings}
+      />
     {/each}
     {#if running}<div class="working">Working…</div>{/if}
   </div>

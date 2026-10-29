@@ -104,6 +104,7 @@ export interface AgentApi {
   saveImageAsset(name: string, base64Data: string): Promise<{ relPath: string; filename: string }>;
   getProjectStats(root?: string): Promise<ProjectStats>;
   recordTokenUsage(inputTokens: number, outputTokens: number, model?: string): Promise<ProjectStats>;
+  openTerminal(command?: string): Promise<void>;
   /** Subscribes to agent events; returns an unsubscribe function. */
   on(handler: (e: AgentEvent) => void): () => void;
 }
@@ -144,6 +145,7 @@ export const tauriAgentApi: AgentApi = {
   getProjectStats: (root) => invoke<ProjectStats>("get_project_stats", { root: root ?? null }),
   recordTokenUsage: (inputTokens, outputTokens, model) =>
     invoke<ProjectStats>("record_token_usage", { inputTokens, outputTokens, model }),
+  openTerminal: (command) => invoke("open_system_terminal", { command: command ?? null }),
   on(handler) {
     const offs = (["status", "update", "permission", "turn", "asset_request"] as const).map((type) =>
       listen<any>(`agent://${type}`, (e) => handler({ type, ...e.payload })),
