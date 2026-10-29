@@ -8,6 +8,8 @@ export default defineConfig({
   resolve: { alias: { $lib: fileURLToPath(new URL("./src/lib", import.meta.url)) } },
   test: {
     include: ["src/**/*.browser.test.ts"],
+    fileParallelism: false,
+    testTimeout: 60000,
     browser: {
       enabled: true,
       headless: true,

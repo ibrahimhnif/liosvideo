@@ -1,7 +1,7 @@
 import type { FromWorker, LoadedInfo, PreviewError, SourceLocation, ToWorker } from "./protocol";
 import { locate } from "./sourcemap";
 
-export const WATCHDOG_MS = 5000;
+export const WATCHDOG_MS = 15000;
 
 const defaultWorker = () => new Worker(new URL("./render.worker.ts", import.meta.url), { type: "module" });
 

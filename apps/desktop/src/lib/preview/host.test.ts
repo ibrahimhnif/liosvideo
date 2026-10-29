@@ -86,7 +86,7 @@ describe("PreviewHost", () => {
     const errors: string[] = [];
     host.onError((e) => errors.push(e.message));
     const p = host.load("while(true){}").catch(() => "rejected");
-    await vi.advanceTimersByTimeAsync(5000);
+    await vi.advanceTimersByTimeAsync(15000);
     expect(errors).toEqual(["Scene code timed out"]);
     expect(makeWorker).toHaveBeenCalledTimes(2);
     expect(workers[0].terminated).toBe(true);
@@ -130,7 +130,7 @@ describe("PreviewHost review fixes", () => {
     const hung = host.load("while(true){}").catch((e: Error) => e.message);
     await vi.advanceTimersByTimeAsync(2000);
     const fix = host.load("fixed");
-    await vi.advanceTimersByTimeAsync(3000);
+    await vi.advanceTimersByTimeAsync(13000);
     expect(workers).toHaveLength(2);
     await expect(hung).resolves.toBe("Scene code timed out");
     const replay = loadsOf(workers[1]);
@@ -144,7 +144,7 @@ describe("PreviewHost review fixes", () => {
     const { host, makeWorker } = setup();
     host.load("hang").catch(() => {});
     for (let i = 0; i < 4; i++) {
-      await vi.advanceTimersByTimeAsync(1500);
+      await vi.advanceTimersByTimeAsync(4000);
       host.load(`save ${i}`).catch(() => {});
     }
     expect(makeWorker).toHaveBeenCalledTimes(2);
