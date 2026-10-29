@@ -31,6 +31,19 @@ describe("bundleComposition", () => {
     expect(project.default).toMatchObject({ kind: "comp", scenes: [{ id: "intro", background: "#123456" }] });
   });
 
+  it("bundles import * as THREE from 'three' and maps to global runtime", async () => {
+    const filesWithThree: Record<string, string> = {
+      ...files,
+      "three_scene.ts": `import * as THREE from "three";\nexport default THREE;\n`,
+    };
+    const r = await bundleComposition("three_scene.ts", async (rel) => filesWithThree[rel]);
+    expect(r.ok).toBe(true);
+    if (!r.ok) return;
+    const fakeThree = { BoxGeometry: class {} };
+    const project = new Function("globalThis", `${r.code};return __liosProject`)({ THREE: fakeThree });
+    expect(project.default.BoxGeometry).toBe(fakeThree.BoxGeometry);
+  });
+
   it("reports a missing import with file and line", async () => {
     const r = await bundleComposition("missing.ts", readFile);
     expect(r.ok).toBe(false);
@@ -38,11 +51,11 @@ describe("bundleComposition", () => {
     expect(r.errors[0]).toMatchObject({ file: "missing.ts", line: 1 });
   });
 
-  it("rejects bare imports other than liosvideo", async () => {
+  it("rejects bare imports other than liosvideo and three", async () => {
     const r = await bundleComposition("node.ts", readFile);
     expect(r.ok).toBe(false);
     if (r.ok) return;
-    expect(r.errors[0].message).toContain("Only 'liosvideo' and relative imports are allowed");
+    expect(r.errors[0].message).toContain("Only 'liosvideo', 'three', and relative imports are allowed");
   });
 
   it("reports syntax errors with file and line", async () => {

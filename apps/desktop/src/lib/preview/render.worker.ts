@@ -1,5 +1,6 @@
 /// <reference lib="webworker" />
 import * as runtime from "liosvideo";
+import * as THREE from "three";
 import { createRenderer, measureText, type AssetMap, type Renderer } from "liosvideo/gpu";
 import type { FromWorker, ToWorker } from "./protocol";
 
@@ -22,6 +23,7 @@ for (const name of BLOCKED) {
   });
 }
 (globalThis as unknown as { __liosvideo: typeof runtime }).__liosvideo = runtime;
+(globalThis as unknown as { THREE: typeof THREE }).THREE = THREE;
 runtime.setTextMeasurer(measureText);
 
 let renderer: Renderer | undefined;

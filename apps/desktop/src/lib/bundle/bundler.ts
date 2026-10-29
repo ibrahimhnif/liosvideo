@@ -6,6 +6,7 @@ export type BuildResult = { ok: true; code: string; files: string[] } | { ok: fa
 
 const PROJECT = "project";
 const RUNTIME = "lios-runtime";
+const THREE_RUNTIME = "three-runtime";
 
 let ready: Promise<void> | undefined;
 function init(): Promise<void> {
@@ -76,8 +77,9 @@ export async function bundleComposition(entry: string, readFile: (rel: string) =
           return { path: entryPath, namespace: PROJECT };
         }
         if (args.path === "liosvideo") return { path: "liosvideo", namespace: RUNTIME };
+        if (args.path === "three" || args.path.startsWith("three/")) return { path: "three", namespace: THREE_RUNTIME };
         if (!args.path.startsWith(".")) {
-          return { errors: [{ text: "Only 'liosvideo' and relative imports are allowed" }] };
+          return { errors: [{ text: "Only 'liosvideo', 'three', and relative imports are allowed" }] };
         }
         const base = normalize(`${dirname(args.importer)}/${args.path}`);
         if (base === undefined) return { errors: [{ text: `Import "${args.path}" is outside the project` }] };
@@ -95,6 +97,10 @@ export async function bundleComposition(entry: string, readFile: (rel: string) =
       });
       build.onLoad({ filter: /.*/, namespace: RUNTIME }, () => ({
         contents: "module.exports = globalThis.__liosvideo",
+        loader: "js",
+      }));
+      build.onLoad({ filter: /.*/, namespace: THREE_RUNTIME }, () => ({
+        contents: "module.exports = globalThis.THREE",
         loader: "js",
       }));
     },
