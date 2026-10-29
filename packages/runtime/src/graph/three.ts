@@ -36,6 +36,22 @@ export class ThreeNode extends Node<ThreeProps> {
     this.setupFn = init.setup;
     this.updateFn = init.update;
   }
+
+  get width(): number {
+    return this.propsAt(0).width;
+  }
+
+  get height(): number {
+    return this.propsAt(0).height;
+  }
+
+  get cameraType(): "perspective" | "orthographic" {
+    return this.propsAt(0).camera;
+  }
+
+  get fov(): number {
+    return this.propsAt(0).fov;
+  }
 }
 
 export function three(
