@@ -97,12 +97,28 @@ pub fn resolve_in_project(root: &Path, rel: &str) -> Result<PathBuf> {
     Ok(joined)
 }
 
+fn is_composition_file(path: &Path, name: &str) -> bool {
+    // Default primary compositions long.ts and short.ts are always treated as compositions
+    // even during transient edits or in test stubs.
+    if name == "long.ts" || name == "short.ts" {
+        return true;
+    }
+
+    let Ok(content) = fs::read_to_string(path) else {
+        return false;
+    };
+
+    // Any custom root .ts file must default-export a composition
+    content.contains("export default") && content.contains("composition")
+}
+
 pub fn list_compositions_in(root: &Path) -> Result<Vec<String>> {
     let mut names: Vec<String> = fs::read_dir(root)?
         .filter_map(|e| e.ok())
         .filter(|e| e.file_type().map(|t| t.is_file()).unwrap_or(false))
         .filter_map(|e| e.file_name().into_string().ok())
         .filter(|n| n.ends_with(".ts") && !n.ends_with(".d.ts"))
+        .filter(|n| is_composition_file(&root.join(n), n))
         .collect();
     names.sort();
     Ok(names)
@@ -935,6 +951,15 @@ mod tests {
     fn lists_root_compositions_only() {
         let dir = project();
         assert_eq!(list_compositions_in(dir.path()).unwrap(), vec!["long.ts", "short.ts"]);
+    }
+
+    #[test]
+    fn ignores_non_composition_root_helper_files() {
+        let dir = project();
+        fs::write(dir.path().join("narration.ts"), "export function narration() { return []; }").unwrap();
+        fs::write(dir.path().join("theme.ts"), "export const theme = {};").unwrap();
+        fs::write(dir.path().join("custom.ts"), "import { composition } from 'liosvideo';\nexport default composition({});").unwrap();
+        assert_eq!(list_compositions_in(dir.path()).unwrap(), vec!["custom.ts", "long.ts", "short.ts"]);
     }
 
     #[test]
