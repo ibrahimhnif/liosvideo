@@ -1,17 +1,15 @@
 use std::collections::HashMap;
 use std::path::PathBuf;
+#[cfg(target_os = "macos")]
 use std::process::Command;
 
 pub struct Keychain;
 
 fn credentials_path() -> Option<PathBuf> {
-    if let Ok(home) = std::env::var("HOME") {
-        let dir = PathBuf::from(home).join(".config").join("liosvideo");
-        let _ = std::fs::create_dir_all(&dir);
-        Some(dir.join("credentials.json"))
-    } else {
-        None
-    }
+    let home = std::env::var("HOME").or_else(|_| std::env::var("USERPROFILE")).ok()?;
+    let dir = PathBuf::from(home).join(".config").join("liosvideo");
+    let _ = std::fs::create_dir_all(&dir);
+    Some(dir.join("credentials.json"))
 }
 
 fn read_credentials_file() -> HashMap<String, String> {
@@ -91,19 +89,11 @@ impl Keychain {
     /// Attempts macOS Keychain first. If Keychain is non-interactive or fails,
     /// falls back gracefully to ~/.config/liosvideo/credentials.json (mode 0600).
     pub fn set_secret(key: &str, secret: &str) -> Result<(), String> {
-        let mut keychain_saved = false;
-
         #[cfg(target_os = "macos")]
         {
-            let output = Command::new("/usr/bin/security")
+            let _ = Command::new("/usr/bin/security")
                 .args(["add-generic-password", "-U", "-s", "liosvideo", "-a", key, "-w", secret])
                 .output();
-
-            if let Ok(out) = output {
-                if out.status.success() {
-                    keychain_saved = true;
-                }
-            }
         }
 
         // Always also save to secure credentials file as backup/fallback
@@ -111,7 +101,6 @@ impl Keychain {
         creds.insert(key.to_string(), secret.to_string());
         write_credentials_file(&creds)?;
 
-        let _ = keychain_saved;
         Ok(())
     }
 

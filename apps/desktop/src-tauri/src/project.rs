@@ -923,6 +923,7 @@ mod tests {
         assert!(resolve_in_project(dir.path(), "/etc/passwd").is_err());
     }
 
+    #[cfg(unix)]
     #[test]
     fn rejects_symlinks_leading_outside() {
         let dir = project();
@@ -932,6 +933,7 @@ mod tests {
         assert!(resolve_in_project(dir.path(), "link/f").is_err());
     }
 
+    #[cfg(unix)]
     #[test]
     fn rejects_dangling_symlinks_leading_outside() {
         let dir = project();

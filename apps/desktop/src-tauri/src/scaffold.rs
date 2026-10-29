@@ -139,7 +139,14 @@ fn populate(root: &Path, template_id: &str, init: impl Fn(&Path) -> Result<crate
         fs::write(root.join(dir).join(".gitkeep"), "")?;
     }
     for link in ["CLAUDE.md", "GEMINI.md"] {
+        #[cfg(unix)]
         std::os::unix::fs::symlink("AGENTS.md", root.join(link))?;
+        #[cfg(not(unix))]
+        {
+            if std::os::windows::fs::symlink_file("AGENTS.md", root.join(link)).is_err() {
+                let _ = fs::copy(root.join("AGENTS.md"), root.join(link));
+            }
+        }
     }
     let root = root.canonicalize()?;
     init(&root)?;

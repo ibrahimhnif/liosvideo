@@ -50,12 +50,29 @@ pub fn builtin_registry() -> Vec<AgentEntry> {
     serde_json::from_str(include_str!("../../agents.json")).expect("agents.json is valid")
 }
 
-/// First executable named `name` in a `:`-separated PATH.
+/// First executable named `name` in a `:`-separated PATH (or `;` on Windows).
 pub fn find_bin(name: &str, path: &str) -> Option<PathBuf> {
-    use std::os::unix::fs::PermissionsExt;
-    path.split(':').filter(|d| !d.is_empty()).map(|d| Path::new(d).join(name)).find(|p| {
-        p.metadata().is_ok_and(|m| m.is_file() && m.permissions().mode() & 0o111 != 0)
-    })
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        path.split(':').filter(|d| !d.is_empty()).map(|d| Path::new(d).join(name)).find(|p| {
+            p.metadata().is_ok_and(|m| m.is_file() && m.permissions().mode() & 0o111 != 0)
+        })
+    }
+    #[cfg(not(unix))]
+    {
+        let extensions = ["", ".exe", ".cmd", ".bat"];
+        let separator = if path.contains(';') { ';' } else { ':' };
+        for d in path.split(separator).filter(|d| !d.is_empty()) {
+            for ext in extensions {
+                let candidate = Path::new(d).join(format!("{name}{ext}"));
+                if candidate.metadata().is_ok_and(|m| m.is_file()) {
+                    return Some(candidate);
+                }
+            }
+        }
+        None
+    }
 }
 
 pub fn adapter_bin(adapters_dir: &Path, entry_id: &str, bin: &str) -> PathBuf {
@@ -173,11 +190,13 @@ pub fn launch_spec(
 pub(crate) mod tests {
     use super::*;
     use std::fs;
+    #[cfg(unix)]
     use std::os::unix::fs::PermissionsExt;
 
     pub fn script(dir: &Path, name: &str, body: &str) -> PathBuf {
         let p = dir.join(name);
         fs::write(&p, format!("#!/bin/sh\n{body}\n")).unwrap();
+        #[cfg(unix)]
         fs::set_permissions(&p, fs::Permissions::from_mode(0o755)).unwrap();
         p
     }

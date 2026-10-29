@@ -313,6 +313,7 @@ pub(crate) mod tests {
         assert_eq!(part["result"]["content"], "l2\nl3\n");
     }
 
+    #[cfg(unix)]
     #[tokio::test]
     async fn fs_rejects_outside_relative_and_symlink_escape_paths() {
         let dir = project();
