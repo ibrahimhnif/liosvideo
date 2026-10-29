@@ -4,13 +4,22 @@ import { PreviewHost } from "./host";
 const project = (body: string) =>
   `var __liosProject = (() => { const L = globalThis.__liosvideo; return { default: ${body} }; })();`;
 
-let host: PreviewHost | undefined;
-afterEach(() => host?.dispose());
+let hosts: PreviewHost[] = [];
+afterEach(() => {
+  for (const h of hosts) {
+    try {
+      h.dispose();
+    } catch {}
+  }
+  hosts = [];
+  document.querySelectorAll("canvas").forEach((c) => c.remove());
+});
 
 function makeHost() {
   const canvas = document.createElement("canvas");
   document.body.appendChild(canvas);
-  host = new PreviewHost(canvas, async () => createImageBitmap(new ImageData(1, 1)));
+  const host = new PreviewHost(canvas, async () => createImageBitmap(new ImageData(1, 1)));
+  hosts.push(host);
   return host;
 }
 
