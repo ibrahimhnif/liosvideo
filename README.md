@@ -9,8 +9,13 @@
 </p>
 
 <p align="center">
-  <a href="#key-features">Features</a> •
+  <a href="https://github.com/ibrahimhnif/liosvideo/releases/latest"><img alt="Latest release" src="https://img.shields.io/github/v/release/ibrahimhnif/liosvideo?style=flat-square" /></a>
+  <a href="https://github.com/ibrahimhnif/liosvideo/actions/workflows/ci.yml"><img alt="CI" src="https://github.com/ibrahimhnif/liosvideo/actions/workflows/ci.yml/badge.svg" /></a>
+</p>
+
+<p align="center">
   <a href="#download">Download</a> •
+  <a href="#key-features">Features</a> •
   <a href="#getting-started">Getting Started</a> •
   <a href="#agent-guidance">Agent Guidance</a> •
   <a href="#custom-skills">Custom Skills</a> •
@@ -29,13 +34,15 @@ An AI coding agent (Claude Code, Gemini CLI, Codex, Antigravity, or custom ACP a
 
 ## Download
 
-Download the latest desktop release for your platform:
+Download the latest desktop release for your platform. Installers are published automatically by CI for every `v*` tag.
 
-| Platform | Download |
-| :--- | :--- |
-| macOS (Universal) | [Download `.dmg`](https://github.com/ibrahimhnif/liosvideo/releases/latest/download/Liosvideo_0.1.0_universal.dmg) |
-| Windows (x64) | [Download installer `.exe`](https://github.com/ibrahimhnif/liosvideo/releases/latest/download/Liosvideo_0.1.0_x64-setup.exe) · [`.msi`](https://github.com/ibrahimhnif/liosvideo/releases/latest/download/Liosvideo_0.1.0_x64_en-US.msi) |
-| Linux (x64) | [Download `.AppImage`](https://github.com/ibrahimhnif/liosvideo/releases/latest/download/Liosvideo_0.1.0_amd64.AppImage) · [`.deb`](https://github.com/ibrahimhnif/liosvideo/releases/latest/download/Liosvideo_0.1.0_amd64.deb) · [`.rpm`](https://github.com/ibrahimhnif/liosvideo/releases/latest/download/Liosvideo-0.1.0-1.x86_64.rpm) |
+<!-- downloads:start -->
+Latest release: [`v0.1.0`](https://github.com/ibrahimhnif/liosvideo/releases/tag/v0.1.0) · [All releases](https://github.com/ibrahimhnif/liosvideo/releases)
+
+_No installers have been published for this release yet._
+<!-- downloads:end -->
+
+> On macOS, drag `Liosvideo.app` into `/Applications`. On Windows, run the `.msi` or `-setup.exe` installer. On Linux, use the `.AppImage` (make it executable) or install the `.deb`.
 
 See the [latest release](https://github.com/ibrahimhnif/liosvideo/releases/latest) for release notes and all available assets.
 
@@ -110,7 +117,7 @@ See the [latest release](https://github.com/ibrahimhnif/liosvideo/releases/lates
 
 ```bash
 # Clone the repository
-git clone https://github.com/your-username/liosvideo.git
+git clone https://github.com/ibrahimhnif/liosvideo.git
 cd liosvideo
 
 # Install dependencies
