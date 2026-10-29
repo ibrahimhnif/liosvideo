@@ -25,3 +25,6 @@ deno_ast = { version = "0.53", features = ["transpiling"] }
 wgpu = "24.0"
 bytemuck = { version = "1.21", features = ["derive"] }
 symphonia = { version = "0.5", features = ["mp3", "wav", "isomp4", "alac", "flac"] }
+openh264 = "0.6"
+mp4 = "0.14"
+fdk-aac-rs = "0.1.0"

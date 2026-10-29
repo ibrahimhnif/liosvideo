@@ -1728,6 +1728,133 @@ dependencies = [
 ]
 
 [[package]]
+name = "fdk-aac-rs"
+version = "0.1.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "fedb187a0f5633585e517b78b0e08149f8b2b6db3389b1ad4b55558edee9750a"
+dependencies = [
+ "fdk-aac-rs-aacdec",
+ "fdk-aac-rs-aacenc",
+ "fdk-aac-rs-fdk",
+]
+
+[[package]]
+name = "fdk-aac-rs-aacdec"
+version = "0.1.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "ffaa0b60ab4add280800c5e84540b1d943889cdce1a7c668ce1b7106096b291f"
+dependencies = [
+ "fdk-aac-rs-arith",
+ "fdk-aac-rs-drc",
+ "fdk-aac-rs-fdk",
+ "fdk-aac-rs-pcmutils",
+ "fdk-aac-rs-sacdec",
+ "fdk-aac-rs-sbrdec",
+ "fdk-aac-rs-tpdec",
+]
+
+[[package]]
+name = "fdk-aac-rs-aacenc"
+version = "0.1.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "478e8eed735a4397506cfd27150a09fdb14c3da827a15d26c47c990a1311e79b"
+dependencies = [
+ "fdk-aac-rs-fdk",
+ "fdk-aac-rs-pcmutils",
+ "fdk-aac-rs-sacenc",
+ "fdk-aac-rs-sbrenc",
+ "fdk-aac-rs-tpenc",
+]
+
+[[package]]
+name = "fdk-aac-rs-arith"
+version = "0.1.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "f579916b73b303487458ce18c5a38d200cfc61f0e00310688b8b372e13bcf220"
+dependencies = [
+ "fdk-aac-rs-fdk",
+]
+
+[[package]]
+name = "fdk-aac-rs-drc"
+version = "0.1.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "2b864324016b276c72a2a1229dfb644246c30410f8566439c31d909332d32ec3"
+dependencies = [
+ "fdk-aac-rs-fdk",
+]
+
+[[package]]
+name = "fdk-aac-rs-fdk"
+version = "0.1.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "231195c947a0acc3c68f2f4d63876a4acf4bb980d29aeea19f178f3ce734ebe4"
+
+[[package]]
+name = "fdk-aac-rs-pcmutils"
+version = "0.1.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "b70cfacfdb9be46702e0284d361bf60618469f05f40ddc42f70b93300f3b9feb"
+dependencies = [
+ "fdk-aac-rs-fdk",
+]
+
+[[package]]
+name = "fdk-aac-rs-sacdec"
+version = "0.1.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "efc25df1c335db4d87c2bf27034e6840834cb20374cf2527aed11ff5bc6d819b"
+dependencies = [
+ "fdk-aac-rs-fdk",
+]
+
+[[package]]
+name = "fdk-aac-rs-sacenc"
+version = "0.1.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "83c2cbd86b5c60606e91dba87abf11cee245969d262f2066f902fd8071f2beca"
+dependencies = [
+ "fdk-aac-rs-fdk",
+]
+
+[[package]]
+name = "fdk-aac-rs-sbrdec"
+version = "0.1.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "d78fa6ee36eec7f5d53e607f988bfd9703ea32ed05cb0bc3aa5813916fcda323"
+dependencies = [
+ "fdk-aac-rs-fdk",
+]
+
+[[package]]
+name = "fdk-aac-rs-sbrenc"
+version = "0.1.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "51f0d310fbba07875819f9c9c4c25e7cdc93e849e4217af89a12ed30cc356e65"
+dependencies = [
+ "fdk-aac-rs-fdk",
+]
+
+[[package]]
+name = "fdk-aac-rs-tpdec"
+version = "0.1.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "c44dbc20488dc53942e6a9faf4aae754620b23b12cac8c6bdd1e21076640c6e0"
+dependencies = [
+ "fdk-aac-rs-fdk",
+]
+
+[[package]]
+name = "fdk-aac-rs-tpenc"
+version = "0.1.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "b6b41f5c2351d2285ce5138f15fa564a52358196035c4c7968459563de9e6a8b"
+dependencies = [
+ "fdk-aac-rs-fdk",
+ "fdk-aac-rs-tpdec",
+]
+
+[[package]]
 name = "field-offset"
 version = "0.3.6"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -3196,8 +3323,11 @@ dependencies = [
  "deno_ast",
  "deno_core",
  "deno_error 0.5.7",
+ "fdk-aac-rs",
  "image",
  "indicatif",
+ "mp4",
+ "openh264",
  "serde",
  "serde_json",
  "symphonia",
@@ -3352,6 +3482,20 @@ dependencies = [
 ]
 
 [[package]]
+name = "mp4"
+version = "0.14.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "c9ef834d5ed55e494a2ae350220314dc4aacd1c43a9498b00e320e0ea352a5c3"
+dependencies = [
+ "byteorder",
+ "bytes",
+ "num-rational",
+ "serde",
+ "serde_json",
+ "thiserror 1.0.69",
+]
+
+[[package]]
 name = "muda"
 version = "0.20.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -3398,6 +3542,15 @@ dependencies = [
  "termcolor",
  "thiserror 2.0.21",
  "unicode-xid",
+]
+
+[[package]]
+name = "nasm-rs"
+version = "0.3.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "706bf8a5e8c8ddb99128c3291d31bd21f4bcde17f0f4c20ec678d85c74faa149"
+dependencies = [
+ "log",
 ]
 
 [[package]]
@@ -3521,6 +3674,18 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "7ce2d95d4b3734dc35aa2f45e1aa22cd416814592a4f9d9205e11affd5b8e10b"
 dependencies = [
  "num-traits",
+]
+
+[[package]]
+name = "num-rational"
+version = "0.4.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "f83d14da390562dca69fc84082e73e548e1ad308d24accdedd2720017cb37824"
+dependencies = [
+ "num-bigint",
+ "num-integer",
+ "num-traits",
+ "serde",
 ]
 
 [[package]]
@@ -3816,6 +3981,27 @@ dependencies = [
  "dunce",
  "is-wsl",
  "libc",
+]
+
+[[package]]
+name = "openh264"
+version = "0.6.6"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "0c1af3a4d35290ba7a46d1ce69cb13ae740a2d72cc2ee00abee3c84bed3dbe5d"
+dependencies = [
+ "openh264-sys2",
+ "wide",
+]
+
+[[package]]
+name = "openh264-sys2"
+version = "0.6.6"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "77a77c1e18503537113d77b1b1d05274e81fa9f44843c06be2d735adb19f7c9d"
+dependencies = [
+ "cc",
+ "nasm-rs",
+ "walkdir",
 ]
 
 [[package]]
@@ -4727,6 +4913,15 @@ name = "ryu-js"
 version = "1.0.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "04d056b875a9d2e6cb9a61d127afee9ac5999b9f87bcb32079d1318e505be714"
+
+[[package]]
+name = "safe_arch"
+version = "0.7.4"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "96b02de82ddbe1b636e6170c21be622223aea188ef2e139be0a5b219ec215323"
+dependencies = [
+ "bytemuck",
+]
 
 [[package]]
 name = "same-file"
@@ -7309,6 +7504,16 @@ dependencies = [
  "home",
  "rustix 0.38.44",
  "winsafe",
+]
+
+[[package]]
+name = "wide"
+version = "0.7.33"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "0ce5da8ecb62bcd8ec8b7ea19f69a51275e91299be594ea5cc6ef7819e16cd03"
+dependencies = [
+ "bytemuck",
+ "safe_arch",
 ]
 
 [[package]]
