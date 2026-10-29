@@ -346,3 +346,9 @@ Before declaring an edit complete:
 4. **Targeted Revisions**:
    - When the user selects a node or timestamp range in the timeline, edit only the affected scene and elements.
    - Keep unchanged scenes intact to preserve render cache.
+5. **Git Commit Co-Author Attribution**:
+   - Always include the AI assistant as a co-author trailer in git commit messages:
+     ```
+     Co-authored-by: Antigravity <antigravity@google.com>
+     ```
+     (or matching the active agent: `Co-authored-by: Claude <noreply@anthropic.com>`, etc.).

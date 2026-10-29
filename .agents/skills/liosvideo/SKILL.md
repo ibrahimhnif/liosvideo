@@ -37,6 +37,13 @@ Use this skill whenever:
    - When revising an existing video based on user feedback or timeline selection, only modify the target scene and nodes.
    - Preserve existing timings and unaffected scenes to leverage the runtime's granular caching.
 
+5. **Git Commit Co-Author Attribution**:
+   - Always attribute the AI assistant as a co-author trailer in git commits:
+     ```
+     Co-authored-by: Antigravity <antigravity@google.com>
+     ```
+     (or matching the active agent: `Co-authored-by: Claude <noreply@anthropic.com>`, etc.).
+
 ---
 
 ## 2. Project Architecture
