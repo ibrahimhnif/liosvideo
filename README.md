@@ -10,6 +10,7 @@
 
 <p align="center">
   <a href="#key-features">Features</a> •
+  <a href="#download">Download</a> •
   <a href="#getting-started">Getting Started</a> •
   <a href="#agent-guidance">Agent Guidance</a> •
   <a href="#custom-skills">Custom Skills</a> •
@@ -23,6 +24,20 @@
 **Liosvideo** turns technical video production into a software engineering workflow. Instead of clicking around a timeline in a traditional GUI video editor, videos are authored as pure, deterministic TypeScript code.
 
 An AI coding agent (Claude Code, Gemini CLI, Codex, Antigravity, or custom ACP agents) researches topics, writes scripts, builds scenes, creates realistic mockups, coordinates speech narration, and refines animations. The desktop app provides a live hot-reloading WebGPU preview, synchronized audio playback, scrubbable multi-track timeline, visual diff verification, and hardware-accelerated MP4 export.
+
+---
+
+## Download
+
+Download the latest desktop release for your platform:
+
+| Platform | Download |
+| :--- | :--- |
+| macOS (Universal) | [Download `.dmg`](https://github.com/ibrahimhnif/liosvideo/releases/latest/download/Liosvideo_0.1.0_universal.dmg) |
+| Windows (x64) | [Download installer `.exe`](https://github.com/ibrahimhnif/liosvideo/releases/latest/download/Liosvideo_0.1.0_x64-setup.exe) · [`.msi`](https://github.com/ibrahimhnif/liosvideo/releases/latest/download/Liosvideo_0.1.0_x64_en-US.msi) |
+| Linux (x64) | [Download `.AppImage`](https://github.com/ibrahimhnif/liosvideo/releases/latest/download/Liosvideo_0.1.0_amd64.AppImage) · [`.deb`](https://github.com/ibrahimhnif/liosvideo/releases/latest/download/Liosvideo_0.1.0_amd64.deb) · [`.rpm`](https://github.com/ibrahimhnif/liosvideo/releases/latest/download/Liosvideo-0.1.0-1.x86_64.rpm) |
+
+See the [latest release](https://github.com/ibrahimhnif/liosvideo/releases/latest) for release notes and all available assets.
 
 ---
 
