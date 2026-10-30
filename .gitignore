@@ -18,6 +18,7 @@ target/
 out/
 *.mp4
 *.log
+*.dmg
 
 # Project caches and environment files
 .liosvideo/cache/
