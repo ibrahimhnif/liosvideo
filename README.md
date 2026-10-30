@@ -48,6 +48,20 @@ Latest release: [`v0.1.1`](https://github.com/ibrahimhnif/liosvideo/releases/tag
 
 > On macOS, drag `Liosvideo.app` into `/Applications`. On Windows, run the `.msi` or `-setup.exe` installer. On Linux, use the `.AppImage` (make it executable) or install the `.deb`.
 
+### Standalone CLI (One-Line Install)
+
+Install the standalone headless `liosvideo` CLI on macOS or Linux with a single command:
+
+```sh
+curl -fsSL https://raw.githubusercontent.com/ibrahimhnif/liosvideo/main/install.sh | sh
+```
+
+To install a specific release version or custom directory:
+
+```sh
+curl -fsSL https://raw.githubusercontent.com/ibrahimhnif/liosvideo/main/install.sh | sh -s -- --version v0.1.1 --install-dir ~/.local/bin
+```
+
 See the [latest release](https://github.com/ibrahimhnif/liosvideo/releases/latest) for release notes and all available assets.
 
 ---

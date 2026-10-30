@@ -17,6 +17,11 @@ Use this skill whenever:
 
 ## 1. Quick Start & Execution
 
+### One-Line CLI Installation (macOS / Linux)
+```sh
+curl -fsSL https://raw.githubusercontent.com/ibrahimhnif/liosvideo/main/install.sh | sh
+```
+
 ### Global / Installed Binary
 ```bash
 liosvideo --help

@@ -4,7 +4,7 @@
   "type": "module",
   "packageManager": "pnpm@10.33.0",
   "scripts": {
-    "test": "pnpm -r test",
+    "test": "pnpm -r test && node --test scripts/install.test.mjs",
     "sync:downloads": "node scripts/sync-downloads.mjs"
   }
 }
