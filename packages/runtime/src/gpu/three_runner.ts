@@ -14,6 +14,23 @@ interface NodeSession {
 export class ThreeRunner {
   private sessions = new Map<string, NodeSession>();
 
+  /** Whether this environment can create a WebGL context for offscreen three rendering. */
+  static isSupported(): boolean {
+    try {
+      if (typeof OffscreenCanvas !== "undefined") {
+        const canvas = new OffscreenCanvas(1, 1);
+        return !!(canvas.getContext("webgl2") ?? canvas.getContext("webgl"));
+      }
+      if (typeof document !== "undefined") {
+        const canvas = document.createElement("canvas");
+        return !!(canvas.getContext("webgl2") ?? canvas.getContext("webgl"));
+      }
+    } catch {
+      // ignore and report unsupported
+    }
+    return false;
+  }
+
   step(node: ThreeNode, time: number, duration: number): { scene: THREE.Scene; camera: THREE.Camera; canvas?: OffscreenCanvas | HTMLCanvasElement } {
     const key = node.path();
     let session = this.sessions.get(key);

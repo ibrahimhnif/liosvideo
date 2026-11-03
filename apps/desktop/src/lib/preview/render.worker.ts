@@ -2,6 +2,8 @@
 import * as runtime from "liosvideo";
 import * as THREE from "three";
 import { createRenderer, measureText, type AssetMap, type Renderer } from "liosvideo/gpu";
+import { ThreeRunner } from "liosvideo/three";
+import { renderThreeNode, resetThreeSoftware } from "liosvideo/three-soft";
 import type { FromWorker, ToWorker } from "./protocol";
 
 declare const self: DedicatedWorkerGlobalScope;
@@ -30,6 +32,25 @@ let renderer: Renderer | undefined;
 let rendererReady: Promise<Renderer> | undefined;
 let size: { width: number; height: number } | undefined;
 let comp: runtime.Composition | undefined;
+let threeRunner: ThreeRunner | undefined;
+let threeMode: "webgl" | "software" | undefined;
+
+function threeBackend(): "webgl" | "software" {
+  threeMode ??= ThreeRunner.isSupported() ? "webgl" : "software";
+  return threeMode;
+}
+
+async function softwareThreeBitmap(node: runtime.ThreeNode, time: number, duration: number): Promise<ImageBitmap | null> {
+  const frame = renderThreeNode(node, time, duration);
+  if (!frame) return null;
+  try {
+    const pixels = new Uint8ClampedArray(frame.pixels.length);
+    pixels.set(frame.pixels);
+    return await createImageBitmap(new ImageData(pixels, frame.width, frame.height));
+  } catch {
+    return null;
+  }
+}
 const assets: AssetMap = new Map();
 let loading: Promise<void> = Promise.resolve();
 
@@ -60,9 +81,56 @@ async function load(code: string, generation: number) {
   }
 }
 
+function walkThree(root: runtime.Node<any>, into: Map<string, runtime.ThreeNode>): void {
+  if (root instanceof runtime.ThreeNode) into.set(root.path(), root);
+  for (const child of root.children) walkThree(child, into);
+}
+
+/** Runs three.js setup/update for every three node in the frame and attaches its bitmap. */
+async function prepareThree(list: runtime.RenderList, frame: number): Promise<void> {
+  const items: runtime.ThreeItem[] = [];
+  const walk = (entries: runtime.RenderItem[]) =>
+    entries.forEach((item) => {
+      if (item.kind === "layer") walk(item.items);
+      else if (item.kind === "three") items.push(item);
+    });
+  walk(list.items);
+  if (items.length === 0 || !comp) return;
+
+  const { scenes } = runtime.layoutComposition(comp);
+  const index = scenes.findIndex((scene) => frame >= scene.startFrame && frame < scene.endFrame);
+  if (index < 0) return;
+
+  const nodes = new Map<string, runtime.ThreeNode>();
+  walkThree(runtime.instantiateScene(comp, comp.scenes[index]), nodes);
+
+  const backend = threeBackend();
+  if (backend === "webgl") threeRunner ??= new ThreeRunner();
+
+  for (const item of items) {
+    const node = nodes.get(item.path);
+    if (!node) continue;
+    if (backend === "webgl") {
+      const bitmap = await threeRunner!.renderBitmap(node, item.time, item.duration);
+      if (bitmap) {
+        item.bitmap = bitmap;
+        continue;
+      }
+      // WebGL failed at runtime: fall back to the deterministic software rasteriser.
+      threeMode = "software";
+    }
+    item.bitmap = (await softwareThreeBitmap(node, item.time, item.duration)) ?? undefined;
+  }
+}
+
 async function render(frame: number, id: number) {
   const r = await rendererReady;
-  if (r && comp) r.render(runtime.evaluateFrame(comp, frame), assets);
+  if (r && comp) {
+    const list = runtime.evaluateFrame(comp, frame);
+    await prepareThree(list, frame);
+    await r.prepare(list);
+    r.render(list, assets);
+  }
   post({ type: "rendered", id, frame });
 }
 
@@ -104,6 +172,10 @@ self.onmessage = async (e: MessageEvent<ToWorker>) => {
       }
       return;
     case "load":
+      threeRunner?.dispose();
+      threeRunner = undefined;
+      threeMode = undefined;
+      resetThreeSoftware();
       // loads are applied strictly in the order they were sent
       loading = loading.then(async () => {
         try {

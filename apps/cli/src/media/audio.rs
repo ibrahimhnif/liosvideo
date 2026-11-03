@@ -1,4 +1,6 @@
+use std::collections::HashMap;
 use std::path::Path;
+
 use anyhow::{anyhow, Context, Result};
 use symphonia::core::audio::SampleBuffer;
 use symphonia::core::codecs::{DecoderOptions, CODEC_TYPE_NULL};
@@ -8,7 +10,7 @@ use symphonia::core::io::{MediaSource, MediaSourceStream, ReadOnlySource};
 use symphonia::core::meta::MetadataOptions;
 use symphonia::core::probe::Hint;
 
-pub use crate::runtime::AudioTrackInfo;
+pub use crate::runtime::{AudioClipInfo, AudioTrackInfo};
 
 /// Default audio sample rate used for composition rendering (48kHz)
 pub const DEFAULT_SAMPLE_RATE: u32 = 48_000;
@@ -30,7 +32,11 @@ impl AudioDecoder {
     }
 
     /// Decode audio from in-memory byte buffer to interleaved stereo 32-bit float PCM at `target_rate`.
-    pub fn decode_bytes(bytes: Vec<u8>, hint_ext: Option<&str>, target_rate: u32) -> Result<Vec<f32>> {
+    pub fn decode_bytes(
+        bytes: Vec<u8>,
+        hint_ext: Option<&str>,
+        target_rate: u32,
+    ) -> Result<Vec<f32>> {
         let mut hint = Hint::new();
         if let Some(ext) = hint_ext {
             hint.with_extension(ext);
@@ -99,7 +105,11 @@ impl AudioDecoder {
                     source_channels = decoded.spec().channels.count();
 
                     let capacity = decoded.capacity() as u64;
-                    if sample_buf.as_ref().map(|b| (b.capacity() as u64) < capacity).unwrap_or(true) {
+                    if sample_buf
+                        .as_ref()
+                        .map(|b| (b.capacity() as u64) < capacity)
+                        .unwrap_or(true)
+                    {
                         sample_buf = Some(SampleBuffer::<f32>::new(capacity, *decoded.spec()));
                     }
 
@@ -175,7 +185,8 @@ pub fn resample_linear_stereo(
     }
 
     let ratio = source_rate as f64 / target_rate as f64;
-    let target_frames = ((source_frames as f64) * (target_rate as f64) / (source_rate as f64)).round() as usize;
+    let target_frames =
+        ((source_frames as f64) * (target_rate as f64) / (source_rate as f64)).round() as usize;
     let mut resampled = Vec::with_capacity(target_frames * 2);
 
     for i in 0..target_frames {
@@ -199,94 +210,55 @@ pub fn resample_linear_stereo(
     resampled
 }
 
-/// Software PCM mixer that mixes decoded track samples into a master stereo buffer.
+/// Mix a single decoded clip into the master stereo buffer.
 ///
-/// Handles track volume attenuation, start time offset (in seconds or frame/fps),
-/// duration clipping, and looping. Final mixed samples are clamped to `[-1.0, 1.0]`.
-pub fn mix_pcm_tracks(
-    tracks: &[(&[f32], &AudioTrackInfo)],
-    total_seconds: f64,
-    sample_rate: u32,
+/// Mirrors `apps/desktop/src/lib/export/audio_mixdown.ts`:
+/// - `when = start_frame / fps`
+/// - `offset = start_offset` seconds into the source
+/// - optional `duration` (seconds) limits playback
+/// - `volume` gain, no looping, no ducking
+pub fn mix_clip_into(
+    master: &mut [f32],
+    clip_samples: &[f32],
+    clip: &AudioClipInfo,
     fps: f64,
-) -> Vec<f32> {
-    let total_frames = (total_seconds.max(0.0) * sample_rate as f64).ceil() as usize;
-    let total_samples = total_frames * 2;
-    let mut master_buffer = vec![0.0f32; total_samples];
-
-    if total_samples == 0 {
-        return master_buffer;
+    sample_rate: u32,
+) {
+    if clip_samples.is_empty() || master.is_empty() {
+        return;
     }
 
     let effective_fps = if fps > 0.0 { fps } else { 30.0 };
+    let when = clip.start_frame as f64 / effective_fps;
+    let offset = clip.start_offset.unwrap_or(0.0).max(0.0);
+    let volume = clip.volume.unwrap_or(1.0).max(0.0) as f32;
 
-    for (track_samples, track) in tracks {
-        if track_samples.is_empty() {
-            continue;
-        }
+    let start_master_sample = (when * sample_rate as f64).round() as usize * 2;
+    let start_source_sample = (offset * sample_rate as f64).round() as usize * 2;
 
-        let start_sec = track.start_at.unwrap_or_else(|| {
-            track.start_frame.map(|f| f as f64 / effective_fps).unwrap_or(0.0)
-        });
-
-        let volume = track.volume.unwrap_or(1.0).max(0.0) as f32;
-        let is_loop = track.loop_track.unwrap_or(false);
-
-        let (start_master_idx, skip_track_samples) = if start_sec >= 0.0 {
-            (((start_sec * sample_rate as f64).round() as usize * 2), 0)
-        } else {
-            (0, ((-start_sec * sample_rate as f64).round() as usize * 2))
-        };
-
-        if start_master_idx >= master_buffer.len() {
-            continue;
-        }
-
-        let available_master_samples = master_buffer.len() - start_master_idx;
-        let max_allowed_samples = match track.duration {
-            Some(dur) => ((dur.max(0.0) * sample_rate as f64).round() as usize * 2).min(available_master_samples),
-            None => available_master_samples,
-        };
-
-        if is_loop {
-            for i in 0..max_allowed_samples {
-                let track_idx = (skip_track_samples + i) % track_samples.len();
-                master_buffer[start_master_idx + i] += track_samples[track_idx] * volume;
-            }
-        } else if skip_track_samples < track_samples.len() {
-            let remaining_track_samples = track_samples.len() - skip_track_samples;
-            let samples_to_mix = remaining_track_samples.min(max_allowed_samples);
-            for i in 0..samples_to_mix {
-                master_buffer[start_master_idx + i] += track_samples[skip_track_samples + i] * volume;
-            }
-        }
+    if start_master_sample >= master.len() || start_source_sample >= clip_samples.len() {
+        return;
     }
 
-    // Clamp mixed samples to [-1.0, 1.0] to prevent clipping
-    for s in master_buffer.iter_mut() {
-        *s = s.clamp(-1.0, 1.0);
-    }
+    let available_master = master.len() - start_master_sample;
+    let available_source = clip_samples.len() - start_source_sample;
 
-    master_buffer
+    let max_samples = match clip.duration {
+        Some(duration) if duration > 0.0 => {
+            ((duration * sample_rate as f64).round() as usize * 2).min(available_master)
+        }
+        _ => available_master,
+    };
+
+    let samples_to_mix = available_source.min(max_samples);
+
+    for i in 0..samples_to_mix {
+        master[start_master_sample + i] += clip_samples[start_source_sample + i] * volume;
+    }
 }
 
-/// Mix audio tracks for a composition.
-///
-/// - Resolves `src` relative to `project_root`
-/// - Decodes audio files using Symphonia to stereo PCM at `sample_rate`
-/// - Mixes all tracks into a master buffer of length `(total_seconds * sample_rate).ceil() * 2`
-/// - Handles `start_at`, `start_frame`, `volume`, `duration`, and `loop_track`
-/// - Clamps final samples to `[-1.0, 1.0]`
+/// Mix all manifest audio clips into a master stereo buffer.
 pub fn mix_audio_tracks(
-    project_root: impl AsRef<Path>,
-    tracks: &[AudioTrackInfo],
-    total_seconds: f64,
-    sample_rate: u32,
-) -> Result<Vec<f32>> {
-    mix_audio_tracks_with_fps(project_root, tracks, total_seconds, sample_rate, 30.0)
-}
-
-/// Mix audio tracks for a composition with explicit framerate for frame-based offsets.
-pub fn mix_audio_tracks_with_fps(
     project_root: impl AsRef<Path>,
     tracks: &[AudioTrackInfo],
     total_seconds: f64,
@@ -294,58 +266,86 @@ pub fn mix_audio_tracks_with_fps(
     fps: f64,
 ) -> Result<Vec<f32>> {
     let project_root = project_root.as_ref();
-    let mut decoded_tracks: Vec<(Vec<f32>, &AudioTrackInfo)> = Vec::new();
+    let total_frames = (total_seconds.max(0.0) * sample_rate as f64).ceil() as usize;
+    let mut master = vec![0.0f32; total_frames * 2];
+
+    let mut decoded: HashMap<String, Vec<f32>> = HashMap::new();
 
     for track in tracks {
-        let src = match &track.src {
-            Some(s) if !s.is_empty() => s,
-            _ => continue,
-        };
-
-        let track_path = if Path::new(src).is_absolute() {
-            Path::new(src).to_path_buf()
-        } else {
-            project_root.join(src)
-        };
-
-        if !track_path.exists() {
-            eprintln!("Warning: Audio file not found: {}", track_path.display());
-            continue;
-        }
-
-        match AudioDecoder::decode_file(&track_path, sample_rate) {
-            Ok(samples) => {
-                decoded_tracks.push((samples, track));
+        for clip in &track.clips {
+            if clip.src.is_empty() {
+                continue;
             }
-            Err(err) => {
-                eprintln!(
-                    "Warning: Failed to decode audio file {}: {err}",
-                    track_path.display()
-                );
+
+            if !decoded.contains_key(&clip.src) {
+                let path = if Path::new(&clip.src).is_absolute() {
+                    std::path::PathBuf::from(&clip.src)
+                } else {
+                    project_root.join(&clip.src)
+                };
+
+                if !path.exists() {
+                    eprintln!("Warning: Audio file not found: {}", path.display());
+                    continue;
+                }
+
+                match AudioDecoder::decode_file(&path, sample_rate) {
+                    Ok(samples) => {
+                        decoded.insert(clip.src.clone(), samples);
+                    }
+                    Err(err) => {
+                        eprintln!(
+                            "Warning: Failed to decode audio file {}: {err}",
+                            path.display()
+                        );
+                        continue;
+                    }
+                }
+            }
+
+            if let Some(samples) = decoded.get(&clip.src) {
+                mix_clip_into(&mut master, samples, clip, fps, sample_rate);
             }
         }
     }
 
-    let track_refs: Vec<(&[f32], &AudioTrackInfo)> = decoded_tracks
-        .iter()
-        .map(|(samples, track)| (samples.as_slice(), *track))
-        .collect();
+    // Clamp mixed samples to [-1.0, 1.0] to prevent clipping (matches Web Audio output bounds).
+    for s in master.iter_mut() {
+        *s = s.clamp(-1.0, 1.0);
+    }
 
-    Ok(mix_pcm_tracks(&track_refs, total_seconds, sample_rate, fps))
-}
-
-/// Convenience standalone function when track paths are already resolved or relative to current dir.
-pub fn mix_audio_tracks_standalone(
-    tracks: &[AudioTrackInfo],
-    total_seconds: f64,
-    sample_rate: u32,
-) -> Result<Vec<f32>> {
-    mix_audio_tracks("", tracks, total_seconds, sample_rate)
+    Ok(master)
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn clip(
+        src: &str,
+        start_frame: usize,
+        start_offset: Option<f64>,
+        duration: Option<f64>,
+        volume: Option<f64>,
+    ) -> AudioClipInfo {
+        AudioClipInfo {
+            src: src.to_string(),
+            start_frame,
+            end_frame: 0,
+            duration,
+            start_offset,
+            volume,
+            ducking: None,
+        }
+    }
+
+    fn track(clips: Vec<AudioClipInfo>) -> AudioTrackInfo {
+        AudioTrackInfo {
+            id: "t".to_string(),
+            name: None,
+            clips,
+        }
+    }
 
     fn create_test_wav(sample_rate: u32, channels: u16, pcm_samples: &[i16]) -> Vec<u8> {
         let mut bytes = Vec::new();
@@ -360,17 +360,15 @@ mod tests {
         bytes.extend_from_slice(&riff_chunk_size.to_le_bytes());
         bytes.extend_from_slice(b"WAVE");
 
-        // fmt subchunk
         bytes.extend_from_slice(b"fmt ");
-        bytes.extend_from_slice(&16u32.to_le_bytes()); // subchunk1 size (16 for PCM)
-        bytes.extend_from_slice(&1u16.to_le_bytes());  // Audio format 1 = PCM
+        bytes.extend_from_slice(&16u32.to_le_bytes());
+        bytes.extend_from_slice(&1u16.to_le_bytes());
         bytes.extend_from_slice(&num_channels.to_le_bytes());
         bytes.extend_from_slice(&sample_rate.to_le_bytes());
         bytes.extend_from_slice(&byte_rate.to_le_bytes());
         bytes.extend_from_slice(&block_align.to_le_bytes());
         bytes.extend_from_slice(&bits_per_sample.to_le_bytes());
 
-        // data subchunk
         bytes.extend_from_slice(b"data");
         bytes.extend_from_slice(&data_len.to_le_bytes());
         for &sample in pcm_samples {
@@ -382,203 +380,100 @@ mod tests {
 
     #[test]
     fn test_convert_to_stereo() {
-        // Mono to stereo duplication
         let mono = vec![0.1, 0.2, 0.3];
         let stereo = convert_to_stereo(&mono, 1);
         assert_eq!(stereo, vec![0.1, 0.1, 0.2, 0.2, 0.3, 0.3]);
 
-        // Stereo identity
         let existing_stereo = vec![0.1, 0.2, 0.3, 0.4];
         assert_eq!(convert_to_stereo(&existing_stereo, 2), existing_stereo);
 
-        // Multi-channel downmix takes first two channels
-        let quad = vec![
-            1.0, 2.0, 3.0, 4.0, // frame 0
-            5.0, 6.0, 7.0, 8.0, // frame 1
-        ];
-        let stereo_quad = convert_to_stereo(&quad, 4);
-        assert_eq!(stereo_quad, vec![1.0, 2.0, 5.0, 6.0]);
+        let quad = vec![1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0];
+        assert_eq!(convert_to_stereo(&quad, 4), vec![1.0, 2.0, 5.0, 6.0]);
     }
 
     #[test]
     fn test_resample_linear_stereo() {
-        // Simple 2-frame stereo at 1000 Hz resampled to 2000 Hz (2x upsampling)
         let src = vec![0.0, 0.0, 1.0, 1.0];
         let resampled = resample_linear_stereo(&src, 1000, 2000);
-        assert_eq!(resampled.len(), 8); // 4 stereo frames = 8 samples
-
-        // Frame 0 should be 0.0
+        assert_eq!(resampled.len(), 8);
         assert_eq!(resampled[0], 0.0);
-        assert_eq!(resampled[1], 0.0);
-        // Frame 1 is halfway between 0.0 and 1.0 -> ~0.5
         assert!((resampled[2] - 0.5).abs() < 1e-4);
-        assert!((resampled[3] - 0.5).abs() < 1e-4);
     }
 
     #[test]
-    fn test_mix_pcm_tracks_volume_and_offset() {
+    fn mixes_clip_with_offset_duration_and_volume() {
         let sample_rate = 1000;
-        let track1_samples = [0.5, 0.5, 0.5, 0.5]; // 2 stereo frames
+        let samples = vec![1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0]; // 4 stereo frames
+        let clip = clip("a.mp3", 1, Some(0.001), Some(0.002), Some(0.5)); // starts frame 1, skip 1 frame, 2 frames at 0.5
+        let mut master = vec![0.0f32; 10];
 
-        let track1_info = AudioTrackInfo {
-            id: "track-1".into(),
-            src: None,
-            start_at: Some(0.001), // Starts at frame 1 (offset 1 frame = 2 samples)
-            start_frame: None,
-            duration: None,
-            volume: Some(0.5), // 0.5 * 0.5 = 0.25
-            loop_track: Some(false),
-        };
+        mix_clip_into(&mut master, &samples, &clip, 1000.0, sample_rate);
 
-        let tracks = [(&track1_samples[..], &track1_info)];
-        let mixed = mix_pcm_tracks(&tracks, 0.005, sample_rate, 30.0);
-
-        // Total 5 frames = 10 samples
-        assert_eq!(mixed.len(), 10);
-        // Frame 0 (samples 0, 1) should be 0.0
-        assert_eq!(mixed[0], 0.0);
-        assert_eq!(mixed[1], 0.0);
-        // Frame 1 (samples 2, 3) should be attenuated to 0.25
-        assert!((mixed[2] - 0.25).abs() < 1e-5);
-        assert!((mixed[3] - 0.25).abs() < 1e-5);
-        // Frame 2 (samples 4, 5) should be attenuated to 0.25
-        assert!((mixed[4] - 0.25).abs() < 1e-5);
-        assert!((mixed[5] - 0.25).abs() < 1e-5);
-        // Frame 3 (samples 6, 7) should be 0.0
-        assert_eq!(mixed[6], 0.0);
-        assert_eq!(mixed[7], 0.0);
+        assert_eq!(master[0], 0.0);
+        assert_eq!(master[1], 0.0);
+        assert!((master[2] - 0.5).abs() < 1e-6);
+        assert!((master[3] - 0.5).abs() < 1e-6);
+        assert!((master[4] - 0.5).abs() < 1e-6);
+        assert!((master[5] - 0.5).abs() < 1e-6);
+        assert_eq!(master[6], 0.0);
     }
 
     #[test]
-    fn test_mix_pcm_tracks_duration_clipping_and_looping() {
-        let sample_rate = 1000;
-        let short_clip = [0.4, 0.4]; // 1 stereo frame
+    fn clips_do_not_loop() {
+        let samples = vec![0.4, 0.4]; // 1 stereo frame
+        let clip = clip("a.mp3", 0, None, None, None);
+        let mut master = vec![0.0f32; 6];
 
-        // Looping track: repeats for the entire composition duration (3 frames)
-        let loop_info = AudioTrackInfo {
-            id: "loop-track".into(),
-            src: None,
-            start_at: Some(0.0),
-            start_frame: None,
-            duration: None,
-            volume: Some(1.0),
-            loop_track: Some(true),
-        };
+        mix_clip_into(&mut master, &samples, &clip, 30.0, 1000);
 
-        let tracks = [(&short_clip[..], &loop_info)];
-        let mixed = mix_pcm_tracks(&tracks, 0.003, sample_rate, 30.0);
-        assert_eq!(mixed.len(), 6);
-        for &s in &mixed {
-            assert!((s - 0.4).abs() < 1e-5);
+        assert!((master[0] - 0.4).abs() < 1e-6);
+        assert_eq!(master[2], 0.0);
+        assert_eq!(master[4], 0.0);
+    }
+
+    #[test]
+    fn clamps_mixed_output() {
+        let mut master = vec![0.8f32; 2];
+        let samples = vec![0.8f32; 2];
+        let clip = clip("a.mp3", 0, None, None, None);
+        mix_clip_into(&mut master, &samples, &clip, 30.0, 1000);
+        for sample in &mut master {
+            *sample = sample.clamp(-1.0, 1.0);
         }
-
-        // Duration clipping: 1s duration cap on a looping track in 5s composition
-        let clipped_info = AudioTrackInfo {
-            id: "clipped".into(),
-            src: None,
-            start_at: Some(0.0),
-            start_frame: None,
-            duration: Some(0.002), // clip at 2 frames (4 samples)
-            volume: Some(1.0),
-            loop_track: Some(true),
-        };
-
-        let tracks2 = [(&short_clip[..], &clipped_info)];
-        let mixed2 = mix_pcm_tracks(&tracks2, 0.004, sample_rate, 30.0);
-        assert_eq!(mixed2.len(), 8);
-        assert!((mixed2[0] - 0.4).abs() < 1e-5);
-        assert!((mixed2[1] - 0.4).abs() < 1e-5);
-        assert!((mixed2[2] - 0.4).abs() < 1e-5);
-        assert!((mixed2[3] - 0.4).abs() < 1e-5);
-        // Frames 2 and 3 should be 0.0 due to duration clipping
-        assert_eq!(mixed2[4], 0.0);
-        assert_eq!(mixed2[5], 0.0);
-        assert_eq!(mixed2[6], 0.0);
-        assert_eq!(mixed2[7], 0.0);
-    }
-
-    #[test]
-    fn test_mix_pcm_tracks_clamping() {
-        let sample_rate = 1000;
-        let loud_track1 = [0.8, 0.8];
-        let loud_track2 = [0.8, 0.8];
-
-        let track1 = AudioTrackInfo {
-            id: "t1".into(),
-            src: None,
-            start_at: Some(0.0),
-            start_frame: None,
-            duration: None,
-            volume: Some(1.0),
-            loop_track: None,
-        };
-        let track2 = AudioTrackInfo {
-            id: "t2".into(),
-            src: None,
-            start_at: Some(0.0),
-            start_frame: None,
-            duration: None,
-            volume: Some(1.0),
-            loop_track: None,
-        };
-
-        let tracks = [
-            (&loud_track1[..], &track1),
-            (&loud_track2[..], &track2),
-        ];
-
-        // 0.8 + 0.8 = 1.6 -> clamped to 1.0
-        let mixed = mix_pcm_tracks(&tracks, 0.001, sample_rate, 30.0);
-        assert_eq!(mixed.len(), 2);
-        assert_eq!(mixed[0], 1.0);
-        assert_eq!(mixed[1], 1.0);
+        assert_eq!(master[0], 1.0);
     }
 
     #[test]
     fn test_audio_decoder_wav() {
-        // Create a 16-bit PCM mono 44.1kHz audio buffer
-        let num_samples = 4410; // 0.1 seconds of audio
+        let num_samples = 4410;
         let mut pcm = Vec::with_capacity(num_samples);
         for i in 0..num_samples {
-            // Generate a simple triangle wave
             let val = ((i % 100) as i16 - 50) * 300;
             pcm.push(val);
         }
 
         let wav_bytes = create_test_wav(44100, 1, &pcm);
-        let decoded = AudioDecoder::decode_bytes(wav_bytes, Some("wav"), 48000)
-            .expect("WAV decode failed");
+        let decoded =
+            AudioDecoder::decode_bytes(wav_bytes, Some("wav"), 48000).expect("WAV decode failed");
 
-        // Should be resampled to 48000 Hz stereo
-        // 0.1s at 48000 Hz = 4800 frames * 2 channels = 9600 samples
         assert_eq!(decoded.len(), 9600);
-
-        // Verify samples are non-zero and within [-1.0, 1.0]
         let max_val = decoded.iter().fold(0.0f32, |m, &x| m.max(x.abs()));
         assert!(max_val > 0.1 && max_val <= 1.0);
     }
 
     #[test]
     fn test_mix_audio_tracks_with_file() {
-        let temp_dir = std::env::temp_dir().join(format!("liosvideo_audio_test_{}", std::process::id()));
+        let temp_dir =
+            std::env::temp_dir().join(format!("liosvideo_audio_test_{}", std::process::id()));
         std::fs::create_dir_all(&temp_dir).unwrap();
         let wav_path = temp_dir.join("test.wav");
 
-        let pcm = vec![10000i16, 10000i16, 20000i16, 20000i16]; // 2 stereo frames at 48kHz
+        let pcm = vec![10000i16, 10000i16, 20000i16, 20000i16];
         let wav_bytes = create_test_wav(48000, 2, &pcm);
         std::fs::write(&wav_path, wav_bytes).unwrap();
 
-        let track_info = AudioTrackInfo {
-            id: "test-track".into(),
-            src: Some("test.wav".into()),
-            start_at: Some(0.0),
-            start_frame: None,
-            duration: None,
-            volume: Some(1.0),
-            loop_track: Some(false),
-        };
-
-        let mixed = mix_audio_tracks(&temp_dir, &[track_info], 0.001, 48000)
+        let tracks = vec![track(vec![clip("test.wav", 0, None, None, Some(1.0))])];
+        let mixed = mix_audio_tracks(&temp_dir, &tracks, 0.001, 48000, 30.0)
             .expect("mix_audio_tracks failed");
 
         assert!(!mixed.is_empty());

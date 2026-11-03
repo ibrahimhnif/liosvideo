@@ -57,7 +57,10 @@ liosvideo render <ENTRY> [OPTIONS]
 | `-o, --out <PATH>` | Output destination path for the `.mp4` file | `out/output.mp4` | `-o out/promo.mp4` |
 | `--fps <FPS>` | Override composition framerate | From composition | `--fps 60` |
 | `--frames <RANGE>` | Slice a subset of frames to render | Full video | `--frames 0..120` |
-| `--quality <PRESET>`| Encoding quality preset (`low`, `medium`, `high`) | `medium` | `--quality high` |
+| `--quality <PRESET>`| Encoding quality preset (`low`=4 Mbps, `medium`=10, `high`=30) | Preset default | `--quality high` |
+| `--preset <NAME>` | Output resolution: `native`, `1080p`, `4k`, `shorts` | `native` | `--preset shorts` |
+| `--bitrate <BPS>` | H.264 bitrate override | Preset default | `--bitrate 20000000` |
+| `--audio-bitrate <BPS>` | AAC bitrate | `192000` | `--audio-bitrate 256000` |
 | `--quiet` | Disable interactive terminal progress bar (clean CI logs) | `false` | `--quiet` |
 
 #### Supported Frame Range Syntax:
@@ -95,6 +98,7 @@ liosvideo snapshot <ENTRY> [OPTIONS]
 | `<ENTRY>` | Path to composition entry TypeScript file | *Required* | `long.ts` |
 | `-o, --out <PATH>` | Output destination PNG path | `out/snapshot.png` | `-o out/frame-0.png` |
 | `--frame <N>` | Target frame number to capture (0-indexed) | `0` | `--frame 45` |
+| `--preset <NAME>` | Output resolution: `native`, `1080p`, `4k`, `shorts` | `native` | `--preset 1080p` |
 
 #### Visual Verification Workflow:
 Use `snapshot` to verify visual layout, text wrapping, and colors before launching long video renders:
@@ -195,3 +199,145 @@ echo "==> Export complete!"
    - Audio paths in `audio: [{ src: "assets/audio/..." }]` are resolved relative to the composition's parent directory / project root.
 4. **Scene Relative Imports**:
    - Relative imports (`import intro from "./scenes/intro";` or `./scenes/intro.ts`) are transpiled on the fly via SWC and resolved deterministically without bundling.
+5. **Renderer parity**:
+   - The CLI uses the same WGSL shaders and instance layout as the desktop preview, including
+     layers, opacity, gaussian blur and rounded-rect clips.
+   - `path` nodes render as solid quads (same as desktop).
+   - `shader` nodes execute real WGSL in both the CLI and the desktop preview/export.
+   - `three` nodes execute real `setup` / `update` callbacks in both. The CLI uses a deterministic
+     software rasteriser; the desktop prefers WebGL and falls back to the same rasteriser.
+   - Text is measured/rasterised with cosmic-text rather than Canvas2D, so text boxes can differ
+     by a few pixels.
+   - Video nodes (`video({ src: "assets/video/clip.mp4" })`) decode H.264/MP4 frame-accurately.
+
+### Custom WGSL contract
+
+```ts
+shader({
+  width: 640,
+  height: 360,
+  uniforms: { speed: 1.5, tint: [1, 0.5, 0.25] },
+  code: `
+    @fragment fn fs(@location(0) uv: vec2f) -> @location(0) vec4f {
+      let t = u_globals.time.x;         // seconds
+      let p = u_globals.time.y;         // 0..1 scene progress
+      let r = u_globals.resolution.xy;  // pixel size
+      let s = u.speed.x;
+      let c = u.tint.xyz;
+      return vec4f(uv.x, uv.y, 0.5 + 0.5 * sin(t * s), 1.0);
+    }
+  `,
+})
+```
+
+- The CLI prepends the fullscreen vertex shader and the `u_globals` / `u` bindings.
+- Do not declare your own `@group` / `@binding`; the node falls back to a white box if you do.
+- Uniform keys must be valid WGSL identifiers. Scalars fill `.x`; arrays fill `.xyzw`.
+- Output is composited as a textured quad, so transforms, `opacity`, blur and clips apply.
+- Shaders are validated with `naga`; invalid code prints one warning and falls back to a white box.
+
+### three.js contract
+
+```ts
+three({
+  width: 560,
+  height: 340,
+  camera: "perspective", // or "orthographic"
+  fov: 50,
+  setup({ scene, camera, width, height }) {
+    camera.position.set(3, 3.5, 5);
+    camera.lookAt(0, 0, 0);
+    const mesh = new THREE.Mesh(
+      new THREE.SphereGeometry(1, 32, 24),
+      new THREE.MeshStandardMaterial({ color: "#38bdf8", roughness: 0.25 }),
+    );
+    scene.add(mesh);
+    const light = new THREE.DirectionalLight(0xffffff, 2.5);
+    light.position.set(4, 6, 3);
+    scene.add(light);
+    scene.add(new THREE.AmbientLight(0xffffff, 0.35));
+    return { mesh };
+  },
+  update({ mesh }, progress, time) {
+    mesh.rotation.y = time * 0.9;
+  },
+})
+```
+
+- Supported: Mesh, Line, LineSegments, LineLoop, Points; BufferGeometry (indexed or not, groups,
+  multi-material); MeshBasic / Lambert / Phong / Standard / Toon / Normal; Ambient / Hemisphere /
+  Directional / Point / Spot lights; vertex colours, flat shading, side modes, transparency;
+  perspective and orthographic cameras.
+- Not supported (ignored): textures, shadows, skinning, morph targets, instancing,
+  post-processing and custom `ShaderMaterial`.
+- Rendering is deterministic and happens in V8; output is composited like a normal textured node.
+- The desktop renderer prefers WebGL (so textures/shadows work there) and automatically uses the
+  same software rasteriser when WebGL is unavailable (for example inside a WKWebView worker).
+
+---
+
+## 5. Project & Backend Commands
+
+All project-scoped commands accept `--project <DIR>` (defaults to the current directory).
+
+```bash
+# Composition + timeline inspection
+liosvideo info long.ts --json
+
+# Scene validation (exit code 1 on errors)
+liosvideo validate --project .
+liosvideo validate scenes/intro.ts --json
+
+# Project scaffolding (blank, minimal-dev, product-3d, kinetic-short, saas-launch)
+liosvideo project new ~/Labs promo --template minimal-dev
+liosvideo project info --project ~/Labs/promo
+liosvideo project recent
+liosvideo project stats --json
+liosvideo project token-usage --input 12000 --output 3000 --model claude-opus
+liosvideo project conversation get --project ~/Labs/promo
+
+# Git history / checkpoints
+liosvideo history status --project ~/Labs/promo
+liosvideo history checkpoint -m "before intro rework" --project ~/Labs/promo
+liosvideo history log --limit 10 --project ~/Labs/promo
+liosvideo history diff <commit> --project ~/Labs/promo
+liosvideo history restore <commit> --project ~/Labs/promo
+liosvideo history revert-files <commit> scenes/intro.ts --project ~/Labs/promo
+
+# Narration (writes assets/audio/vo/<id>.mp3 + .timing.json)
+liosvideo tts voices
+liosvideo tts generate --line-id intro-1 --text "Halo dunia" --voice mock-id-male
+liosvideo tts timings
+
+# Assets
+liosvideo asset import logo assets/brand/logo.svg
+liosvideo asset save-image logo.png ./Downloads/logo.png
+liosvideo asset save-video demo ./Downloads/demo.mp4
+liosvideo asset record-voice intro-1 1.8 ./take.mp3
+
+# Secrets (env → macOS Keychain → ~/.config/liosvideo/credentials.json)
+liosvideo key get ELEVENLABS_API_KEY
+liosvideo key set ELEVENLABS_API_KEY sk-...
+liosvideo key delete ELEVENLABS_API_KEY
+
+# ACP coding agents
+liosvideo agent list
+liosvideo agent install-adapter claude
+liosvideo agent set-default claude
+liosvideo agent prompt "add a title card to the intro" --project ~/Labs/promo
+liosvideo agent chat --project ~/Labs/promo     # /cancel, /exit
+
+# Embedded MCP server (headless; render_frame works without a webview)
+liosvideo mcp tools --project ~/Labs/promo
+liosvideo mcp call validate_scene '{}' --project ~/Labs/promo
+liosvideo mcp call render_frame '{"frame":30}' --project ~/Labs/promo
+liosvideo mcp serve --stdio --project ~/Labs/promo
+liosvideo mcp serve --tcp 127.0.0.1:7333 --project ~/Labs/promo
+
+# Watch + re-render on change
+liosvideo watch --project ~/Labs/promo --exec "liosvideo render long.ts -o out/preview.mp4 --frames 0..60"
+```
+
+CLI agent sessions auto-approve tool permissions (there is no permission UI).
+`request_asset` returns `skipped` unless `LIOSVIDEO_ASSET_PATH` points at a file to copy.
+

@@ -1,10 +1,12 @@
-use std::path::{Path, PathBuf};
 use anyhow::{anyhow, Context, Result};
+use std::path::{Path, PathBuf};
 
 use crate::cli::RenderProgressBar;
 use crate::gpu::{GpuContext, RenderTarget, Renderer};
 use crate::media::encoder::Mp4Encoder;
 use crate::runtime::RuntimeHost;
+
+use super::preset::{resolve_bitrate, Preset};
 
 /// Configuration options for executing a render job.
 #[derive(Debug, Clone, PartialEq)]
@@ -13,7 +15,10 @@ pub struct RenderConfig {
     pub out: PathBuf,
     pub fps: Option<f64>,
     pub frames: Option<String>,
-    pub quality: String,
+    pub quality: Option<String>,
+    pub preset: Preset,
+    pub bitrate: Option<u32>,
+    pub audio_bitrate: Option<u32>,
     pub quiet: bool,
 }
 
@@ -133,6 +138,10 @@ pub async fn run_render_job(config: RenderConfig) -> Result<()> {
         return Err(anyhow!("Framerate must be positive, got {}", fps));
     }
 
+    let (target_width, target_height) = config.preset.size(comp_info.width, comp_info.height);
+    let video_bitrate = resolve_bitrate(config.bitrate, config.quality.as_deref(), config.preset);
+    let audio_bitrate = config.audio_bitrate.unwrap_or(192_000);
+
     let frame_range = parse_frame_range(config.frames.as_deref(), comp_info.total_frames)?;
     let total_render_frames = frame_range.len();
     if total_render_frames == 0 {
@@ -141,7 +150,7 @@ pub async fn run_render_job(config: RenderConfig) -> Result<()> {
 
     // Pre-mix audio tracks if any exist in the composition
     let audio_pcm = if !comp_info.audio.is_empty() {
-        let pcm = crate::media::audio::mix_audio_tracks_with_fps(
+        let pcm = crate::media::audio::mix_audio_tracks(
             &project_root,
             &comp_info.audio,
             comp_info.duration,
@@ -163,28 +172,31 @@ pub async fn run_render_job(config: RenderConfig) -> Result<()> {
 
     // Initialize headless GPU context, offscreen target, and renderer
     let gpu = GpuContext::new_headless().await?;
-    let target = RenderTarget::new(&gpu.device, comp_info.width, comp_info.height);
-    let renderer = Renderer::new(&gpu.device, target.format);
+    let target = RenderTarget::new(&gpu.device, target_width, target_height);
+    let mut renderer = Renderer::new(&gpu.device, &gpu.queue, project_root.clone());
 
     // Initialize in-binary MP4 encoder
     let mut encoder = Mp4Encoder::new(
         &config.out,
-        comp_info.width,
-        comp_info.height,
+        target_width,
+        target_height,
         fps,
         crate::media::audio::DEFAULT_SAMPLE_RATE,
+        video_bitrate,
+        audio_bitrate,
     )?;
 
     if !config.quiet {
         println!(
-            "Rendering: {} ({}x{} @ {}fps, {} frames: {}..{})",
+            "Rendering: {} ({}x{} @ {}fps, {} frames: {}..{}, {} Mbps video)",
             entry_file,
-            comp_info.width,
-            comp_info.height,
+            target_width,
+            target_height,
             fps,
             total_render_frames,
             frame_range.start,
-            frame_range.end
+            frame_range.end,
+            video_bitrate as f64 / 1_000_000.0
         );
     }
 
@@ -202,7 +214,17 @@ pub async fn run_render_job(config: RenderConfig) -> Result<()> {
         }
 
         let render_list = host.evaluate_frame(frame)?;
-        renderer.render_frame(&gpu.device, &gpu.queue, &target, &render_list)?;
+        let three_frames = host.render_three_nodes(frame, fps)?;
+        let (_, scene_time, scene_progress) = crate::runtime::scene_clock(&comp_info, frame, fps);
+        renderer.render_frame(
+            &gpu.device,
+            &gpu.queue,
+            &target,
+            &render_list,
+            scene_time,
+            scene_progress,
+            &three_frames,
+        )?;
         let rgba = target.read_rgba(&gpu.device, &gpu.queue).await?;
         encoder.push_frame(&rgba)?;
         progress.inc();
@@ -267,15 +289,13 @@ pub async fn run_info_job(entry: &Path, json: bool) -> Result<()> {
         if !comp_info.audio.is_empty() {
             println!("  Audio Tracks ({}):", comp_info.audio.len());
             for (i, track) in comp_info.audio.iter().enumerate() {
-                println!(
-                    "    [{}] \"{}\": src={:?}, start_at={:?}, volume={:?}, loop={:?}",
-                    i + 1,
-                    track.id,
-                    track.src,
-                    track.start_at,
-                    track.volume,
-                    track.loop_track
-                );
+                println!("    [{}] \"{}\":", i + 1, track.id);
+                for clip in &track.clips {
+                    println!(
+                        "      - src={:?}, start_frame={}, duration={:?}, start_offset={:?}, volume={:?}",
+                        clip.src, clip.start_frame, clip.duration, clip.start_offset, clip.volume
+                    );
+                }
             }
         }
     }

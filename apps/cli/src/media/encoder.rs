@@ -1,14 +1,16 @@
-use std::io::{BufWriter, Cursor, Seek, Write};
-use std::path::Path;
 use anyhow::{anyhow, Context, Result};
-use fdk_aac_rs::encoder::{Aot, Bitrate, ChannelMode, Encoder as AacEncoder, EncoderError, Transport};
+use fdk_aac_rs::encoder::{
+    Aot, Bitrate, ChannelMode, Encoder as AacEncoder, EncoderError, Transport,
+};
 use mp4::{
-    AacConfig, AudioObjectType, AvcConfig, ChannelConfig, FourCC, MediaConfig, Mp4Config, Mp4Sample,
-    Mp4Writer, SampleFreqIndex, TrackConfig, TrackType,
+    AacConfig, AudioObjectType, AvcConfig, ChannelConfig, FourCC, MediaConfig, Mp4Config,
+    Mp4Sample, Mp4Writer, SampleFreqIndex, TrackConfig, TrackType,
 };
 use openh264::encoder::{Encoder as H264Encoder, EncoderConfig, FrameType, RateControlMode};
 use openh264::formats::YUVBuffer;
 use openh264::OpenH264API;
+use std::io::{BufWriter, Cursor, Seek, Write};
+use std::path::Path;
 
 /// Timescale used for MP4 movie and video tracks (90 kHz standard)
 pub const VIDEO_TIMESCALE: u32 = 90_000;
@@ -57,7 +59,11 @@ pub fn rgba_to_yuv420p(rgba: &[u8], width: usize, height: usize, yuv_out: &mut [
     assert_eq!(rgba.len(), width * height * 4, "RGBA buffer size mismatch");
     let y_size = width * height;
     let uv_size = (width / 2) * (height / 2);
-    assert_eq!(yuv_out.len(), y_size + 2 * uv_size, "YUV buffer size mismatch");
+    assert_eq!(
+        yuv_out.len(),
+        y_size + 2 * uv_size,
+        "YUV buffer size mismatch"
+    );
 
     let (y_plane, uv_planes) = yuv_out.split_at_mut(y_size);
     let (u_plane, v_plane) = uv_planes.split_at_mut(uv_size);
@@ -157,7 +163,7 @@ fn sample_rate_to_freq_index(sample_rate: u32) -> SampleFreqIndex {
 }
 
 /// Encode interleaved stereo float32 PCM samples into AAC-LC raw packets using `fdk-aac-rs`.
-pub fn encode_pcm_to_aac(pcm: &[f32], sample_rate: u32) -> Result<Vec<Vec<u8>>> {
+pub fn encode_pcm_to_aac(pcm: &[f32], sample_rate: u32, bitrate: u32) -> Result<Vec<Vec<u8>>> {
     if pcm.is_empty() {
         return Ok(Vec::new());
     }
@@ -179,7 +185,7 @@ pub fn encode_pcm_to_aac(pcm: &[f32], sample_rate: u32) -> Result<Vec<Vec<u8>>> 
         .aot(Aot::AacLc)
         .sample_rate(sample_rate)
         .channel_mode(ChannelMode::Stereo)
-        .bitrate(Bitrate::Cbr(128_000))
+        .bitrate(Bitrate::Cbr(bitrate.max(8_000)))
         .transport(Transport::Raw)
         .build()
         .map_err(|e| anyhow!("Failed to initialize AAC encoder: {:?}", e))?;
@@ -232,12 +238,14 @@ pub struct Mp4Encoder {
     height: u32,
     fps: f64,
     sample_rate: u32,
+    audio_bitrate: u32,
     frame_index: usize,
     h264_encoder: H264Encoder,
     pending_output: Option<Mp4Output>,
     mp4_writer: Option<Mp4Writer<Mp4Output>>,
     audio_pcm: Vec<f32>,
     yuv_scratch: Vec<u8>,
+    last_payload: Option<Vec<u8>>,
 }
 
 impl Mp4Encoder {
@@ -248,26 +256,40 @@ impl Mp4Encoder {
         height: u32,
         fps: f64,
         sample_rate: u32,
+        video_bitrate: u32,
+        audio_bitrate: u32,
     ) -> Result<Self> {
         if let Some(parent) = out_path.parent() {
             if !parent.as_os_str().is_empty() {
-                std::fs::create_dir_all(parent)
-                    .with_context(|| format!("Failed to create output directory: {}", parent.display()))?;
+                std::fs::create_dir_all(parent).with_context(|| {
+                    format!("Failed to create output directory: {}", parent.display())
+                })?;
             }
         }
         let file = std::fs::File::create(out_path)
             .with_context(|| format!("Failed to create output MP4 file: {}", out_path.display()))?;
-        Self::with_output(Mp4Output::File(BufWriter::new(file)), width, height, fps, sample_rate)
+        Self::with_output(
+            Mp4Output::File(BufWriter::new(file)),
+            width,
+            height,
+            fps,
+            sample_rate,
+            video_bitrate,
+            audio_bitrate,
+        )
     }
 
     /// Create an in-memory `Mp4Encoder` writing to a RAM buffer (ideal for unit testing).
-    pub fn new_in_memory(
-        width: u32,
-        height: u32,
-        fps: f64,
-        sample_rate: u32,
-    ) -> Result<Self> {
-        Self::with_output(Mp4Output::Cursor(Cursor::new(Vec::new())), width, height, fps, sample_rate)
+    pub fn new_in_memory(width: u32, height: u32, fps: f64, sample_rate: u32) -> Result<Self> {
+        Self::with_output(
+            Mp4Output::Cursor(Cursor::new(Vec::new())),
+            width,
+            height,
+            fps,
+            sample_rate,
+            10_000_000,
+            192_000,
+        )
     }
 
     fn with_output(
@@ -276,6 +298,8 @@ impl Mp4Encoder {
         height: u32,
         fps: f64,
         sample_rate: u32,
+        video_bitrate: u32,
+        audio_bitrate: u32,
     ) -> Result<Self> {
         if width == 0 || height == 0 {
             anyhow::bail!("Width and height must be greater than zero");
@@ -290,8 +314,9 @@ impl Mp4Encoder {
         let api = OpenH264API::from_source();
         let config = EncoderConfig::new()
             .max_frame_rate(fps as f32)
-            .rate_control_mode(RateControlMode::Off)
-            .enable_skip_frame(false)
+            .rate_control_mode(RateControlMode::Bitrate)
+            .set_bitrate_bps(video_bitrate.max(100_000))
+            .enable_skip_frame(true)
             .debug(false);
         let h264_encoder = H264Encoder::with_api_config(api, config)
             .map_err(|e| anyhow!("Failed to initialize OpenH264 encoder: {:?}", e))?;
@@ -303,12 +328,14 @@ impl Mp4Encoder {
             height,
             fps,
             sample_rate,
+            audio_bitrate,
             frame_index: 0,
             h264_encoder,
             pending_output: Some(output),
             mp4_writer: None,
             audio_pcm: Vec::new(),
             yuv_scratch: vec![0u8; yuv_size],
+            last_payload: None,
         })
     }
 
@@ -323,6 +350,12 @@ impl Mp4Encoder {
                 self.height,
                 rgba_pixels.len()
             );
+        }
+
+        // Force a keyframe every ~2 seconds (matches the desktop keyFrameInterval).
+        let keyframe_interval = (self.fps * 2.0).round().max(1.0) as usize;
+        if self.frame_index > 0 && self.frame_index.is_multiple_of(keyframe_interval) {
+            self.h264_encoder.force_intra_frame();
         }
 
         // 1. Convert RGBA to planar YUV420p
@@ -366,8 +399,10 @@ impl Mp4Encoder {
                 }
             }
 
-            let sps = sps.ok_or_else(|| anyhow!("H.264 encoder failed to produce SPS parameter set"))?;
-            let pps = pps.ok_or_else(|| anyhow!("H.264 encoder failed to produce PPS parameter set"))?;
+            let sps =
+                sps.ok_or_else(|| anyhow!("H.264 encoder failed to produce SPS parameter set"))?;
+            let pps =
+                pps.ok_or_else(|| anyhow!("H.264 encoder failed to produce PPS parameter set"))?;
 
             let output = self
                 .pending_output
@@ -430,24 +465,38 @@ impl Mp4Encoder {
             }
         }
 
-        if !sample_payload.is_empty() {
+        let is_idr = stream.frame_type() == FrameType::IDR;
+        let (payload, sync) = if !sample_payload.is_empty() {
+            self.last_payload = Some(sample_payload.clone());
+            (Some(sample_payload), is_idr)
+        } else if let Some(previous) = self.last_payload.clone() {
+            // OpenH264 skipped this frame to hit the bitrate target; repeat the last
+            // payload so the MP4 keeps a constant frame rate.
+            (Some(previous), false)
+        } else {
+            (None, false)
+        };
+
+        if let Some(bytes) = payload {
             let frame_duration = (VIDEO_TIMESCALE as f64 / self.fps).round() as u32;
-            let start_time = (self.frame_index as f64 * VIDEO_TIMESCALE as f64 / self.fps).round() as u64;
+            let start_time =
+                (self.frame_index as f64 * VIDEO_TIMESCALE as f64 / self.fps).round() as u64;
 
             let sample = Mp4Sample {
                 start_time,
                 duration: frame_duration,
                 rendering_offset: 0,
-                is_sync: stream.frame_type() == FrameType::IDR,
-                bytes: mp4::Bytes::from(sample_payload),
+                is_sync: sync,
+                bytes: mp4::Bytes::from(bytes),
             };
 
             let writer = self.mp4_writer.as_mut().unwrap();
             writer
                 .write_sample(1, &sample)
                 .map_err(|e| anyhow!("Failed to write video sample: {:?}", e))?;
-            self.frame_index += 1;
         }
+
+        self.frame_index += 1;
 
         Ok(())
     }
@@ -490,7 +539,7 @@ impl Mp4Encoder {
         // If audio samples were provided and sample_rate is valid, encode to AAC and mux audio track
         if !self.audio_pcm.is_empty() && self.sample_rate > 0 {
             let aac_config = AacConfig {
-                bitrate: 128_000,
+                bitrate: self.audio_bitrate,
                 profile: AudioObjectType::AacLowComplexity,
                 freq_index: sample_rate_to_freq_index(self.sample_rate),
                 chan_conf: ChannelConfig::Stereo,
@@ -508,7 +557,8 @@ impl Mp4Encoder {
                 .add_track(&audio_track)
                 .map_err(|e| anyhow!("Failed to add audio track to MP4: {:?}", e))?;
 
-            let aac_packets = encode_pcm_to_aac(&self.audio_pcm, self.sample_rate)?;
+            let aac_packets =
+                encode_pcm_to_aac(&self.audio_pcm, self.sample_rate, self.audio_bitrate)?;
             let aac_frame_duration = 1024u32;
             let mut audio_start_time = 0u64;
 
@@ -563,12 +613,24 @@ mod tests {
 
         // Standard BT.601 Studio Red: Y ~ 82, U ~ 90, V ~ 240
         let avg_y = yuv[0..y_size].iter().map(|&v| v as u32).sum::<u32>() / y_size as u32;
-        let avg_u = yuv[y_size..y_size + uv_size].iter().map(|&v| v as u32).sum::<u32>() / uv_size as u32;
-        let avg_v = yuv[y_size + uv_size..].iter().map(|&v| v as u32).sum::<u32>() / uv_size as u32;
+        let avg_u = yuv[y_size..y_size + uv_size]
+            .iter()
+            .map(|&v| v as u32)
+            .sum::<u32>()
+            / uv_size as u32;
+        let avg_v = yuv[y_size + uv_size..]
+            .iter()
+            .map(|&v| v as u32)
+            .sum::<u32>()
+            / uv_size as u32;
 
         assert!((75..=90).contains(&avg_y), "Expected Y ~82, got {}", avg_y);
         assert!((80..=100).contains(&avg_u), "Expected U ~90, got {}", avg_u);
-        assert!((230..=245).contains(&avg_v), "Expected V ~240, got {}", avg_v);
+        assert!(
+            (230..=245).contains(&avg_v),
+            "Expected V ~240, got {}",
+            avg_v
+        );
     }
 
     #[test]
@@ -600,10 +662,18 @@ mod tests {
         let mp4_bytes = encoder.finish_to_buffer()?;
 
         assert!(!mp4_bytes.is_empty(), "MP4 buffer should not be empty");
-        assert!(mp4_bytes.len() > 100, "MP4 file should have reasonable size, got {} bytes", mp4_bytes.len());
+        assert!(
+            mp4_bytes.len() > 100,
+            "MP4 file should have reasonable size, got {} bytes",
+            mp4_bytes.len()
+        );
 
         // Verify valid ISO MP4 header: bytes 4..8 should be b"ftyp"
-        assert_eq!(&mp4_bytes[4..8], b"ftyp", "MP4 file should start with ftyp box");
+        assert_eq!(
+            &mp4_bytes[4..8],
+            b"ftyp",
+            "MP4 file should start with ftyp box"
+        );
 
         // Verify readability by mp4::Mp4Reader
         let size = mp4_bytes.len() as u64;
@@ -631,7 +701,15 @@ mod tests {
         let fps = 30.0;
         let sample_rate = 48_000;
 
-        let mut encoder = Mp4Encoder::new(&out_file, width, height, fps, sample_rate)?;
+        let mut encoder = Mp4Encoder::new(
+            &out_file,
+            width,
+            height,
+            fps,
+            sample_rate,
+            10_000_000,
+            192_000,
+        )?;
 
         // Push 15 solid frames (~0.5s)
         let rgba = vec![120u8; (width * height * 4) as usize];
@@ -654,13 +732,21 @@ mod tests {
 
         // Verify output file on disk
         let metadata = std::fs::metadata(&out_file)?;
-        assert!(metadata.len() > 500, "MP4 file size should be > 500 bytes, got {}", metadata.len());
+        assert!(
+            metadata.len() > 500,
+            "MP4 file size should be > 500 bytes, got {}",
+            metadata.len()
+        );
 
         let file = std::fs::File::open(&out_file)?;
         let size = file.metadata()?.len();
         let reader = mp4::Mp4Reader::read_header(file, size)?;
 
-        assert_eq!(reader.tracks().len(), 2, "Expected 2 tracks (video + audio)");
+        assert_eq!(
+            reader.tracks().len(),
+            2,
+            "Expected 2 tracks (video + audio)"
+        );
 
         // Clean up temp file
         let _ = std::fs::remove_file(&out_file);

@@ -85,6 +85,10 @@ export type ShaderItem = {
   height: number;
   uniforms?: Record<string, number | number[]>;
   opacity: number;
+  /** scene-relative seconds */
+  time: number;
+  /** 0..1 scene progress */
+  progress: number;
 };
 
 export type ThreeItem = {
@@ -95,6 +99,10 @@ export type ThreeItem = {
   height: number;
   bitmap?: ImageBitmap;
   opacity: number;
+  /** scene-relative seconds */
+  time: number;
+  /** scene duration in seconds */
+  duration: number;
 };
 
 export type LayerItem = {

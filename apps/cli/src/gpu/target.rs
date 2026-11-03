@@ -12,7 +12,7 @@ pub struct RenderTarget {
 
 impl RenderTarget {
     pub fn new(device: &wgpu::Device, width: u32, height: u32) -> Self {
-        let format = wgpu::TextureFormat::Rgba8UnormSrgb;
+        let format = wgpu::TextureFormat::Rgba8Unorm;
 
         let texture = device.create_texture(&wgpu::TextureDescriptor {
             label: Some("RenderTarget Texture"),

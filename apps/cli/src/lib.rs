@@ -1,5 +1,14 @@
+pub mod acp;
+pub mod agents;
+pub mod assets;
 pub mod cli;
+pub mod color;
 pub mod gpu;
+pub mod mcp;
 pub mod media;
 pub mod pipeline;
+pub mod project;
 pub mod runtime;
+pub mod text;
+pub mod tts;
+pub mod watch;

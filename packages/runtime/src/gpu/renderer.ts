@@ -13,6 +13,8 @@ export type AssetMap = Map<string, ImageBitmap>;
 
 export interface Renderer {
   resize(width: number, height: number): void;
+  /** Compile/validate shader nodes for this frame before the synchronous render. */
+  prepare(list: RenderList): Promise<void>;
   render(list: RenderList, assets: AssetMap): void;
   /** RGBA, row-major, of the last rendered frame */
   readPixels(): Promise<Uint8Array>;
@@ -34,6 +36,67 @@ const PREMULTIPLIED: GPUBlendState = {
 
 type Leaf = Exclude<RenderItem, LayerItem>;
 type Draw = { index: number; texture: GPUTexture };
+
+const SHADER_MAX_UNIFORMS = 64;
+
+function isWgslIdentifier(value: string): boolean {
+  return /^[A-Za-z_][A-Za-z0-9_]*$/.test(value);
+}
+
+function shaderUniformKeys(uniforms?: Record<string, number | number[]>): string[] {
+  if (!uniforms) return [];
+  return Object.keys(uniforms).filter(isWgslIdentifier).sort().slice(0, SHADER_MAX_UNIFORMS);
+}
+
+function shaderUniformValues(uniforms: Record<string, number | number[]> | undefined, keys: string[]): Float32Array {
+  const values = new Float32Array(4 * Math.max(1, keys.length));
+  keys.forEach((key, index) => {
+    const value = uniforms?.[key];
+    if (typeof value === "number") values[index * 4] = value;
+    else if (Array.isArray(value)) value.slice(0, 4).forEach((v, i) => (values[index * 4 + i] = v));
+  });
+  return values;
+}
+
+function buildShaderSource(code: string, keys: string[]): string {
+  const fields = keys.length
+    ? keys.map((key) => `    ${key}: vec4<f32>,`).join("\n")
+    : "    _unused: vec4<f32>,";
+
+  return `struct LiosGlobals {
+    time: vec4<f32>,
+    resolution: vec4<f32>,
+};
+@group(0) @binding(0) var<uniform> u_globals: LiosGlobals;
+
+struct LiosUniforms {
+${fields}
+};
+@group(0) @binding(1) var<uniform> u: LiosUniforms;
+
+struct LiosVSOut {
+    @builtin(position) position: vec4<f32>,
+    @location(0) uv: vec2<f32>,
+};
+
+@vertex
+fn lios_vs_main(@builtin(vertex_index) vi: u32) -> LiosVSOut {
+    var corners = array<vec2<f32>, 3>(
+        vec2<f32>(-1.0, -1.0),
+        vec2<f32>(3.0, -1.0),
+        vec2<f32>(-1.0, 3.0)
+    );
+    let corner = corners[vi];
+    var out: LiosVSOut;
+    out.position = vec4<f32>(corner, 0.0, 1.0);
+    out.uv = vec2<f32>((corner.x + 1.0) * 0.5, 1.0 - (corner.y + 1.0) * 0.5);
+    return out;
+}
+
+// ---- user shader ----
+${code}
+`;
+}
 
 function invert(m: Affine): Affine {
   const [a, b, c, d, e, f] = m;
@@ -117,6 +180,9 @@ export async function createRenderer(
   const textUsed = new Set<string>();
   const imageTextures = new WeakMap<ImageBitmap, GPUTexture>();
   const warned = new Set<string>();
+  const shaderPipelines = new Map<string, GPURenderPipeline | null>();
+  const shaderTextures = new Map<string, { texture: GPUTexture; width: number; height: number }>();
+  const shaderWarned = new Set<string>();
 
   const uploadSource = (source: OffscreenCanvas | ImageBitmap) => {
     const texture = device.createTexture({
@@ -154,12 +220,119 @@ export async function createRenderer(
   }
   resize(canvas.width || 1, canvas.height || 1);
 
+  async function prepare(list: RenderList) {
+    const leaves: Leaf[] = [];
+    const collect = (items: RenderItem[]) =>
+      items.forEach((item) => (item.kind === "layer" ? collect(item.items) : leaves.push(item)));
+    collect(list.items);
+
+    const seen = new Set<string>();
+    for (const leaf of leaves) {
+      if (leaf.kind !== "shader") continue;
+      const code = leaf.code?.trim();
+      if (!code) continue;
+      if (code.includes("@group")) {
+        if (!shaderWarned.has(leaf.path)) {
+          shaderWarned.add(leaf.path);
+          console.warn(`[liosvideo] shader "${leaf.path}" declares @group/@binding; use u_globals and u instead`);
+        }
+        continue;
+      }
+      const keys = shaderUniformKeys(leaf.uniforms);
+      const source = buildShaderSource(code, keys);
+      if (seen.has(source) || shaderPipelines.has(source)) continue;
+      seen.add(source);
+
+      const module = device.createShaderModule({ label: "liosvideo user shader", code: source });
+      const info = await module.getCompilationInfo();
+      const errors = info.messages.filter((message) => message.type === "error");
+      if (errors.length) {
+        console.warn(`[liosvideo] shader "${leaf.path}" failed to compile: ${errors.map((e) => e.message).join("; ")}`);
+        shaderPipelines.set(source, null);
+        continue;
+      }
+
+      const pipeline = await device.createRenderPipelineAsync({
+        label: "liosvideo user shader pipeline",
+        layout: "auto",
+        vertex: { module, entryPoint: "lios_vs_main" },
+        fragment: { module, entryPoint: "fs", targets: [{ format: LAYER_FORMAT }] },
+      });
+      shaderPipelines.set(source, pipeline);
+    }
+  }
+
   function render(list: RenderList, assets: AssetMap) {
     const sx = width / list.width;
     const sy = height / list.height;
     const deviceScale: Affine = [sx, 0, 0, sy, 0, 0];
     const frameBuffers: GPUBuffer[] = [];
     const inUse: GPUTexture[] = [];
+    const shaderFrames = new Map<string, GPUTexture>();
+
+    // 0. Render custom WGSL nodes into their own textures first.
+    {
+      const shaderLeaves: Extract<Leaf, { kind: "shader" }>[] = [];
+      const walk = (items: RenderItem[]) =>
+        items.forEach((item) => {
+          if (item.kind === "layer") walk(item.items);
+          else if (item.kind === "shader") shaderLeaves.push(item);
+        });
+      walk(list.items);
+
+      if (shaderLeaves.length) {
+        const shaderEncoder = device.createCommandEncoder();
+        for (const leaf of shaderLeaves) {
+          const code = leaf.code?.trim();
+          if (!code) continue;
+          const keys = shaderUniformKeys(leaf.uniforms);
+          const pipeline = shaderPipelines.get(buildShaderSource(code, keys));
+          if (!pipeline) continue;
+
+          const scale = Math.max(0.01, Math.round(Math.sqrt(Math.abs(leaf.matrix[0] * leaf.matrix[3] - leaf.matrix[1] * leaf.matrix[2])) * sx * 100) / 100);
+          const widthPx = Math.min(8192, Math.max(1, Math.ceil((leaf.width || 100) * scale)));
+          const heightPx = Math.min(8192, Math.max(1, Math.ceil((leaf.height || 100) * scale)));
+
+          let cached = shaderTextures.get(leaf.path);
+          if (!cached || cached.width !== widthPx || cached.height !== heightPx) {
+            cached?.texture.destroy();
+            const texture = device.createTexture({
+              size: [widthPx, heightPx],
+              format: LAYER_FORMAT,
+              usage: GPUTextureUsage.RENDER_ATTACHMENT | GPUTextureUsage.TEXTURE_BINDING | GPUTextureUsage.COPY_SRC,
+            });
+            cached = { texture, width: widthPx, height: heightPx };
+            shaderTextures.set(leaf.path, cached);
+          }
+
+          const globals = device.createBuffer({ size: 32, usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST });
+          device.queue.writeBuffer(globals, 0, new Float32Array([leaf.time, leaf.progress, 0, 0, widthPx, heightPx, 0, 0]));
+          const values = shaderUniformValues(leaf.uniforms, keys);
+          const uniforms = device.createBuffer({ size: values.byteLength, usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST });
+          device.queue.writeBuffer(uniforms, 0, values);
+          frameBuffers.push(globals, uniforms);
+
+          const bind = device.createBindGroup({
+            layout: pipeline.getBindGroupLayout(0),
+            entries: [
+              { binding: 0, resource: { buffer: globals } },
+              { binding: 1, resource: { buffer: uniforms } },
+            ],
+          });
+
+          const pass = shaderEncoder.beginRenderPass({
+            colorAttachments: [{ view: cached.texture.createView(), loadOp: "clear", storeOp: "store", clearValue: [0, 0, 0, 0] }],
+          });
+          pass.setPipeline(pipeline);
+          pass.setBindGroup(0, bind);
+          pass.draw(3);
+          pass.end();
+
+          shaderFrames.set(leaf.path, cached.texture);
+        }
+        device.queue.submit([shaderEncoder.finish()]);
+      }
+    }
 
     // 1. Flatten leaves into instance data.
     const leaves: Leaf[] = [];
@@ -168,7 +341,7 @@ export async function createRenderer(
     const data = new Float32Array(Math.max(1, leaves.length) * INST_FLOATS);
     const draws = new Map<Leaf, Draw>();
     leaves.forEach((leaf, index) => {
-      draws.set(leaf, { index, texture: writeInstance(data, index, leaf, assets, sx) });
+      draws.set(leaf, { index, texture: writeInstance(data, index, leaf, assets, sx, shaderFrames) });
     });
 
     const instances = device.createBuffer({ size: data.byteLength, usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST });
@@ -295,7 +468,7 @@ export async function createRenderer(
     textUsed.clear();
   }
 
-  function writeInstance(data: Float32Array, index: number, leaf: Leaf, assets: AssetMap, sx: number): GPUTexture {
+  function writeInstance(data: Float32Array, index: number, leaf: Leaf, assets: AssetMap, sx: number, shaderFrames: Map<string, GPUTexture>): GPUTexture {
     const o = index * INST_FLOATS;
     let [a, b, c, d, e, f] = leaf.matrix;
     let w = 0;
@@ -321,8 +494,14 @@ export async function createRenderer(
     } else if (leaf.kind === "shader") {
       w = leaf.width || 100;
       h = leaf.height || 100;
-      color = [1, 1, 1, 1];
-      params = [0, 0, leaf.opacity, MODE_SOLID];
+      const shaderTexture = shaderFrames.get(leaf.path);
+      if (shaderTexture) {
+        texture = shaderTexture;
+        params = [0, 0, leaf.opacity, MODE_TEXTURE];
+      } else {
+        color = [1, 1, 1, 1];
+        params = [0, 0, leaf.opacity, MODE_SOLID];
+      }
     } else if (leaf.kind === "text") {
       const scale = Math.round(Math.sqrt(Math.abs(a * d - b * c)) * sx * 100) / 100 || 1;
       const raster = text.raster(leaf as TextItem, scale);
@@ -413,9 +592,10 @@ export async function createRenderer(
     target?.destroy();
     pool.forEach((t) => t.destroy());
     textTextures.forEach((t) => t.destroy());
+    shaderTextures.forEach((entry) => entry.texture.destroy());
     white.destroy();
     context.unconfigure();
   }
 
-  return { resize, render, readPixels, destroy };
+  return { prepare, resize, render, readPixels, destroy };
 }

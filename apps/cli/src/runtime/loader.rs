@@ -1,18 +1,19 @@
 #![allow(clippy::result_large_err)]
 
-use std::collections::HashMap;
-use std::path::PathBuf;
-use std::sync::{Arc, Mutex};
 use deno_core::error::{CoreError, ModuleLoaderError};
 use deno_core::url::Url;
 use deno_core::{
-    FastString, JsRuntime, ModuleLoader, ModuleLoadResponse, ModuleSource,
-    ModuleSourceCode, ModuleSpecifier, ModuleType, RequestedModuleType, ResolutionKind,
+    FastString, JsRuntime, ModuleLoadResponse, ModuleLoader, ModuleSource, ModuleSourceCode,
+    ModuleSpecifier, ModuleType, RequestedModuleType, ResolutionKind,
 };
 use deno_error::JsErrorBox;
+use std::collections::HashMap;
+use std::path::PathBuf;
+use std::sync::{Arc, Mutex};
 
 pub const LIOSVIDEO_IIFE: &str = include_str!("liosvideo.iife.js");
 pub const THREE_BUNDLE: &str = include_str!("three.bundle.js");
+pub const THREE_CORE: &str = include_str!("three.core.js");
 
 pub const LIOSVIDEO_ESM: &str = r#"
 export const {
@@ -82,7 +83,8 @@ impl TsModuleLoader {
         }
 
         // Check if in-memory has this name
-        let memory_candidate = Url::parse(&format!("memory:///{}", entry_file.trim_start_matches('/'))).ok();
+        let memory_candidate =
+            Url::parse(&format!("memory:///{}", entry_file.trim_start_matches('/'))).ok();
         if let Some(ref mem_url) = memory_candidate {
             if self.in_memory_modules.lock().unwrap().contains_key(mem_url) {
                 return Ok(mem_url.clone());
@@ -182,13 +184,22 @@ impl ModuleLoader for TsModuleLoader {
         if specifier == "three" || specifier.starts_with("three/") {
             return Ok(ModuleSpecifier::parse("liosvideo://three").unwrap());
         }
+        if referrer.starts_with("liosvideo://three") && specifier.ends_with("three.core.js") {
+            return Ok(ModuleSpecifier::parse("liosvideo://three/core").unwrap());
+        }
 
         if kind == ResolutionKind::MainModule {
             return self.resolve_entry(specifier);
         }
 
+        if specifier.starts_with("liosvideo://") {
+            return ModuleSpecifier::parse(specifier).map_err(|e| {
+                ModuleLoaderError::Core(CoreError::JsBox(JsErrorBox::generic(e.to_string())))
+            });
+        }
+
         // Relative resolution
-        let base_url = if referrer.is_empty() {
+        let base_url = if referrer.is_empty() || referrer == "." {
             Url::from_directory_path(&self.project_root).map_err(|_| {
                 ModuleLoaderError::Core(CoreError::JsBox(JsErrorBox::generic(
                     "Invalid project root path",
@@ -251,7 +262,15 @@ impl ModuleLoader for TsModuleLoader {
         if module_specifier.scheme() == "liosvideo" {
             let code = match module_specifier.host_str() {
                 Some("runtime") | Some("gpu") => LIOSVIDEO_ESM,
-                Some("three") => THREE_BUNDLE,
+                Some("three") => {
+                    if module_specifier.path().ends_with("/core")
+                        || module_specifier.path().ends_with("three.core.js")
+                    {
+                        THREE_CORE
+                    } else {
+                        THREE_BUNDLE
+                    }
+                }
                 _ => return ModuleLoadResponse::Sync(Err(ModuleLoaderError::NotFound)),
             };
             return ModuleLoadResponse::Sync(Ok(ModuleSource::new(

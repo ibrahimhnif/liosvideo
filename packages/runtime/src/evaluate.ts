@@ -6,7 +6,7 @@ import { multiply, type Affine } from "./math/affine";
 import type { RenderItem, RenderList } from "./renderlist";
 
 /** The node's own drawable (groups have none), with opacity already multiplied in. */
-function drawable(node: Node<any>, t: number, matrix: Affine, opacity: number): RenderItem | undefined {
+function drawable(node: Node<any>, t: number, matrix: Affine, opacity: number, duration: number): RenderItem | undefined {
   const path = node.path();
   if (node instanceof RectNode) {
     const p = node.propsAt(t);
@@ -33,7 +33,7 @@ function drawable(node: Node<any>, t: number, matrix: Affine, opacity: number): 
     const p = node.propsAt(t);
     return {
       kind: "shader", path, matrix, code: p.code, width: p.width, height: p.height,
-      uniforms: p.uniforms, opacity,
+      uniforms: p.uniforms, opacity, time: t, progress: t / Math.max(0.001, duration),
     };
   }
   if (node instanceof TextNode) {
@@ -54,7 +54,7 @@ function drawable(node: Node<any>, t: number, matrix: Affine, opacity: number): 
   }
   if (node instanceof ThreeNode) {
     const p = node.propsAt(t);
-    return { kind: "three", path, matrix, width: p.width, height: p.height, opacity };
+    return { kind: "three", path, matrix, width: p.width, height: p.height, opacity, time: t, duration };
   }
   return undefined;
 }
@@ -67,7 +67,7 @@ function sortedChildren(node: Node<any>, t: number): Node<any>[] {
 }
 
 /** Emits items for `node` into `out`. `inherited` is the ancestors' opacity not yet absorbed by a layer. */
-function emit(node: Node<any>, t: number, parent: Affine, inherited: number, out: RenderItem[]): void {
+function emit(node: Node<any>, t: number, duration: number, parent: Affine, inherited: number, out: RenderItem[]): void {
   const p = node.propsAt(t);
   const opacity = inherited * p.opacity;
   if (opacity <= 0) return;
@@ -76,9 +76,9 @@ function emit(node: Node<any>, t: number, parent: Affine, inherited: number, out
   const childOpacity = isolated ? 1 : opacity;
   const target: RenderItem[] = isolated ? [] : out;
 
-  const own = drawable(node, t, matrix, childOpacity);
+  const own = drawable(node, t, matrix, childOpacity, duration);
   if (own) target.push(own);
-  for (const child of sortedChildren(node, t)) emit(child, t, matrix, childOpacity, target);
+  for (const child of sortedChildren(node, t)) emit(child, t, duration, matrix, childOpacity, target);
 
   if (isolated) {
     out.push({
@@ -114,7 +114,7 @@ export function evaluateFrame(c: Composition, frame: number): RenderList {
     const progress = t / Math.max(0.001, def.transition.duration);
     applyTransition(root, def.transition, progress, c.width, c.height);
   }
-  emit(root, t, [1, 0, 0, 1, 0, 0], 1, items);
+  emit(root, t, def.duration, [1, 0, 0, 1, 0, 0], 1, items);
   return {
     width: c.width,
     height: c.height,

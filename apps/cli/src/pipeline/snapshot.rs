@@ -4,7 +4,12 @@ use std::path::Path;
 use crate::gpu::{GpuContext, RenderTarget, Renderer};
 use crate::runtime::RuntimeHost;
 
-pub async fn render_snapshot(entry: &Path, frame: usize, out_png: &Path) -> Result<()> {
+pub async fn render_snapshot(
+    entry: &Path,
+    frame: usize,
+    out_png: &Path,
+    preset: super::preset::Preset,
+) -> Result<()> {
     let entry_path = if entry.is_absolute() {
         entry.to_path_buf()
     } else {
@@ -25,16 +30,28 @@ pub async fn render_snapshot(entry: &Path, frame: usize, out_png: &Path) -> Resu
         .ok_or_else(|| anyhow!("Entry path has no filename: '{}'", entry.display()))?
         .to_string_lossy();
 
-    let mut host = RuntimeHost::new(project_root)?;
+    let mut host = RuntimeHost::new(project_root.clone())?;
     let comp_info = host.load_composition(&entry_file).await?;
 
     let render_list = host.evaluate_frame(frame)?;
+    let three_frames = host.render_three_nodes(frame, comp_info.fps)?;
+    let (_, scene_time, scene_progress) =
+        crate::runtime::scene_clock(&comp_info, frame, comp_info.fps);
 
     let gpu = GpuContext::new_headless().await?;
-    let target = RenderTarget::new(&gpu.device, comp_info.width, comp_info.height);
-    let renderer = Renderer::new(&gpu.device, target.format);
+    let (target_width, target_height) = preset.size(comp_info.width, comp_info.height);
+    let target = RenderTarget::new(&gpu.device, target_width, target_height);
+    let mut renderer = Renderer::new(&gpu.device, &gpu.queue, project_root);
 
-    renderer.render_frame(&gpu.device, &gpu.queue, &target, &render_list)?;
+    renderer.render_frame(
+        &gpu.device,
+        &gpu.queue,
+        &target,
+        &render_list,
+        scene_time,
+        scene_progress,
+        &three_frames,
+    )?;
 
     let rgba = target.read_rgba(&gpu.device, &gpu.queue).await?;
 
@@ -47,8 +64,8 @@ pub async fn render_snapshot(entry: &Path, frame: usize, out_png: &Path) -> Resu
     image::save_buffer(
         out_png,
         &rgba,
-        comp_info.width,
-        comp_info.height,
+        target_width,
+        target_height,
         image::ExtendedColorType::Rgba8,
     )
     .with_context(|| format!("Failed to save snapshot PNG to '{}'", out_png.display()))?;

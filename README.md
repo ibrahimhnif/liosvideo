@@ -64,6 +64,11 @@ curl -fsSL https://raw.githubusercontent.com/ibrahimhnif/liosvideo/main/install.
 
 See the [latest release](https://github.com/ibrahimhnif/liosvideo/releases/latest) for release notes and all available assets.
 
+The CLI renders with the same WGSL pipeline as the desktop preview (text, images, video,
+layers, blur, clips, audio clips) and exposes the rest of the backend too: scene validation,
+git checkpoints, project scaffolding, TTS, ACP agents, and an embedded MCP server. See
+[docs/cli-parity.md](docs/cli-parity.md) for the full command map and known deltas.
+
 ---
 
 ## Key Features

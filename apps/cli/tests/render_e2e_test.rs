@@ -106,7 +106,10 @@ async fn renders_composition_with_audio_to_mp4() -> Result<()> {
         out: out_mp4.clone(),
         fps: None,
         frames: None,
-        quality: "medium".to_string(),
+        quality: None,
+        preset: liosvideo_cli::pipeline::Preset::Native,
+        bitrate: None,
+        audio_bitrate: None,
         quiet: true,
     };
 
@@ -187,7 +190,10 @@ async fn renders_frame_range_subset() -> Result<()> {
         out: out_mp4.clone(),
         fps: None,
         frames: Some("0..10".to_string()),
-        quality: "medium".to_string(),
+        quality: None,
+        preset: liosvideo_cli::pipeline::Preset::Native,
+        bitrate: None,
+        audio_bitrate: None,
         quiet: true,
     };
 

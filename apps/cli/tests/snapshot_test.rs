@@ -33,7 +33,13 @@ async fn renders_snapshot_frame_to_png() -> Result<()> {
 
     let out_png = dir.join("snapshot.png");
 
-    render_snapshot(&entry_file, 0, &out_png).await?;
+    render_snapshot(
+        &entry_file,
+        0,
+        &out_png,
+        liosvideo_cli::pipeline::Preset::Native,
+    )
+    .await?;
 
     // 1. Verify file exists
     assert!(out_png.exists(), "Snapshot PNG file must exist");

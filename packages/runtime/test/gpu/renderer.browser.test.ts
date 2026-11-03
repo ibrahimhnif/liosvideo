@@ -51,6 +51,34 @@ describe("renderer", () => {
     expect(lum(px(pixels, 50, 50))).toBeGreaterThan(250);
   });
 
+  it("runs a custom WGSL shader with time and uniforms", async () => {
+    const r = await make();
+    const frame = list([
+      {
+        kind: "shader",
+        path: "fx",
+        matrix: I,
+        width: SIZE,
+        height: SIZE,
+        code: `
+          @fragment fn fs(@location(0) uv: vec2f) -> @location(0) vec4f {
+            return vec4f(u_globals.time.x, u.speed.x, 0.0, 1.0);
+          }
+        `,
+        uniforms: { speed: 0.5 },
+        opacity: 1,
+        time: 0.25,
+        progress: 0.5,
+      },
+    ]);
+    await r.prepare(frame);
+    r.render(frame, new Map());
+    const p = px(await r.readPixels(), 128, 128);
+    expect(Math.abs(p[0] - 64)).toBeLessThanOrEqual(2);
+    expect(Math.abs(p[1] - 128)).toBeLessThanOrEqual(2);
+    expect(p[3]).toBe(255);
+  });
+
   it("blurs layer edges", async () => {
     const r = await make();
     const white = rectItem({ matrix: at(64, 64), width: 128, height: 128, fill: "#ffffff" });
@@ -127,7 +155,7 @@ describe("renderer", () => {
     ctx.fillRect(0, 0, 30, 30);
     const bmp = await createImageBitmap(c);
     r.render(
-      list([{ kind: "three", path: "3d", matrix: at(10, 10), width: 50, height: 50, bitmap: bmp, opacity: 1 }]),
+      list([{ kind: "three", path: "3d", matrix: at(10, 10), width: 50, height: 50, bitmap: bmp, opacity: 1, time: 0, duration: 1 }]),
       new Map(),
     );
     const p = px(await r.readPixels(), 30, 30);

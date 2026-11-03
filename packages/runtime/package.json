@@ -7,7 +7,9 @@
   "types": "./src/index.ts",
   "exports": {
     ".": "./src/index.ts",
-    "./gpu": "./src/gpu/renderer.ts"
+    "./gpu": "./src/gpu/renderer.ts",
+    "./three": "./src/gpu/three_runner.ts",
+    "./three-soft": "./src/gpu/three_soft.ts"
   },
   "scripts": {
     "test": "vitest run",
