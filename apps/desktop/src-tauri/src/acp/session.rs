@@ -13,6 +13,17 @@ use super::rpc::{BoxFuture, Connection};
 use crate::git::{self, CommitInfo};
 use crate::project::{git_job, ProjectError};
 
+/// A scene that a time-range selection overlaps.
+#[derive(Deserialize, Debug, Clone, PartialEq)]
+#[serde(rename_all = "camelCase")]
+pub struct SceneSpan {
+    pub id: String,
+    #[serde(default)]
+    pub file: Option<String>,
+    pub start_frame: u32,
+    pub end_frame: u32,
+}
+
 #[derive(Deserialize, Debug, Clone, Default)]
 #[serde(rename_all = "camelCase")]
 pub struct SelectionContext {
@@ -24,6 +35,9 @@ pub struct SelectionContext {
     pub end_frame: u32,
     pub fps: f64,
     pub playhead_frame: Option<u32>,
+    /// Present on time-range selections: the scenes the range overlaps.
+    #[serde(default)]
+    pub scenes: Option<Vec<SceneSpan>>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -70,16 +84,29 @@ pub fn build_prompt(
         let mut lines = vec![
             "Selected on the timeline (confine edits to this unless asked otherwise):".to_string(),
             format!("composition: {}", sel.composition),
-            match &sel.scene_file {
+        ];
+        if let Some(scenes) = &sel.scenes {
+            lines.push(format!("time range: {:.2}s–{:.2}s (frames {}–{})", secs(sel.start_frame), secs(sel.end_frame), sel.start_frame, sel.end_frame));
+            if scenes.is_empty() {
+                lines.push("scenes in range: none".to_string());
+            } else {
+                lines.push(format!("scenes in range ({}):", scenes.len()));
+                for s in scenes {
+                    let file = s.file.as_deref().map(|f| format!(" ({f})")).unwrap_or_default();
+                    lines.push(format!("- {}{} frames {}–{}", s.id, file, s.start_frame, s.end_frame));
+                }
+            }
+        } else {
+            lines.push(match &sel.scene_file {
                 Some(file) => format!("scene: {} (file: {file})", sel.scene_id),
                 None => format!("scene: {}", sel.scene_id),
-            },
-        ];
-        if let Some(path) = &sel.path {
-            let rel = path.strip_prefix(&format!("{}/", sel.scene_id)).unwrap_or(path);
-            lines.push(format!("object: {rel}"));
+            });
+            if let Some(path) = &sel.path {
+                let rel = path.strip_prefix(&format!("{}/", sel.scene_id)).unwrap_or(path);
+                lines.push(format!("object: {rel}"));
+            }
+            lines.push(format!("time: {:.2}s–{:.2}s (frames {}–{})", secs(sel.start_frame), secs(sel.end_frame), sel.start_frame, sel.end_frame));
         }
-        lines.push(format!("time: {:.2}s–{:.2}s (frames {}–{})", secs(sel.start_frame), secs(sel.end_frame), sel.start_frame, sel.end_frame));
         if let Some(f) = sel.playhead_frame {
             lines.push(format!("playhead: {:.2}s (frame {f})", secs(f)));
         }
@@ -455,6 +482,7 @@ mod tests {
             end_frame: 75,
             fps: 30.0,
             playhead_frame: playhead,
+            scenes: None,
         }
     }
 
@@ -485,6 +513,25 @@ mod tests {
         assert_eq!(img_blocks.len(), 2);
         assert!(img_blocks[0]["text"].as_str().unwrap().contains("assets/images/logo.png"));
         assert_eq!(img_blocks[1], json!({"type": "image", "data": "base64data", "mimeType": "image/png"}));
+    }
+
+    #[test]
+    fn build_prompt_with_time_range() {
+        let range = SelectionContext {
+            scenes: Some(vec![
+                SceneSpan { id: "intro".into(), file: Some("scenes/intro.ts".into()), start_frame: 0, end_frame: 90 },
+                SceneSpan { id: "features".into(), file: Some("scenes/features.ts".into()), start_frame: 90, end_frame: 180 },
+            ]),
+            ..sel(None, Some(120))
+        };
+        let blocks = build_prompt("tighten these two seconds", Some(&range), None);
+        assert_eq!(
+            blocks[1]["text"],
+            "Selected on the timeline (confine edits to this unless asked otherwise):\ncomposition: long.ts\ntime range: 1.00s–2.50s (frames 30–75)\nscenes in range (2):\n- intro (scenes/intro.ts) frames 0–90\n- features (scenes/features.ts) frames 90–180\nplayhead: 4.00s (frame 120)"
+        );
+
+        let empty = SelectionContext { scenes: Some(Vec::new()), ..sel(None, None) };
+        assert!(build_prompt("x", Some(&empty), None)[1]["text"].as_str().unwrap().contains("scenes in range: none"));
     }
 
     #[test]

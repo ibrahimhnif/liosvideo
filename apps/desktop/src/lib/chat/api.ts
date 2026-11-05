@@ -46,6 +46,8 @@ export type ConnectionState = "connecting" | "ready" | "auth_required" | "error"
 export type SelectionContext = {
   composition: string; sceneId: string; sceneFile?: string; path?: string;
   startFrame: number; endFrame: number; fps: number; playheadFrame?: number;
+  /** Range selections: scenes the selected time range overlaps. */
+  scenes?: { id: string; file?: string; startFrame: number; endFrame: number }[];
 };
 
 export type ImageInput = {

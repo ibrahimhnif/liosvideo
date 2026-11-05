@@ -44,6 +44,22 @@ describe("Timeline", () => {
     expect(onSeek).toHaveBeenCalledWith(10);
   });
 
+  it("selects a time range with shift-drag", async () => {
+    const { onSelect, onSeek } = await setup();
+    const track = document.querySelector(".track") as HTMLElement;
+    const box = track.getBoundingClientRect();
+    const at = (ratio: number) => ({ clientX: box.left + box.width * ratio, clientY: box.top + 10 });
+    track.dispatchEvent(new PointerEvent("pointerdown", { bubbles: true, shiftKey: true, button: 0, pointerId: 7, ...at(0.2) }));
+    track.dispatchEvent(new PointerEvent("pointermove", { bubbles: true, pointerId: 7, ...at(0.7) }));
+    track.dispatchEvent(new PointerEvent("pointerup", { bubbles: true, pointerId: 7, ...at(0.7) }));
+
+    const sel = onSelect.mock.calls.at(-1)?.[0];
+    expect(sel.sceneId).toBe("range");
+    expect(sel.startFrame).toBeLessThan(sel.endFrame);
+    expect(sel.scenes.length).toBeGreaterThanOrEqual(1);
+    expect(onSeek).toHaveBeenCalledWith(sel.startFrame);
+  });
+
   it("shows an empty state", async () => {
     const { screen } = await setup({ width: 1, height: 1, fps: 30, totalFrames: 0, scenes: [] });
     await expect.element(screen.getByText("No scenes")).toBeVisible();

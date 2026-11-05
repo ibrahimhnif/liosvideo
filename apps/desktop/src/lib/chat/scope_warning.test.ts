@@ -24,6 +24,15 @@ describe("detectOutOfScopeChanges", () => {
     expect(result.outOfScopeFiles).toEqual(["scenes/outro.ts", "short.ts"]);
   });
 
+  it("allows every scene file a time range overlaps", () => {
+    const selection = {
+      composition: "long.ts",
+      scenes: [{ file: "scenes/intro.ts" }, { file: "scenes/features.ts" }],
+    };
+    const changed = ["scenes/intro.ts", "scenes/features.ts", "long.ts", "scenes/outro.ts"];
+    expect(detectOutOfScopeChanges(changed, selection).outOfScopeFiles).toEqual(["scenes/outro.ts"]);
+  });
+
   it("returns no out-of-scope when there is no active selection", () => {
     const result = detectOutOfScopeChanges(["scenes/outro.ts"]);
     expect(result.hasOutOfScope).toBe(false);

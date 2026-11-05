@@ -396,8 +396,8 @@
 
   function toContext(sel: Selection | undefined): SelectionContext | undefined {
     if (!sel) return undefined;
-    const { composition, sceneId, sceneFile, path, startFrame, endFrame } = sel;
-    return { composition, sceneId, sceneFile, path, startFrame, endFrame, fps: playhead.fps, playheadFrame: playhead.frame };
+    const { composition, sceneId, sceneFile, path, startFrame, endFrame, scenes } = sel;
+    return { composition, sceneId, sceneFile, path, startFrame, endFrame, scenes, fps: playhead.fps, playheadFrame: playhead.frame };
   }
 
   const fail = (e: unknown) => push({ type: "turn", state: "ended", error: String(e) });

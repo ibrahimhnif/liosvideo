@@ -63,7 +63,7 @@ describe("ChatPane", () => {
     ]);
     await render(ChatPane, { api, playhead: { frame: 0, fps: 30 }, onClearSelection: () => {} });
     await vi.waitFor(() => expect(api.listAgents).toHaveBeenCalled());
-    await new Promise((r) => queueMicrotask(() => queueMicrotask(r)));
+    await new Promise<void>((resolve) => queueMicrotask(() => queueMicrotask(() => resolve())));
     expect(api.connect).not.toHaveBeenCalled();
   });
 
@@ -80,6 +80,24 @@ describe("ChatPane", () => {
     emit({ type: "status", state: "connecting", agentId: "gemini" });
     await screen.getByRole("button", { name: "Reconnect" }).click();
     expect(api.connect).toHaveBeenCalled();
+  });
+
+  it("sends a timeline range with the scenes it overlaps", async () => {
+    const range: Selection = {
+      composition: "long.ts", sceneId: "range", startFrame: 90, endFrame: 150,
+      scenes: [
+        { id: "intro", file: "scenes/intro.ts", startFrame: 0, endFrame: 90 },
+        { id: "features", file: "scenes/features.ts", startFrame: 90, endFrame: 180 },
+      ],
+    };
+    const { screen, api, emit } = await setup(range);
+    emit(ready);
+    await screen.getByPlaceholder(/Ask the agent/).fill("tighten these two seconds");
+    await userEvent.keyboard("{Enter}");
+    expect(api.prompt).toHaveBeenCalledWith("tighten these two seconds", expect.objectContaining({
+      composition: "long.ts", sceneId: "range", startFrame: 90, endFrame: 150, fps: 30, playheadFrame: 36,
+      scenes: range.scenes,
+    }));
   });
 
   it("renders streamed chunks as one message", async () => {

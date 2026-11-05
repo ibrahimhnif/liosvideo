@@ -2,8 +2,25 @@ import type { FrameSpan, ManifestNode, ManifestScene, TimelineManifest } from "l
 
 export const MIN_MARKER_PX = 3;
 
+/** A scene the selected time range overlaps. */
+export type SceneSpan = { id: string; file?: string; startFrame: number; endFrame: number };
+
+/** `sceneId` sentinel for a time range that can span scenes. */
+export const RANGE_SCENE_ID = "range";
+
 /** What the user pointed at; becomes revision context for the agent. */
-export type Selection = { composition: string; sceneId: string; sceneFile?: string; path?: string; startFrame: number; endFrame: number };
+export type Selection = {
+  composition: string;
+  sceneId: string;
+  sceneFile?: string;
+  path?: string;
+  startFrame: number;
+  endFrame: number;
+  /** Present on range selections: the scenes the range overlaps, in order. */
+  scenes?: SceneSpan[];
+};
+
+export const isRangeSelection = (sel?: Selection): boolean => !!sel && sel.sceneId === RANGE_SCENE_ID;
 
 export type Row = {
   /** scene id (= scene root path) or node path */
@@ -97,9 +114,29 @@ export function selectionFor(row: Row, composition: string, m: TimelineManifest)
   return n ? nodeSelection(composition, scene, n) : sceneSelection(composition, scene);
 }
 
+/**
+ * A time-only selection over the whole timeline: the scenes stay derived from the manifest, so a
+ * range survives scene edits as long as the composition keeps its length.
+ */
+export function rangeFor(composition: string, m: TimelineManifest, from: number, to: number): Selection {
+  const total = Math.max(m.totalFrames, 0);
+  const startFrame = Math.max(0, Math.min(from, to, Math.max(total - 1, 0)));
+  const endFrame = Math.max(startFrame, Math.min(Math.max(from, to), total));
+  // a clicked point still means "this frame": widen it enough to pick the scene it sits in
+  const probeEnd = endFrame > startFrame ? endFrame : startFrame + 1;
+  const scenes = m.scenes
+    .filter((s) => s.startFrame < probeEnd && s.endFrame > startFrame)
+    .map((s) => ({ id: s.id, file: s.source, startFrame: s.startFrame, endFrame: s.endFrame }));
+  return { composition, sceneId: RANGE_SCENE_ID, startFrame, endFrame, scenes };
+}
+
 /** Keeps a selection valid after a reload: same node if it still exists, else its scene, else nothing. A selection in another composition is cleared. */
 export function reconcileSelection(sel: Selection | undefined, composition: string, m: TimelineManifest): Selection | undefined {
   if (!sel || sel.composition !== composition) return undefined;
+  if (isRangeSelection(sel)) {
+    if (m.totalFrames === 0) return undefined;
+    return rangeFor(composition, m, sel.startFrame, sel.endFrame);
+  }
   if (sel.sceneId === "audio") {
     return sel;
   }
@@ -110,6 +147,11 @@ export function reconcileSelection(sel: Selection | undefined, composition: stri
 }
 
 export function selectionLabel(sel: Selection): string {
+  if (isRangeSelection(sel)) {
+    const count = sel.scenes?.length ?? 0;
+    const scenes = count === 1 ? sel.scenes![0].id : `${count} scenes`;
+    return `${sel.composition} › frames ${sel.startFrame}–${sel.endFrame} (${scenes})`;
+  }
   const parts = [sel.composition, sel.sceneId];
   if (sel.path) parts.push(sel.path.slice(sel.sceneId.length + 1));
   return parts.join(" › ");

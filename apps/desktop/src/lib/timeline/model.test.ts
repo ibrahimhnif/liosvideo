@@ -1,6 +1,6 @@
 import type { ManifestNode, TimelineManifest } from "liosvideo";
 import { describe, expect, it } from "vitest";
-import { frameAtX, MIN_MARKER_PX, reconcileSelection, selectionFor, selectionLabel, spanToPx, visibleRows } from "./model";
+import { frameAtX, MIN_MARKER_PX, rangeFor, reconcileSelection, selectionFor, selectionLabel, spanToPx, visibleRows } from "./model";
 
 const node = (path: string, children: ManifestNode[] = [], spans: ManifestNode["spans"] = []): ManifestNode => ({
   path, name: path.split("/").at(-1)!, kind: children.length ? "group" : "rect", spans, children,

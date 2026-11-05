@@ -5,7 +5,7 @@ export interface ScopeCheckResult {
 
 export function detectOutOfScopeChanges(
   changedFiles: string[],
-  selection?: { composition?: string; sceneFile?: string }
+  selection?: { composition?: string; sceneFile?: string; scenes?: { file?: string }[] }
 ): ScopeCheckResult {
   if (!selection || (!selection.sceneFile && !selection.composition)) {
     return { hasOutOfScope: false, outOfScopeFiles: [] };
@@ -14,6 +14,7 @@ export function detectOutOfScopeChanges(
   const allowed = new Set<string>();
   if (selection.composition) allowed.add(selection.composition);
   if (selection.sceneFile) allowed.add(selection.sceneFile);
+  for (const scene of selection.scenes ?? []) if (scene.file) allowed.add(scene.file);
 
   const outOfScopeFiles = changedFiles.filter((file) => {
     // Assets, vo, project settings, script are not considered out-of-scope violations
