@@ -271,6 +271,16 @@ describe("filters", () => {
     }
   });
 
+  it("halftone leaves no dark fringe where a cell centre falls outside the shape", async () => {
+    const r = await make();
+    // the rect starts at x=102; the cell [96, 104) has its centre (100) outside it
+    const card = rectItem({ matrix: at(102, 102), width: 52, height: 52, fill: "#ffffff" });
+    r.render(list([filtered([card], { halftone: 8 })]), new Map());
+    const p = await r.readPixels();
+    expect(lum(px(p, 103, 132))).toBeGreaterThan(240);
+    expect(lum(px(p, 132, 103))).toBeGreaterThan(240);
+  });
+
   it("outline draws ink just outside the shape", async () => {
     const r = await make();
     const box = rectItem({ matrix: at(118, 118), width: 20, height: 20, fill: "#ffffff" });

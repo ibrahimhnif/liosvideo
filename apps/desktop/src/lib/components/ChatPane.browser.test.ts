@@ -395,4 +395,15 @@ describe("ChatPane", () => {
     await expect.element(screen.getByText(/Unknown style: comic/)).toBeVisible();
     await expect.element(box).toHaveValue("draft");
   });
+
+  it("keeps a typed draft and adds the restyle prompt after it", async () => {
+    installStyle.mockClear();
+    const { screen, emit } = await setup(selection);
+    emit(ready);
+    const box = screen.getByPlaceholder(/Ask the agent/);
+    await box.fill("make the intro shorter");
+    await screen.getByRole("button", { name: "Style" }).click();
+    await screen.getByRole("menuitem", { name: "Comic Art" }).click();
+    await expect.element(box).toHaveValue(`make the intro shorter\n\n${stylePrompt("Comic Art", "comic", selectionLabel(selection))}`);
+  });
 });

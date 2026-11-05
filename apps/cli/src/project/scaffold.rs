@@ -470,6 +470,13 @@ mod tests {
     }
 
     #[test]
+    fn agents_md_allows_three_imports() {
+        let agents = SHARED_TEMPLATES.iter().find(|(rel, _)| *rel == "AGENTS.md").unwrap().1;
+        assert!(!agents.contains("Only import `liosvideo` and relative project files."));
+        assert!(agents.contains("Only import `liosvideo`, `three` and relative project files."));
+    }
+
+    #[test]
     fn validates_styles() {
         assert_eq!(STYLES.len(), 10);
         for (id, _) in STYLES {

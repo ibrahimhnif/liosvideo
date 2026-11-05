@@ -54,7 +54,10 @@ fn halftone(pos: vec2f) -> vec4f {
   if (c.a <= 0.0) { return vec4f(0.0); }
   let cell = max(u.amount, 2.0);
   let center = (floor(pos / cell) + 0.5) * cell;
-  let darkness = 1.0 - luma(unpremultiply(load(vec2i(center))));
+  // a centre outside the shape has no tone of its own: use this pixel's instead (no dark fringe)
+  let cc = load(vec2i(center));
+  let tone = select(c, cc, cc.a > 0.0);
+  let darkness = 1.0 - luma(unpremultiply(tone));
   let radius = cell * 0.55 * clamp(darkness, 0.0, 1.0);
   let inside = clamp(radius - distance(pos, center) + 0.5, 0.0, 1.0);
   return vec4f(c.rgb * mix(1.0, 0.45, inside), c.a);

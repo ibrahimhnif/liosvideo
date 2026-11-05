@@ -338,7 +338,9 @@
       fail(`Couldn't install the ${style.title} style: ${e}`);
       return;
     }
-    text = stylePrompt(style.title, style.id, selection ? selectionLabel(selection) : undefined);
+    const prompt = stylePrompt(style.title, style.id, selection ? selectionLabel(selection) : undefined);
+    // keep anything the user already typed
+    text = text.trim() ? `${text.trimEnd()}\n\n${prompt}` : prompt;
   }
 
   async function attachImageFile(file: File) {
