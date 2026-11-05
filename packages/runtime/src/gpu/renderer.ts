@@ -1,7 +1,8 @@
 import { multiply, type Affine } from "../math/affine";
 import { parseColor } from "../math/color";
-import type { ImageItem, LayerItem, RenderItem, RenderList, TextItem, ThreeItem, VideoItem } from "../renderlist";
+import type { Filters, ImageItem, LayerItem, RenderItem, RenderList, TextItem, ThreeItem, VideoItem } from "../renderlist";
 import blurSrc from "./shaders/blur.wgsl?raw";
+import filterSrc from "./shaders/filter.wgsl?raw";
 import commonSrc from "./shaders/common.wgsl?raw";
 import compositeSrc from "./shaders/composite.wgsl?raw";
 import quadSrc from "./shaders/quad.wgsl?raw";
@@ -129,6 +130,7 @@ export async function createRenderer(
   const quadModule = device.createShaderModule({ code: commonSrc + quadSrc });
   const blurModule = device.createShaderModule({ code: commonSrc + blurSrc });
   const compositeModule = device.createShaderModule({ code: commonSrc + compositeSrc });
+  const filterModule = device.createShaderModule({ code: commonSrc + filterSrc });
 
   const quadPipeline = device.createRenderPipeline({
     layout: "auto",
@@ -139,6 +141,11 @@ export async function createRenderer(
     layout: "auto",
     vertex: { module: blurModule, entryPoint: "vsFullscreen" },
     fragment: { module: blurModule, entryPoint: "fs", targets: [{ format: LAYER_FORMAT }] },
+  });
+  const filterPipeline = device.createRenderPipeline({
+    layout: "auto",
+    vertex: { module: filterModule, entryPoint: "vsFullscreen" },
+    fragment: { module: filterModule, entryPoint: "fs", targets: [{ format: LAYER_FORMAT }] },
   });
   const compositePipelines = new Map<string, GPURenderPipeline>();
   const compositePipeline = (format: GPUTextureFormat, blend: boolean) => {
@@ -382,6 +389,56 @@ export async function createRenderer(
       pass.draw(3);
       pass.end();
     };
+    const filterPass = (view: GPUTextureView, values: number[], src: GPUTexture, extra: GPUTexture) => {
+      const pass = encoder.beginRenderPass({
+        colorAttachments: [{ view, loadOp: "clear", storeOp: "store", clearValue: [0, 0, 0, 0] }],
+      });
+      pass.setPipeline(filterPipeline);
+      pass.setBindGroup(
+        0,
+        device.createBindGroup({
+          layout: filterPipeline.getBindGroupLayout(0),
+          entries: [
+            { binding: 0, resource: { buffer: uniform(values) } },
+            { binding: 1, resource: src.createView() },
+            { binding: 2, resource: extra.createView() },
+          ],
+        }),
+      );
+      pass.draw(3);
+      pass.end();
+    };
+    const blurInto = (dest: GPUTexture, src: GPUTexture, px: number) => {
+      const sigma = Math.max((px * sx) / 2, 0.01);
+      const radius = Math.min(Math.ceil(sigma * 3), MAX_BLUR_RADIUS);
+      const tmp = acquire();
+      inUse.push(tmp);
+      fullscreen(blurPipeline, tmp.createView(), [1, 0, sigma, radius], src, "clear");
+      fullscreen(blurPipeline, dest.createView(), [0, 1, sigma, radius], tmp, "clear");
+    };
+    /** Runs the layer's filters in their fixed order; returns the texture holding the result. */
+    const applyFilters = (content: GPUTexture, f: Filters): GPUTexture => {
+      const [r, g, b, a] = parseColor(f.outlineColor);
+      let cur = content;
+      const step = (mode: number, amount: number, extra?: GPUTexture) => {
+        const out = acquire();
+        inUse.push(out);
+        filterPass(out.createView(), [mode, amount, sx, f.glowIntensity, r * a, g * a, b * a, a], cur, extra ?? cur);
+        cur = out;
+      };
+      if (f.pixelate > 0) step(1, f.pixelate * sx);
+      if (f.posterize > 0) step(2, f.posterize);
+      if (f.halftone > 0) step(3, f.halftone * sx);
+      if (f.outline > 0) step(4, f.outline * sx);
+      if (f.chalk > 0) step(5, Math.min(f.chalk, 1));
+      if (f.glow > 0) {
+        const halo = acquire();
+        inUse.push(halo);
+        blurInto(halo, cur, f.glow);
+        step(6, 0, halo);
+      }
+      return cur;
+    };
 
     const drawLeaves = (view: GPUTextureView, run: Leaf[]) => {
       if (!run.length) return;
@@ -420,14 +477,8 @@ export async function createRenderer(
       cleared.end();
       drawItems(content, layer.items);
 
-      if (layer.blur > 0) {
-        const sigma = Math.max((layer.blur * sx) / 2, 0.01);
-        const radius = Math.min(Math.ceil(sigma * 3), MAX_BLUR_RADIUS);
-        const tmp = acquire();
-        inUse.push(tmp);
-        fullscreen(blurPipeline, tmp.createView(), [1, 0, sigma, radius], content, "clear");
-        fullscreen(blurPipeline, content.createView(), [0, 1, sigma, radius], tmp, "clear");
-      }
+      if (layer.blur > 0) blurInto(content, content, layer.blur);
+      const result = layer.filters ? applyFilters(content, layer.filters) : content;
 
       let clip = [1, 0, 0, 1, 0, 0, 0, 0, layer.opacity, 0, 0, 1];
       if (layer.clip) {
@@ -437,7 +488,7 @@ export async function createRenderer(
         // inv0 (a b c d), inv1 (e f w h), params
         clip = [inv[0], inv[1], inv[2], inv[3], inv[4], inv[5], layer.clip.width, layer.clip.height, layer.opacity, layer.clip.radius, 1, unitsPerPx];
       }
-      fullscreen(compositePipeline(LAYER_FORMAT, true), parentView, clip, content, "load");
+      fullscreen(compositePipeline(LAYER_FORMAT, true), parentView, clip, result, "load");
     };
 
     // 2. Clear to the background, draw, then blit to the canvas.

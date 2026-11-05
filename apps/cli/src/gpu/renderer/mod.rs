@@ -35,6 +35,7 @@ const COMMON_WGSL: &str = include_str!("../shaders/common.wgsl");
 const QUAD_WGSL: &str = include_str!("../shaders/quad.wgsl");
 const BLUR_WGSL: &str = include_str!("../shaders/blur.wgsl");
 const COMPOSITE_WGSL: &str = include_str!("../shaders/composite.wgsl");
+const FILTER_WGSL: &str = include_str!("../shaders/filter.wgsl");
 
 type Affine = [f32; 6];
 
@@ -108,6 +109,7 @@ pub struct FrameData {
 pub struct Renderer {
     quad_pipeline: wgpu::RenderPipeline,
     blur_pipeline: wgpu::RenderPipeline,
+    filter_pipeline: wgpu::RenderPipeline,
     composite_pipelines: HashMap<(wgpu::TextureFormat, bool), wgpu::RenderPipeline>,
     composite_module: Arc<wgpu::ShaderModule>,
     texture_layout: wgpu::BindGroupLayout,
@@ -212,6 +214,35 @@ impl Renderer {
             cache: None,
         });
 
+        let filter_module = device.create_shader_module(wgpu::ShaderModuleDescriptor {
+            label: Some("liosvideo filter"),
+            source: wgpu::ShaderSource::Wgsl(format!("{COMMON_WGSL}\n{FILTER_WGSL}").into()),
+        });
+        let filter_pipeline = device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
+            label: Some("liosvideo filter pipeline"),
+            layout: None,
+            vertex: wgpu::VertexState {
+                module: &filter_module,
+                entry_point: Some("vsFullscreen"),
+                compilation_options: Default::default(),
+                buffers: &[],
+            },
+            fragment: Some(wgpu::FragmentState {
+                module: &filter_module,
+                entry_point: Some("fs"),
+                compilation_options: Default::default(),
+                targets: &[Some(wgpu::ColorTargetState {
+                    format: LAYER_FORMAT,
+                    blend: None,
+                    write_mask: wgpu::ColorWrites::ALL,
+                })],
+            }),
+            primitive: Default::default(),
+            depth_stencil: None,
+            multisample: Default::default(),
+            multiview: None,
+            cache: None,
+        });
         let composite_pipelines = HashMap::new();
         let texture_layout = quad_pipeline.get_bind_group_layout(1);
 
@@ -261,6 +292,7 @@ impl Renderer {
         Self {
             quad_pipeline,
             blur_pipeline,
+            filter_pipeline,
             composite_pipelines,
             composite_module: Arc::new(composite_module),
             texture_layout,
@@ -1090,32 +1122,32 @@ fn draw_layer(
 
     let blur = f32_of(layer, "blur", 0.0);
     if blur > 0.0 {
-        let sigma = (blur * sx / 2.0).max(0.01);
-        let radius = (sigma * 3.0).ceil().min(MAX_BLUR_RADIUS);
-        let tmp = create_layer_texture(device, width, height);
-        let tmp_view = tmp.create_view(&wgpu::TextureViewDescriptor::default());
-
-        fullscreen(
+        blur_into(
             device,
             encoder,
-            &renderer.blur_pipeline,
-            &tmp_view,
-            &[1.0, 0.0, sigma, radius],
-            &content_view,
-            wgpu::LoadOp::Clear(wgpu::Color::TRANSPARENT),
+            renderer,
+            &content,
+            &content,
+            blur * sx,
+            width,
+            height,
+            allocations,
         );
-        fullscreen(
-            device,
-            encoder,
-            &renderer.blur_pipeline,
-            &content_view,
-            &[0.0, 1.0, sigma, radius],
-            &tmp_view,
-            wgpu::LoadOp::Clear(wgpu::Color::TRANSPARENT),
-        );
-
-        allocations.push(tmp);
     }
+    let result = match layer.get("filters") {
+        Some(filters) => apply_filters(
+            device,
+            encoder,
+            renderer,
+            &content,
+            filters,
+            sx,
+            width,
+            height,
+            allocations,
+        ),
+        None => content.create_view(&wgpu::TextureViewDescriptor::default()),
+    };
 
     let opacity = f32_of(layer, "opacity", 1.0);
     let mut values = [
@@ -1155,12 +1187,197 @@ fn draw_layer(
             pipeline,
             parent_view,
             &values,
-            &content_view,
+            &result,
             wgpu::LoadOp::Load,
         );
     }
 
     allocations.push(content);
+}
+
+/// Two-pass Gaussian blur of `src` into `dest` (they may be the same texture). `px` is in device pixels.
+#[allow(clippy::too_many_arguments)]
+fn blur_into(
+    device: &wgpu::Device,
+    encoder: &mut wgpu::CommandEncoder,
+    renderer: &Renderer,
+    dest: &wgpu::Texture,
+    src: &wgpu::Texture,
+    px: f32,
+    width: u32,
+    height: u32,
+    allocations: &mut Vec<wgpu::Texture>,
+) {
+    let sigma = (px / 2.0).max(0.01);
+    let radius = (sigma * 3.0).ceil().min(MAX_BLUR_RADIUS);
+    let tmp = create_layer_texture(device, width, height);
+    let tmp_view = tmp.create_view(&wgpu::TextureViewDescriptor::default());
+    let src_view = src.create_view(&wgpu::TextureViewDescriptor::default());
+    let dest_view = dest.create_view(&wgpu::TextureViewDescriptor::default());
+    let clear = wgpu::LoadOp::Clear(wgpu::Color::TRANSPARENT);
+    fullscreen(
+        device,
+        encoder,
+        &renderer.blur_pipeline,
+        &tmp_view,
+        &[1.0, 0.0, sigma, radius],
+        &src_view,
+        clear,
+    );
+    fullscreen(
+        device,
+        encoder,
+        &renderer.blur_pipeline,
+        &dest_view,
+        &[0.0, 1.0, sigma, radius],
+        &tmp_view,
+        clear,
+    );
+    allocations.push(tmp);
+}
+
+/// Runs a layer's filters in their fixed order (pixelate → posterize → halftone → outline → chalk → glow),
+/// mirroring `applyFilters` in packages/runtime/src/gpu/renderer.ts. Returns a view of the result.
+#[allow(clippy::too_many_arguments)]
+fn apply_filters(
+    device: &wgpu::Device,
+    encoder: &mut wgpu::CommandEncoder,
+    renderer: &Renderer,
+    content: &wgpu::Texture,
+    filters: &Value,
+    sx: f32,
+    width: u32,
+    height: u32,
+    allocations: &mut Vec<wgpu::Texture>,
+) -> wgpu::TextureView {
+    let [r, g, b, a] = color_of(filters, "outlineColor").unwrap_or([0.067, 0.067, 0.067, 1.0]);
+    let intensity = f32_of(filters, "glowIntensity", 1.0);
+    let mut cur = content.create_view(&wgpu::TextureViewDescriptor::default());
+    let step = |encoder: &mut wgpu::CommandEncoder,
+                mode: f32,
+                amount: f32,
+                extra: Option<&wgpu::TextureView>,
+                cur: &mut wgpu::TextureView,
+                allocations: &mut Vec<wgpu::Texture>| {
+        let out = create_layer_texture(device, width, height);
+        let out_view = out.create_view(&wgpu::TextureViewDescriptor::default());
+        let values = [mode, amount, sx, intensity, r * a, g * a, b * a, a];
+        filter_pass(
+            device,
+            encoder,
+            &renderer.filter_pipeline,
+            &out_view,
+            &values,
+            cur,
+            extra.unwrap_or(cur),
+        );
+        *cur = out_view;
+        allocations.push(out);
+    };
+    let pixelate = f32_of(filters, "pixelate", 0.0);
+    let posterize = f32_of(filters, "posterize", 0.0);
+    let halftone = f32_of(filters, "halftone", 0.0);
+    let outline = f32_of(filters, "outline", 0.0);
+    let chalk = f32_of(filters, "chalk", 0.0);
+    let glow = f32_of(filters, "glow", 0.0);
+    if pixelate > 0.0 {
+        step(encoder, 1.0, pixelate * sx, None, &mut cur, allocations);
+    }
+    if posterize > 0.0 {
+        step(encoder, 2.0, posterize, None, &mut cur, allocations);
+    }
+    if halftone > 0.0 {
+        step(encoder, 3.0, halftone * sx, None, &mut cur, allocations);
+    }
+    if outline > 0.0 {
+        step(encoder, 4.0, outline * sx, None, &mut cur, allocations);
+    }
+    if chalk > 0.0 {
+        step(encoder, 5.0, chalk.min(1.0), None, &mut cur, allocations);
+    }
+    if glow > 0.0 {
+        let halo = create_layer_texture(device, width, height);
+        let halo_view = halo.create_view(&wgpu::TextureViewDescriptor::default());
+        let tmp = create_layer_texture(device, width, height);
+        let tmp_view = tmp.create_view(&wgpu::TextureViewDescriptor::default());
+        let sigma = (glow * sx / 2.0).max(0.01);
+        let radius = (sigma * 3.0).ceil().min(MAX_BLUR_RADIUS);
+        let clear = wgpu::LoadOp::Clear(wgpu::Color::TRANSPARENT);
+        fullscreen(
+            device,
+            encoder,
+            &renderer.blur_pipeline,
+            &tmp_view,
+            &[1.0, 0.0, sigma, radius],
+            &cur,
+            clear,
+        );
+        fullscreen(
+            device,
+            encoder,
+            &renderer.blur_pipeline,
+            &halo_view,
+            &[0.0, 1.0, sigma, radius],
+            &tmp_view,
+            clear,
+        );
+        allocations.push(tmp);
+        step(encoder, 6.0, 0.0, Some(&halo_view), &mut cur, allocations);
+        allocations.push(halo);
+    }
+    cur
+}
+
+#[allow(clippy::too_many_arguments)]
+fn filter_pass(
+    device: &wgpu::Device,
+    encoder: &mut wgpu::CommandEncoder,
+    pipeline: &wgpu::RenderPipeline,
+    view: &wgpu::TextureView,
+    values: &[f32; 8],
+    source: &wgpu::TextureView,
+    extra: &wgpu::TextureView,
+) {
+    let buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
+        label: Some("liosvideo filter uniform"),
+        contents: bytemuck::cast_slice(values),
+        usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
+    });
+    let bind = device.create_bind_group(&wgpu::BindGroupDescriptor {
+        label: Some("liosvideo filter bind"),
+        layout: &pipeline.get_bind_group_layout(0),
+        entries: &[
+            wgpu::BindGroupEntry {
+                binding: 0,
+                resource: buffer.as_entire_binding(),
+            },
+            wgpu::BindGroupEntry {
+                binding: 1,
+                resource: wgpu::BindingResource::TextureView(source),
+            },
+            wgpu::BindGroupEntry {
+                binding: 2,
+                resource: wgpu::BindingResource::TextureView(extra),
+            },
+        ],
+    });
+    let mut pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
+        label: Some("liosvideo filter"),
+        color_attachments: &[Some(wgpu::RenderPassColorAttachment {
+            view,
+            resolve_target: None,
+            ops: wgpu::Operations {
+                load: wgpu::LoadOp::Clear(wgpu::Color::TRANSPARENT),
+                store: wgpu::StoreOp::Store,
+            },
+        })],
+        depth_stencil_attachment: None,
+        timestamp_writes: None,
+        occlusion_query_set: None,
+    });
+    pass.set_pipeline(pipeline);
+    pass.set_bind_group(0, &bind, &[]);
+    pass.draw(0..3, 0..1);
 }
 
 fn fullscreen(
@@ -1237,6 +1454,7 @@ mod tests {
             ("quad.wgsl", QUAD_WGSL),
             ("blur.wgsl", BLUR_WGSL),
             ("composite.wgsl", COMPOSITE_WGSL),
+            ("filter.wgsl", FILTER_WGSL),
         ] {
             let runtime = std::fs::read_to_string(format!("{base}{name}"))
                 .unwrap_or_else(|e| panic!("read {name}: {e}"));

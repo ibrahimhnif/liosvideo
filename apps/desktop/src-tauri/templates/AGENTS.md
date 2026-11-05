@@ -261,6 +261,19 @@ node.set({ fill: "#22c55e" }, 2.5);
 
 ---
 
+## Visual Styles
+
+A project can carry one of ten ready-made animation styles. If `.liosvideo/project.json` has a `"style"` (for example `"style": "comic"`):
+
+- Read `.agents/skills/liosvideo/styles/<style>.md` before writing or changing scenes, and follow its Look, Palette, Motion and Do / Don't rules.
+- Import the kit from `styles/<style>.ts`: use its `theme` (colours, fonts, easings), spread its `look` on the group that holds the style's art, and use its helpers instead of re-inventing them.
+- Keep text that must stay crisp outside groups that carry filter props (`pixelate`, `posterize`, `halftone`, `outline`, `chalk`, `glow`).
+- Never overwrite `styles/<style>.ts` wholesale; extend it.
+
+Styles: `pixel-art`, `chalkboard`, `glow-sketch`, `ps2-lowpoly`, `comic`, `flat-vector`, `minimal-mono`, `cgi-motion`, `brick`, `explainer-3d`. A new one can be installed from the app's chat **Style** menu or with `liosvideo project new <name> --style <id>`.
+
+---
+
 ## External Assets, Media & Attributions
 
 ### When to Download External Assets
@@ -338,8 +351,8 @@ Before declaring an edit complete:
    - No `Math.random()`, `Date.now()`, or asynchronous promises inside `scene` builders.
    - Use `random()` from the scene builder callback.
 2. **Strict Import Scope**:
-   - Only import `liosvideo` and relative project files.
-   - Do not import external npm packages or use Node.js standard libraries.
+   - Only import `liosvideo`, `three` and relative project files.
+   - Do not import other npm packages or use Node.js standard libraries.
 3. **Naming Consistency**:
    - Always give meaningful `name` attributes to nodes (`card`, `title`, `badge`, `avatar`).
    - Do not use `/` inside node names; path segments use `/` as delimiters.

@@ -105,12 +105,26 @@ export type ThreeItem = {
   duration: number;
 };
 
+/** Layer filters, run after blur in the order pixelate → posterize → halftone → outline → chalk → glow. */
+export type Filters = {
+  pixelate: number;
+  posterize: number;
+  halftone: number;
+  outline: number;
+  outlineColor: string;
+  chalk: number;
+  glow: number;
+  glowIntensity: number;
+};
+
 export type LayerItem = {
   kind: "layer";
   path: string;
   items: RenderItem[];
   opacity: number;
   blur: number;
+  /** present only when at least one filter is on */
+  filters?: Filters;
   clip?: { matrix: Affine; width: number; height: number; radius: number };
 };
 

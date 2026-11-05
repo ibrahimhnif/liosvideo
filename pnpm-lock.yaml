@@ -6,7 +6,11 @@ settings:
 
 importers:
 
-  .: {}
+  .:
+    devDependencies:
+      rolldown:
+        specifier: 1.2.15
+        version: 1.2.15
 
   apps/desktop:
     dependencies:

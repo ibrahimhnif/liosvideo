@@ -9,6 +9,7 @@
   import { open } from "@tauri-apps/plugin-dialog";
   import { Box, Clock, FolderOpen, FolderPlus, Rocket, Smartphone, Sparkles, Terminal } from "@lucide/svelte";
   import { onMount } from "svelte";
+  import { listStyles, type StyleInfo } from "$lib/styles/api";
   import Logo from "./Logo.svelte";
 
   let { onOpen }: { onOpen: (info: ProjectInfo) => void } = $props();
@@ -16,6 +17,8 @@
   let name = $state("");
   let recent = $state<string[]>([]);
   let selectedTemplate = $state("blank");
+  let styles = $state<StyleInfo[]>([]);
+  let selectedStyle = $state("none");
 
   const TEMPLATES = [
     {
@@ -57,6 +60,7 @@
 
   onMount(async () => {
     recent = await invoke<string[]>("recent_projects").catch(() => []);
+    styles = await listStyles().catch(() => []);
   });
 
   async function attempt(action: () => Promise<ProjectInfo>) {
@@ -80,7 +84,8 @@
         invoke<ProjectInfo>("create_project", {
           parent,
           name: name.trim(),
-          template: selectedTemplate
+          template: selectedTemplate,
+          style: selectedStyle === "none" ? null : selectedStyle
         })
       );
     }
@@ -139,6 +144,27 @@
       {/each}
     </div>
   </div>
+
+  {#if styles.length}
+    <div class="template-section">
+      <div class="template-header">
+        <span class="section-title">Visual Style (Optional)</span>
+      </div>
+      <div class="style-grid" role="radiogroup" aria-label="Visual styles">
+        {#each [{ id: "none", title: "None" }, ...styles] as s (s.id)}
+          <button
+            type="button"
+            class="style-card"
+            class:selected={selectedStyle === s.id}
+            data-testid={`style-${s.id}`}
+            role="radio"
+            aria-checked={selectedStyle === s.id}
+            onclick={() => (selectedStyle = s.id)}
+          >{s.title}</button>
+        {/each}
+      </div>
+    </div>
+  {/if}
 
   {#if recent.length}
     <div class="recent">
@@ -209,6 +235,11 @@
   .tag { font-size: 10px; font-weight: 600; padding: 2px 6px; border-radius: 4px; background: var(--raised); color: var(--muted); letter-spacing: 0.02em; }
   .card-body { display: flex; flex-direction: column; }
   .desc { font-size: 11px; color: var(--muted); line-height: 1.3; }
+
+  .style-grid { display: flex; flex-wrap: wrap; gap: 6px; width: 100%; }
+  .style-card { font-size: 11px; padding: 5px 10px; border-radius: 999px; background: var(--bg); }
+  .style-card:hover { border-color: var(--primary); }
+  .style-card.selected { border-color: var(--primary); color: var(--primary); background: rgba(122, 162, 247, 0.08); }
 
   .recent { display: flex; flex-direction: column; gap: 4px; width: 100%; margin-top: 6px; }
   h3 { margin: 0 0 4px; font-size: 11px; text-transform: uppercase; color: var(--muted); letter-spacing: 0.04em; display: inline-flex; align-items: center; gap: 5px; }

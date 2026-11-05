@@ -76,6 +76,7 @@ async fn main() -> anyhow::Result<()> {
         cli::Commands::Mcp { command } => {
             commands::run_mcp(&cli.project, command).await?;
         }
+        cli::Commands::Styles => commands::run_styles(),
         cli::Commands::Watch { exec, debounce } => {
             commands::run_watch(&cli.project, exec, debounce).await?;
         }

@@ -1,5 +1,6 @@
 import { describe, expect, it, vi, beforeEach } from "vitest";
 import { render } from "vitest-browser-svelte";
+import { STYLE_FIXTURE } from "$lib/styles/fixtures";
 import ProjectPicker from "./ProjectPicker.svelte";
 
 const mockInvoke = vi.fn();
@@ -19,6 +20,7 @@ describe("ProjectPicker", () => {
     mockOpen.mockReset();
     mockInvoke.mockImplementation(async (cmd: string) => {
       if (cmd === "recent_projects") return [];
+      if (cmd === "list_styles") return STYLE_FIXTURE;
       return null;
     });
   });
@@ -45,6 +47,7 @@ describe("ProjectPicker", () => {
       if (cmd === "create_project") {
         return { root: `${args.parent}/${args.name}`, compositions: ["long.ts"], history: "Enabled" };
       }
+      if (cmd === "list_styles") return STYLE_FIXTURE;
       return [];
     });
 
@@ -72,7 +75,30 @@ describe("ProjectPicker", () => {
       parent: "/home/user/projects",
       name: "my-3d-video",
       template: "product-3d",
+      style: null,
     });
     expect(opened).toBe(true);
+  });
+
+  it("passes the chosen visual style to create_project", async () => {
+    mockOpen.mockResolvedValue("/home/user/projects");
+    mockInvoke.mockImplementation(async (cmd: string, args: any) => {
+      if (cmd === "create_project") return { root: `${args.parent}/${args.name}`, compositions: ["long.ts"], history: "Enabled" };
+      if (cmd === "list_styles") return STYLE_FIXTURE;
+      return [];
+    });
+    const screen = await render(ProjectPicker, { onOpen: () => {} });
+    const styles = screen.getByRole("radiogroup", { name: "Visual styles" });
+    await expect.element(styles.getByRole("radio", { name: /None/ })).toHaveAttribute("aria-checked", "true");
+    await styles.getByRole("radio", { name: /Comic Art/ }).click();
+    await expect.element(styles.getByRole("radio", { name: /Comic Art/ })).toHaveAttribute("aria-checked", "true");
+    await screen.getByPlaceholder("New project name").fill("comic-video");
+    await screen.getByRole("button", { name: /New project/i }).click();
+    expect(mockInvoke).toHaveBeenCalledWith("create_project", {
+      parent: "/home/user/projects",
+      name: "comic-video",
+      template: "blank",
+      style: "comic",
+    });
   });
 });

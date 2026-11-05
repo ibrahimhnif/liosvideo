@@ -21,11 +21,27 @@ export interface BaseProps {
   /** corner / clip radius */
   radius: number;
   clip: boolean;
+  /** Layer filters, applied after blur in this order; 0 turns each off. */
+  /** cell size, px */
+  pixelate: number;
+  /** levels per channel (≥ 2 when on) */
+  posterize: number;
+  /** dot cell size, px */
+  halftone: number;
+  /** ink line width, px */
+  outline: number;
+  outlineColor: string;
+  /** chalk grain strength, 0–1 */
+  chalk: number;
+  /** bloom radius, px */
+  glow: number;
+  glowIntensity: number;
 }
 
 export const BASE_DEFAULTS: BaseProps = {
   x: 0, y: 0, scaleX: 1, scaleY: 1, rotation: 0, anchorX: 0, anchorY: 0,
   opacity: 1, z: 0, blur: 0, width: 0, height: 0, radius: 0, clip: false,
+  pixelate: 0, posterize: 0, halftone: 0, outline: 0, outlineColor: "#111111", chalk: 0, glow: 0, glowIntensity: 1,
 };
 
 type PropValue = number | string | boolean;

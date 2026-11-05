@@ -135,8 +135,7 @@ function rasterize(scene, camera, width, height) {
   const lines = [];
   const points = [];
 
-  scene.traverse((object) => {
-    if (!object.visible) return;
+  scene.traverseVisible((object) => {
     if (object.isMesh) collectMesh(object, vp, lights, cameraPos, opaque, transparent);
     else if (object.isLine || object.isLineSegments || object.isLineLoop) {
       collectLine(object, vp, lines);
@@ -175,8 +174,7 @@ function srgb(value) {
 
 function collectLights(scene) {
   const lights = [];
-  scene.traverse((object) => {
-    if (!object.visible) return;
+  scene.traverseVisible((object) => {
     if (object.isAmbientLight) {
       lights.push({ type: "ambient", color: object.color, intensity: object.intensity });
     } else if (object.isHemisphereLight) {

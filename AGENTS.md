@@ -338,8 +338,8 @@ Before declaring an edit complete:
    - No `Math.random()`, `Date.now()`, or asynchronous promises inside `scene` builders.
    - Use `random()` from the scene builder callback.
 2. **Strict Import Scope**:
-   - Only import `liosvideo` and relative project files.
-   - Do not import external npm packages or use Node.js standard libraries.
+   - Only import `liosvideo`, `three` and relative project files.
+   - Do not import other npm packages or use Node.js standard libraries.
 3. **Naming Consistency**:
    - Always give meaningful `name` attributes to nodes (`card`, `title`, `badge`, `avatar`).
    - Do not use `/` inside node names; path segments use `/` as delimiters.

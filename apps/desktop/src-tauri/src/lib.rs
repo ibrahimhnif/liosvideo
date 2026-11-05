@@ -125,6 +125,8 @@ pub fn run() {
             project::open_project,
             project::close_project,
             project::create_project,
+            project::list_styles,
+            project::install_style,
             project::recent_projects,
             project::enable_history,
             project::project_history,
