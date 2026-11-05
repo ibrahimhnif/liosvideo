@@ -369,8 +369,9 @@ pub async fn create_project(
     parent: String,
     name: String,
     template: Option<String>,
+    style: Option<String>,
 ) -> Result<ProjectInfo> {
-    let root = git_job(move || crate::scaffold::create_project_in(Path::new(&parent), &name, template.as_deref())).await?;
+    let root = git_job(move || crate::scaffold::create_project_in(Path::new(&parent), &name, template.as_deref(), style.as_deref())).await?;
     open_at(&app, &state, root).await
 }
 

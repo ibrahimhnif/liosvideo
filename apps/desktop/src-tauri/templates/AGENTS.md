@@ -261,6 +261,19 @@ node.set({ fill: "#22c55e" }, 2.5);
 
 ---
 
+## Visual Styles
+
+A project can carry one of ten ready-made animation styles. If `.liosvideo/project.json` has a `"style"` (for example `"style": "comic"`):
+
+- Read `.agents/skills/liosvideo/styles/<style>.md` before writing or changing scenes, and follow its Look, Palette, Motion and Do / Don't rules.
+- Import the kit from `styles/<style>.ts`: use its `theme` (colours, fonts, easings), spread its `look` on the group that holds the style's art, and use its helpers instead of re-inventing them.
+- Keep text that must stay crisp outside groups that carry filter props (`pixelate`, `posterize`, `halftone`, `outline`, `chalk`, `glow`).
+- Never overwrite `styles/<style>.ts` wholesale; extend it.
+
+Styles: `pixel-art`, `chalkboard`, `glow-sketch`, `ps2-lowpoly`, `comic`, `flat-vector`, `minimal-mono`, `cgi-motion`, `brick`, `explainer-3d`. A new one can be installed from the app's chat **Style** menu or with `liosvideo project new <name> --style <id>`.
+
+---
+
 ## External Assets, Media & Attributions
 
 ### When to Download External Assets

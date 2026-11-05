@@ -99,6 +99,8 @@ pub enum Commands {
         #[command(subcommand)]
         command: McpCommand,
     },
+    /// List the animation styles `project new --style` accepts
+    Styles,
     Watch {
         /// Command to run after a debounced change set
         #[arg(long)]
@@ -139,6 +141,9 @@ pub enum ProjectCommand {
         name: String,
         #[arg(long)]
         template: Option<String>,
+        /// Animation style id (see `liosvideo styles`)
+        #[arg(long)]
+        style: Option<String>,
     },
     Info,
     Recent {
@@ -390,5 +395,23 @@ mod tests {
             }
             _ => panic!("expected tts generate"),
         }
+    }
+
+    #[test]
+    fn parses_project_new_with_style_and_styles() {
+        let cli = Cli::parse_from(["liosvideo", "project", "new", "/tmp", "x", "--style", "comic"]);
+        assert_eq!(
+            cli.command,
+            Some(Commands::Project {
+                command: ProjectCommand::New {
+                    parent: PathBuf::from("/tmp"),
+                    name: "x".into(),
+                    template: None,
+                    style: Some("comic".into()),
+                },
+            })
+        );
+        let cli = Cli::parse_from(["liosvideo", "styles"]);
+        assert_eq!(cli.command, Some(Commands::Styles));
     }
 }

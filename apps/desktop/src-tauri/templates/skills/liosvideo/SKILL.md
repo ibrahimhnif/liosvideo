@@ -408,3 +408,15 @@ When using the built-in Claude agent or ACP integration:
   - **Reconnect**: Attempts to refresh the current OAuth session.
   - **Login via Terminal**: Launches your system terminal (macOS Terminal, Windows CMD, or Linux terminal) running `claude login` to re-authenticate the Claude CLI directly.
   - **Set API Key**: Opens the Settings modal to supply a direct `ANTHROPIC_API_KEY` as fallback.
+
+---
+
+## 11. Visual Styles
+
+When `.liosvideo/project.json` has a `"style"`, the project is committed to that look:
+
+1. Read `.agents/skills/liosvideo/styles/<style>.md` first — Look, Palette, Motion, Helpers, Do / Don't.
+2. Build every scene from `styles/<style>.ts`: `theme` for colours/fonts/easings, `look` spread on the art's group (filters), helpers for the style's signature shapes and moves.
+3. Restyling an existing scene ("restyle this in the Comic Art style"): keep its content, timing and voice-over sync; replace colours, fonts, shapes and motion with the kit's; keep crisp text outside filtered groups.
+4. Lay out for both 16:9 and 9:16 (`const portrait = height > width`), and verify with `capture_frame` at both ratios.
+5. 3D styles (`ps2-lowpoly`, `cgi-motion`, `brick`, `explainer-3d`) use `three()`; draw all randomness in the scene builder with `random()`, never in `setup`/`update`.

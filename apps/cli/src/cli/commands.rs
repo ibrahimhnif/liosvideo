@@ -123,14 +123,22 @@ pub async fn run_history(project: &Path, command: HistoryCommand) -> Result<()> 
     Ok(())
 }
 
+/// Prints `id  title` for each animation style.
+pub fn run_styles() {
+    for (id, title) in scaffold::STYLES {
+        println!("{id:<14}{title}");
+    }
+}
+
 pub async fn run_project(project: &Path, command: ProjectCommand) -> Result<()> {
     match command {
         ProjectCommand::New {
             parent,
             name,
             template,
+            style,
         } => {
-            let path = scaffold::create_project_in(&parent, &name, template.as_deref())
+            let path = scaffold::create_project_in(&parent, &name, template.as_deref(), style.as_deref())
                 .map_err(|e| anyhow!(e.to_string()))?;
             println!("{}", path.display());
         }
