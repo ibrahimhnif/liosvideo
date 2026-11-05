@@ -55,9 +55,9 @@ fn halftone(pos: vec2f) -> vec4f {
   let cell = max(u.amount, 2.0);
   let center = (floor(pos / cell) + 0.5) * cell;
   let darkness = 1.0 - luma(unpremultiply(load(vec2i(center))));
-  let radius = cell * 0.6 * sqrt(clamp(darkness, 0.0, 1.0));
+  let radius = cell * 0.55 * clamp(darkness, 0.0, 1.0);
   let inside = clamp(radius - distance(pos, center) + 0.5, 0.0, 1.0);
-  return vec4f(c.rgb * mix(1.0, 0.25, inside), c.a);
+  return vec4f(c.rgb * mix(1.0, 0.45, inside), c.a);
 }
 
 fn outline(pos: vec2f) -> vec4f {
