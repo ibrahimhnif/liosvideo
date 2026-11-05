@@ -86,6 +86,13 @@ Motion in liosvideo must feel intentional and cinematic, avoiding mushy linear i
 | **Smooth Pan / Zoom** | `0.5s – 0.8s` | `"inOutCubic"` | Camera focus on terminal line, window re-centering |
 | **Scene Transition** | `0.4s – 0.5s` | `"fade"` / `"slide"` | Cross-scene continuity |
 
+### 3.1 Pacing & length
+
+- Change something visible every `2–4 s`; one beat per scene, `2.5–8 s` each.
+- Total duration is `Σ scene.duration`: 9:16 shorts/reels **20–45 s**, 16:9 explainers **2–5 min**, tutorials **5–15 min**, documentation/courses **15–60 min** (30 min is normal); hooks 10–20 s.
+- Long-form is chaptered: one module per chapter, 5–12 beats of 8–20 s, lower motion density, rendered per range and concatenated.
+- Narration ≈ `2.4 words/s`: a 30 s short needs ~75 words across 5–7 lines, 30 min ≈ 4,300 words. Derive a scene from its VO (`vo.duration + 0.6 s`) instead of guessing.
+
 ### Key Rule for Entrance Staggers
 When multiple items enter the scene (e.g. 3 feature chips), stagger their appearance by `0.12s – 0.18s`:
 ```ts
@@ -99,14 +106,50 @@ chips.forEach((chip, i) => {
 
 ---
 
-## 4. Layout Formulas & Spatial Polish
+## 4. Layout, Whitespace & Spatial Polish
 
-- **Window Margins**: Keep window frames centered with at least `32px` to `64px` padding from the canvas edge.
-- **Corner Radiuses**:
-  - Main app windows: `12px – 16px`
-  - Floating badges / chips: `8px – 12px`
-  - Pill badges: `9999px` (fully rounded)
-- **Border Stroke**: Standard subtle stroke is `1px` or `1.5px` with a contrast-appropriate border color (`#30363d` or `#27272a`).
+Whitespace is the main difference between a slide and a video: fewer elements, bigger gaps, and edges that stay clear of platform UI.
+
+### 4.1 The rhythm unit
+
+```ts
+const u = Math.min(width, height) / 100; // 10.8 @1920x1080, 19.2 on a 1920 short edge
+const safe = u * 6;                      // outer margin
+const gap = { tight: u, base: u * 2, group: u * 3, section: u * 6 };
+```
+
+Gaps and paddings come from `u * [1, 2, 3, 4, 6, 8]` only. Inside a group keep one step; separate groups with two steps. Never hand-pick `13 / 37 / 55`.
+
+### 4.2 Safe area
+
+- Keep every element at least `safe` from each edge (title-safe and action-safe are the same box here).
+- **9:16**: reserve `height * 0.12` at the bottom (platform chrome, captions) and `height * 0.05` at the top (status bar).
+- Center stacks with `anchorX: 0.5` instead of eyeballed offsets; align siblings to one shared edge or centre line.
+
+### 4.3 Air by role
+
+| Between | Space |
+| :--- | :--- |
+| frame edge → content | `safe` (`u * 6`) |
+| card edge → its text | `u * 1.5 – u * 3` |
+| headline → subhead | `u` |
+| subhead → body | `u * 2` |
+| paragraph → paragraph | `u * 2` |
+| grid gutter | `u * 2` |
+| section → section | `u * 6` |
+| window frame → canvas edge | at least `safe` |
+
+### 4.4 Typography spacing
+
+- `lineHeight`: headline `1.1 – 1.2`, body `1.4 – 1.5`, captions `1.2`.
+- Text never wraps by width — `text` breaks only on `\n`. Keep each line ≤ 60 characters (≤ 32 in 9:16) and insert breaks yourself; never shrink below `bodySize`.
+- One idea per screen: at most 3 text blocks in 9:16, 4 in 16:9.
+
+### 4.5 Fill, corners & strokes
+
+- Content occupies 55–70% of the frame; empty space is part of the design, not a gap to fill.
+- Corner radii: main windows / cards `u * 0.5 – u * 1`; chips and badges `u * 0.4 – u * 0.6`; pills `height / 2`.
+- Border stroke: `1 – 1.5px` (or `u * 0.1`) with a border colour from the palette (`#30363d` or `#27272a`).
 
 ---
 

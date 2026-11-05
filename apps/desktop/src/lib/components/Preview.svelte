@@ -239,15 +239,16 @@
 
   export function reload() {
     audioPlayer.clearCache();
-    refreshVoTimings().catch(() => {});
-    builds.trigger();
+    // timings must reach the worker before the bundle is evaluated so scenes can
+    // size themselves from vo("line").duration at module scope
+    void refreshVoTimings().finally(() => builds.trigger());
   }
 
   onMount(() => {
     canvas = document.createElement("canvas");
     stage.appendChild(canvas);
     host = new PreviewHost(canvas, loadProjectImage);
-    refreshVoTimings().catch(() => {});
+    const timingsReady = refreshVoTimings();
     host.onError((e) => {
       devLog(`preview-error ${e.phase} ${e.message}${e.location ? ` at ${e.location.file}:${e.location.line}` : ""}`);
       runtimeError = { message: e.message, stack: e.stack, location: e.location };
@@ -328,7 +329,8 @@
       },
     );
 
-    builds.trigger();
+    // scenes may size themselves from vo("line").duration at module scope
+    void timingsReady.finally(() => builds.trigger());
     window.addEventListener("keydown", onKey);
     return () => {
       cancelAnimationFrame(raf);

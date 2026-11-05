@@ -212,6 +212,27 @@ pub enum AssetCommand {
         duration: f64,
         file: PathBuf,
     },
+    /// Search free archival footage on Destockd (CLIP visual search)
+    Search {
+        query: String,
+        #[arg(long, default_value_t = 1)]
+        page: u32,
+        /// Include footage Destockd hides from its homepage (violence/nudity disclaimer)
+        #[arg(long)]
+        include_disturbing: bool,
+        #[arg(long)]
+        json: bool,
+    },
+    /// Download a Destockd shot into assets/video and record its attribution
+    Download {
+        film: String,
+        shot: String,
+        /// Output filename (default: "<film> - <shot>.mp4")
+        #[arg(long)]
+        name: Option<String>,
+        #[arg(long)]
+        force: bool,
+    },
 }
 
 #[derive(Subcommand, Debug, PartialEq)]
@@ -242,12 +263,18 @@ pub enum AgentCommand {
     Chat {
         #[arg(long)]
         agent: Option<String>,
+        /// Prepend a context handoff file (`auto` = .liosvideo/handoff.md) to the first prompt
+        #[arg(long)]
+        handoff: Option<String>,
     },
     /// One-shot prompt; prints streamed agent events as JSON lines
     Prompt {
         text: String,
         #[arg(long)]
         agent: Option<String>,
+        /// Prepend a context handoff file (`auto` = .liosvideo/handoff.md)
+        #[arg(long)]
+        handoff: Option<String>,
     },
     Auth {
         method: String,

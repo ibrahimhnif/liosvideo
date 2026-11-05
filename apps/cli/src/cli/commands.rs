@@ -319,8 +319,57 @@ pub async fn run_asset(project: &Path, command: AssetCommand) -> Result<()> {
                 .map_err(|e| anyhow!(e.to_string()))?;
             println!("{rel}");
         }
+        AssetCommand::Search {
+            query,
+            page,
+            include_disturbing,
+            json,
+        } => {
+            let found = crate::destockd::search(&query, page, include_disturbing)
+                .await
+                .map_err(|e| anyhow!(e))?;
+            if json {
+                println!("{}", serde_json::to_string_pretty(&found)?);
+            } else if found.hits.is_empty() {
+                println!("No Destockd shots for \"{query}\" (page {}).", found.page);
+            } else {
+                println!("{} shot(s) for \"{}\" (page {}):\n", found.hits.len(), found.query, found.page);
+                for hit in &found.hits {
+                    println!(
+                        "{:<48} {:<10} {:<6} {}",
+                        truncate(&hit.film, 48),
+                        hit.shot,
+                        if hit.color_type.is_empty() { "-" } else { &hit.color_type },
+                        hit.clip
+                    );
+                }
+                if found.has_more {
+                    println!("\nMore results: --page {}", found.page + 1);
+                }
+                println!("\n{}", crate::destockd::RIGHTS_NOTICE);
+            }
+        }
+        AssetCommand::Download {
+            film,
+            shot,
+            name,
+            force,
+        } => {
+            let saved = crate::destockd::download(&root, &film, &shot, name.as_deref(), force)
+                .await
+                .map_err(|e| anyhow!(e))?;
+            println!("{}", serde_json::to_string_pretty(&saved)?);
+        }
     }
     Ok(())
+}
+
+fn truncate(text: &str, max: usize) -> String {
+    if text.chars().count() <= max {
+        return text.to_string();
+    }
+    let head: String = text.chars().take(max.saturating_sub(1)).collect();
+    format!("{head}…")
 }
 
 pub async fn run_key(command: KeyCommand) -> Result<()> {
@@ -343,8 +392,8 @@ pub async fn run_key(command: KeyCommand) -> Result<()> {
 
 #[derive(Debug)]
 enum AgentAction {
-    Prompt(String),
-    Chat,
+    Prompt(String, Option<String>),
+    Chat(Option<String>),
     Auth(String),
     SetConfig(String, Value),
 }
@@ -437,11 +486,15 @@ pub async fn run_agent(project: &Path, command: AgentCommand) -> Result<()> {
                 .map_err(|e| anyhow!(e.to_string()))?;
             println!("default agent: {id}");
         }
-        AgentCommand::Prompt { text, agent, .. } => {
-            run_agent_session(&root, agent, AgentAction::Prompt(text)).await?;
+        AgentCommand::Prompt {
+            text,
+            agent,
+            handoff,
+        } => {
+            run_agent_session(&root, agent, AgentAction::Prompt(text, handoff)).await?;
         }
-        AgentCommand::Chat { agent, .. } => {
-            run_agent_session(&root, agent, AgentAction::Chat).await?;
+        AgentCommand::Chat { agent, handoff } => {
+            run_agent_session(&root, agent, AgentAction::Chat(handoff)).await?;
         }
         AgentCommand::Auth { method, agent } => {
             run_agent_session(&root, agent, AgentAction::Auth(method)).await?;
@@ -549,13 +602,23 @@ async fn run_agent_session(root: &Path, agent: Option<String>, action: AgentActi
 
     session.start().await.map_err(|e| anyhow!(e.to_string()))?;
 
+    let handoff_text = match &action {
+        AgentAction::Prompt(_, Some(spec)) | AgentAction::Chat(Some(spec)) => {
+            Some(read_handoff(root, spec)?)
+        }
+        _ => None,
+    };
+
     let result = match action {
-        AgentAction::Prompt(text) => session
-            .prompt(&text, None, None)
-            .await
-            .map(|stop| println!("stop: {stop}"))
-            .map_err(|e| anyhow!(e.to_string())),
-        AgentAction::Chat => chat_loop(&session).await,
+        AgentAction::Prompt(text, _) => {
+            let prompt = merge_handoff(handoff_text.as_deref(), &text);
+            session
+                .prompt(&prompt, None, None)
+                .await
+                .map(|stop| println!("stop: {stop}"))
+                .map_err(|e| anyhow!(limit_hint(&e.to_string())))
+        }
+        AgentAction::Chat(_) => chat_loop(&session, handoff_text).await,
         AgentAction::Auth(method) => session
             .authenticate(&method)
             .await
@@ -573,7 +636,44 @@ async fn run_agent_session(root: &Path, agent: Option<String>, action: AgentActi
     result
 }
 
-async fn chat_loop(session: &Arc<Session>) -> Result<()> {
+/// Reads `--handoff auto` (`.liosvideo/handoff.md`) or an explicit path.
+fn read_handoff(root: &Path, spec: &str) -> Result<String> {
+    let path = if spec == "auto" {
+        root.join(".liosvideo").join("handoff.md")
+    } else {
+        PathBuf::from(spec)
+    };
+    std::fs::read_to_string(&path)
+        .with_context(|| format!("failed to read handoff {}", path.display()))
+}
+
+fn merge_handoff(handoff: Option<&str>, text: &str) -> String {
+    match handoff {
+        Some(handoff) if !handoff.trim().is_empty() => {
+            format!("{}\n\n---\n\n{text}", handoff.trim_end())
+        }
+        _ => text.to_string(),
+    }
+}
+
+/// Appends a recovery hint to usage-limit/auth/model failures so the next command is obvious.
+fn limit_hint(message: &str) -> String {
+    let Some(info) = crate::acp::limits::detect(message) else {
+        return message.to_string();
+    };
+    let kind = match info.kind {
+        crate::acp::limits::LimitKind::UsageLimit => "usage limit",
+        crate::acp::limits::LimitKind::Auth => "authentication",
+        crate::acp::limits::LimitKind::ModelUnavailable => "model availability",
+    };
+    format!(
+        "{message}\n\nThis is a {kind} failure. Continue on another agent/model:\n  \
+         liosvideo agent chat --agent <id> --handoff .liosvideo/handoff.md\n\
+         (build that file from the desktop chat, which renders a budgeted handoff automatically)."
+    )
+}
+
+async fn chat_loop(session: &Arc<Session>, handoff: Option<String>) -> Result<()> {
     use tokio::io::{AsyncBufReadExt, AsyncWriteExt};
 
     let stdin = tokio::io::stdin();
@@ -583,6 +683,7 @@ async fn chat_loop(session: &Arc<Session>) -> Result<()> {
         .write_all(b"liosvideo agent chat - type a prompt, Ctrl-D to exit\n")
         .await?;
 
+    let mut pending_handoff = handoff;
     while let Some(line) = lines.next_line().await? {
         let text = line.trim();
         if text.is_empty() {
@@ -595,8 +696,10 @@ async fn chat_loop(session: &Arc<Session>) -> Result<()> {
             session.cancel().await;
             continue;
         }
-        if let Err(err) = session.prompt(text, None, None).await {
-            eprintln!("prompt failed: {err}");
+        let prompt = merge_handoff(pending_handoff.as_deref(), text);
+        pending_handoff = None;
+        if let Err(err) = session.prompt(&prompt, None, None).await {
+            eprintln!("prompt failed: {}", limit_hint(&err.to_string()));
         }
     }
     Ok(())
@@ -690,4 +793,32 @@ pub async fn run_watch(project: &Path, exec: Option<String>, debounce: u64) -> R
         }
     }
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn merges_a_handoff_before_the_prompt() {
+        assert_eq!(merge_handoff(Some("HISTORY"), "next"), "HISTORY\n\n---\n\nnext");
+        assert_eq!(merge_handoff(Some("  "), "next"), "next");
+        assert_eq!(merge_handoff(None, "next"), "next");
+    }
+
+    #[test]
+    fn hints_recovery_only_for_limit_failures() {
+        assert!(limit_hint("429 Too Many Requests").contains("--handoff"));
+        assert!(limit_hint("You've hit your 5-hour limit").contains("usage limit"));
+        assert_eq!(limit_hint("compile failed"), "compile failed");
+    }
+
+    #[test]
+    fn reads_auto_handoff_from_the_project() {
+        let dir = tempfile::tempdir().unwrap();
+        std::fs::create_dir_all(dir.path().join(".liosvideo")).unwrap();
+        std::fs::write(dir.path().join(".liosvideo/handoff.md"), "HISTORY").unwrap();
+        assert_eq!(read_handoff(dir.path(), "auto").unwrap(), "HISTORY");
+        assert!(read_handoff(dir.path(), "missing.md").is_err());
+    }
 }

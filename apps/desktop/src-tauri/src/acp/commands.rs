@@ -48,6 +48,19 @@ impl SessionState {
         self.session.lock().await.clone().ok_or_else(|| ProjectError::Other("No agent is connected".into()))
     }
 
+    async fn agent_id(&self) -> Option<String> {
+        self.session.lock().await.as_ref().map(|s| s.agent_id().to_string())
+    }
+
+    /// The live session's agent and auto-approve flag, for the chat to restore itself on mount.
+    async fn snapshot(&self) -> Option<(String, bool)> {
+        self.session
+            .lock()
+            .await
+            .as_ref()
+            .map(|s| (s.agent_id().to_string(), s.auto_approve()))
+    }
+
     pub async fn set_auto_approve(&self, enabled: bool) {
         self.auto_approve.store(enabled, std::sync::atomic::Ordering::Relaxed);
         if let Some(s) = self.session.lock().await.as_ref() {
@@ -85,6 +98,7 @@ pub async fn get_or_start_mcp_server_instance() -> Result<Arc<crate::mcp::McpSer
     crate::mcp::render_tools::register_render_tools(&mut registry, context.clone(), coordinator);
     let asset_coordinator = Arc::new(crate::mcp::asset_tools::AssetRequestCoordinator::new());
     crate::mcp::asset_tools::register_asset_tools(&mut registry, context.clone(), asset_coordinator);
+    crate::mcp::destockd_tools::register_destockd_tools(&mut registry, context.clone());
     let tts_provider = Arc::new(crate::audio::MockTtsProvider::new());
     crate::mcp::audio_tools::register_audio_tools(&mut registry, context, tts_provider);
     let server = Arc::new(crate::mcp::McpServer::bind(Arc::new(registry)).map_err(|e| ProjectError::Other(format!("Couldn't start MCP server: {e}")))?);
@@ -118,6 +132,7 @@ pub async fn get_or_start_mcp_server(app: &AppHandle) -> Option<u16> {
         None => Arc::new(crate::mcp::asset_tools::AssetRequestCoordinator::new()),
     };
     crate::mcp::asset_tools::register_asset_tools(&mut registry, context.clone(), asset_coordinator);
+    crate::mcp::destockd_tools::register_destockd_tools(&mut registry, context.clone());
     let tts_provider: Arc<dyn crate::audio::TtsProvider> = match app.try_state::<Arc<dyn crate::audio::TtsProvider>>() {
         Some(p) => p.inner().clone(),
         None => Arc::new(crate::audio::UnifiedTtsProvider::new()),
@@ -183,10 +198,38 @@ pub fn spawn(
         let _ = tokio::time::timeout(std::time::Duration::from_millis(500), stderr_done).await;
         if !watch.is_closing() {
             let message = tail.lock().unwrap().iter().cloned().collect::<Vec<_>>().join("\n");
+            emit_limit(&watch, &message);
             watch.status("exited", json!({ "message": if message.is_empty() { "The agent exited".to_string() } else { message } }));
         }
     });
     Ok(session)
+}
+
+/// Tells the chat that a failure is a usage limit, auth problem or missing model, so it can offer
+/// "continue on another agent/model" instead of a dead-end error.
+fn emit_limit(session: &Session, message: &str) {
+    let Some(info) = crate::acp::limits::detect(message) else {
+        return;
+    };
+    session.emit(
+        "agent://limit",
+        json!({
+            "kind": info.kind,
+            "message": info.message,
+            "resetHint": info.reset_hint,
+            "agentId": session.agent_id(),
+        }),
+    );
+}
+
+/// The handoff is context, so it goes before the request separated by a rule; an empty handoff
+/// leaves the prompt untouched.
+fn compose_switch_prompt(handoff: &str, text: &str) -> String {
+    if handoff.trim().is_empty() {
+        text.to_string()
+    } else {
+        format!("{}\n\n---\n\n{}", handoff.trim_end(), text)
+    }
 }
 
 /// Passes `r` through, telling the chat when a connect step failed so it doesn't keep showing the old state.
@@ -240,21 +283,39 @@ pub async fn agent_connect(
     sessions: State<'_, SessionState>,
     agent_id: Option<String>,
 ) -> Result<()> {
+    connect_agent(&app, &project, &sessions, agent_id).await
+}
+
+async fn connect_agent(
+    app: &AppHandle,
+    project: &ProjectState,
+    sessions: &SessionState,
+    agent_id: Option<String>,
+) -> Result<()> {
     let root = project.root()?;
     let agent_id = match agent_id {
         Some(id) => id,
-        None => agents::settings::agent_for_project(&agents::commands::load(&app)?, &root.to_string_lossy())
+        None => agents::settings::agent_for_project(&agents::commands::load(app)?, &root.to_string_lossy())
             .ok_or_else(|| ProjectError::Other("Choose an agent first".into()))?,
     };
     sessions.close().await;
     let events: Arc<dyn SessionEvents> = Arc::new(TauriEvents(app.clone()));
-    let spec = reported(&events, &agent_id, resolve_spec(&app, &agent_id).await)?;
-    let mcp_port = get_or_start_mcp_server(&app).await;
+    let spec = reported(&events, &agent_id, resolve_spec(app, &agent_id).await)?;
+    let mcp_port = get_or_start_mcp_server(app).await;
     let session = reported(&events, &agent_id, spawn(&spec, root.clone(), agent_id.clone(), events.clone(), mcp_port))?;
     // resolving the login-shell PATH can take seconds; the project may have been switched meanwhile
     let still_current = project.root().ok().as_ref() == Some(&root);
     sessions.install(session.clone(), still_current).await?;
     session.start().await
+}
+
+/// Reports the live session so the chat can restore its header after a reload instead of
+/// reconnecting (which would stop the running agent).
+#[tauri::command]
+pub async fn agent_current(sessions: State<'_, SessionState>) -> Result<Option<Value>> {
+    Ok(sessions.snapshot().await.map(|(agent_id, auto_approve)| {
+        json!({ "agentId": agent_id, "autoApprove": auto_approve })
+    }))
 }
 
 #[tauri::command]
@@ -273,6 +334,50 @@ pub async fn agent_prompt(
     // the lock is released before the turn runs, so cancel and permission answers get through
     let session = sessions.current().await?;
     let res = session.prompt(&text, selection.as_ref(), images.as_deref()).await;
+    if let Err(e) = &res {
+        emit_limit(&session, &e.to_string());
+    }
+    asset_coordinator.on_turn_end();
+    res
+}
+
+/// Continues the conversation on another agent (or another model of the same agent) by sending a
+/// rendered context handoff together with the user's next message.
+#[allow(clippy::too_many_arguments)]
+#[tauri::command]
+pub async fn agent_switch_prompt(
+    app: AppHandle,
+    project: State<'_, ProjectState>,
+    sessions: State<'_, SessionState>,
+    asset_coordinator: State<'_, AssetRequestCoordinator>,
+    agent_id: Option<String>,
+    config_id: Option<String>,
+    value: Option<serde_json::Value>,
+    handoff: String,
+    text: String,
+    selection: Option<SelectionContext>,
+    images: Option<Vec<crate::acp::session::ImageInput>>,
+) -> Result<String> {
+    let switching_agent = match agent_id.as_deref() {
+        Some(target) => sessions.agent_id().await.as_deref() != Some(target),
+        None => false,
+    };
+    if switching_agent {
+        connect_agent(&app, &project, &sessions, agent_id.clone()).await?;
+    } else if let (Some(config_id), Some(value)) = (config_id, value) {
+        sessions
+            .current()
+            .await?
+            .set_config_option(&config_id, value)
+            .await?;
+    }
+
+    let session = sessions.current().await?;
+    let prompt = compose_switch_prompt(&handoff, &text);
+    let res = session.prompt(&prompt, selection.as_ref(), images.as_deref()).await;
+    if let Err(e) = &res {
+        emit_limit(&session, &e.to_string());
+    }
     asset_coordinator.on_turn_end();
     res
 }
@@ -426,5 +531,24 @@ mod tests {
         state.set_auto_approve(false).await;
         assert!(!state.auto_approve());
         assert!(!session.auto_approve(), "session gets updated when state is updated");
+    }
+
+    #[test]
+    fn switch_prompt_keeps_the_request_after_the_handoff() {
+        assert_eq!(compose_switch_prompt("HISTORY", "next"), "HISTORY\n\n---\n\nnext");
+        assert_eq!(compose_switch_prompt("  ", "next"), "next");
+        assert_eq!(compose_switch_prompt("", "next"), "next");
+    }
+
+    #[tokio::test]
+    async fn session_state_reports_the_active_agent() {
+        let state = SessionState::default();
+        assert_eq!(state.agent_id().await, None);
+
+        state.install(fake_session(), true).await.unwrap();
+        assert_eq!(state.agent_id().await.as_deref(), Some("fake"));
+
+        state.close().await;
+        assert_eq!(state.agent_id().await, None);
     }
 }

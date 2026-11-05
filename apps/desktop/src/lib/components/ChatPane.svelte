@@ -16,7 +16,8 @@
     X,
     Zap,
   } from "@lucide/svelte";
-  import type { AgentApi, ImageInput, ProjectStats, SelectionContext } from "$lib/chat/api";
+  import type { AgentApi, AgentStatus, ImageInput, ProjectStats, SelectionContext } from "$lib/chat/api";
+  import { buildHandoff } from "$lib/chat/handoff";
   import {
     applyEvent,
     initialChat,
@@ -28,6 +29,8 @@
   import { selectionLabel, type Selection } from "$lib/timeline/model";
   import { devLog } from "$lib/devlog";
   import ChatItem from "./ChatItem.svelte";
+  import HandoffRow from "./HandoffRow.svelte";
+  import LimitCard from "./LimitCard.svelte";
   import ScopeWarningCard from "./ScopeWarningCard.svelte";
   import SelectionChip from "./SelectionChip.svelte";
   import StyleMenu from "./StyleMenu.svelte";
@@ -60,6 +63,7 @@
   let hasLoadedHistory = $state(false);
   let pendingImages = $state<AttachedImage[]>([]);
   let pendingVideos = $state<AttachedVideo[]>([]);
+  let alternateAgents = $state<AgentStatus[]>([]);
   let fileInput: HTMLInputElement | undefined = $state();
   let isDraggingOver = $state(false);
 
@@ -118,6 +122,51 @@
       },
     });
     api.setConfigOption("model", val).catch(fail);
+  }
+
+  $effect(() => {
+    const hasLimit = chat.items.some((item) => item.kind === "limit");
+    if (!hasLimit || alternateAgents.length > 0) return;
+    api
+      .listAgents()
+      .then((agents) => {
+        alternateAgents = agents.filter((a) => a.state === "ready" && a.id !== chat.connection?.agentId);
+      })
+      .catch(() => {});
+  });
+
+  async function switchModel(value: string) {
+    if (!value) return;
+    push({ type: "update", update: { sessionUpdate: "config_option_update", configId: "model", value } });
+    try {
+      await api.setConfigOption("model", value);
+    } catch (e) {
+      fail(e);
+    }
+  }
+
+  async function continueWithHandoff(
+    target: { agentId?: string; configId?: string; value?: string },
+    instructions: string,
+  ) {
+    const textToSend = instructions.trim() || "Continue from the handoff above and finish the task.";
+    const handoff = buildHandoff(chat.items, { userText: textToSend });
+    const toName =
+      alternateAgents.find((a) => a.id === target.agentId)?.name ?? target.value ?? target.agentId ?? "model";
+    push({ type: "handoff", from: agentName, to: toName, selected: handoff.messages.length, omitted: handoff.omitted });
+    push({ type: "user", text: textToSend, selection: selection ? selectionLabel(selection) : undefined });
+    try {
+      await api.switchPrompt({
+        agentId: target.agentId,
+        configId: target.configId,
+        value: target.value,
+        handoff: handoff.text,
+        text: textToSend,
+        selection: toContext(selection),
+      });
+    } catch (e) {
+      fail(e);
+    }
   }
 
   let lastLoadedRoot = $state<string | undefined>(undefined);
@@ -272,6 +321,29 @@
       loadHistory(projectRoot);
       loadStats(projectRoot);
     }
+
+    // Restore the live backend session, or connect to the configured default agent on first open.
+    void (async () => {
+      try {
+        const current = await api.current();
+        if (current) {
+          push({ type: "status", state: "ready", agentId: current.agentId });
+          return;
+        }
+        const prefs = await api.settings();
+        const configured = prefs.defaultAgent || Object.keys(prefs.projectAgents ?? {}).length > 0;
+        if (configured) {
+          await api.connect();
+          return;
+        }
+        // No default yet: pick the only ready agent so a fresh install is one step, but never
+        // persist it — an explicit choice in the Agents panel still wins.
+        const ready = (await api.listAgents()).filter((a) => a.state === "ready");
+        if (ready.length === 1) await api.connect(ready[0].id);
+      } catch (e) {
+        devLog(`auto-connect skipped: ${e}`);
+      }
+    })();
 
     listen<ProjectStats>("project://stats_updated", (e) => {
       if (e.payload) stats = e.payload;
@@ -766,14 +838,27 @@
   {/if}
   <div class="items" bind:this={list}>
     {#each chat.items as item (item.id)}
-      <ChatItem
-        {item}
-        onAnswer={answer}
-        onResolveAsset={resolveAsset}
-        onReconnect={reconnect}
-        onLoginTerminal={loginTerminal}
-        {onOpenSettings}
-      />
+      {#if item.kind === "limit"}
+        <LimitCard
+          {item}
+          agents={alternateAgents}
+          modelOption={modelOption}
+          disabled={running}
+          onSwitchModel={switchModel}
+          onContinue={continueWithHandoff}
+        />
+      {:else if item.kind === "handoff"}
+        <HandoffRow {item} />
+      {:else}
+        <ChatItem
+          {item}
+          onAnswer={answer}
+          onResolveAsset={resolveAsset}
+          onReconnect={reconnect}
+          onLoginTerminal={loginTerminal}
+          {onOpenSettings}
+        />
+      {/if}
     {/each}
     {#if running}<div class="working">Working…</div>{/if}
   </div>

@@ -275,6 +275,15 @@ impl Session {
         self.events.emit("agent://status", payload);
     }
 
+    pub fn agent_id(&self) -> &str {
+        &self.agent_id
+    }
+
+    /// Emits an arbitrary `agent://*` event on this session's channel.
+    pub fn emit(&self, event: &str, payload: Value) {
+        self.events.emit(event, payload);
+    }
+
     async fn open_session(&self) -> Result<(), ProjectError> {
         let mcp_servers = match *self.mcp_port.lock().unwrap() {
             Some(port) => {

@@ -50,6 +50,7 @@ export default scene("beat-1", { duration: 4, background: theme.colors.paper }, 
 - Use `theme.colors` / `theme.fonts` / `theme.ease` instead of new values.
 - 3D styles: draw all random numbers in the scene builder (`random()`), not in `setup`/`update`; the 3D renderer has no textures, shadows or fog.
 - Lay out for both ratios (`const portrait = height > width`), as every demo does.
+- Keep the safe area clear and put every gap on the rhythm unit: `u = Math.min(width, height) / 100`, margin `u * 6`, gaps `u * [1, 2, 3, 4, 6, 8]` (see the director skill's *Whitespace, Safe Areas & Spacing*). In 9:16 leave `height * 0.12` clear at the bottom.
 
 ## Filters (any node)
 

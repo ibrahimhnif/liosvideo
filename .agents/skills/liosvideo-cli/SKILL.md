@@ -82,6 +82,20 @@ liosvideo render long.ts --frames 0..150 -o out/preview.mp4
 liosvideo render short.ts -o out/short.mp4 --quiet
 ```
 
+#### Long-form renders (15–60 min)
+Render chapter ranges and concatenate; each part finishes sooner and can be resumed:
+```bash
+liosvideo info long.ts                                           # total duration / frames
+liosvideo render long.ts --frames 0..5400    -o out/ch01.mp4 --quiet
+liosvideo render long.ts --frames 5400..10800 -o out/ch02.mp4 --quiet
+printf "file 'ch01.mp4'\nfile 'ch02.mp4'\n" > out/list.txt
+ffmpeg -f concat -safe 0 -i out/list.txt -c copy out/doc.mp4
+```
+End chapters on a hard cut (transitions do not survive a concat), and check the first,
+middle and last frame with `snapshot` before the full run. A 30-minute 1080p composition is
+~54,000 frames; a full render holds the audio mixdown in memory (≈2 GB peak), so keep music
+beds looped.
+
 ---
 
 ### B. `snapshot` (Instant Frame PNG Export)
@@ -314,6 +328,13 @@ liosvideo asset import logo assets/brand/logo.svg
 liosvideo asset save-image logo.png ./Downloads/logo.png
 liosvideo asset save-video demo ./Downloads/demo.mp4
 liosvideo asset record-voice intro-1 1.8 ./take.mp3
+
+# Free archival b-roll (Destockd / FedFlix, public domain or unrestricted)
+liosvideo asset search "aircraft carrier at sea"            # CLIP visual search
+liosvideo asset search "night city" --page 2 --json
+liosvideo asset download "Task Force" shot_006 --name carrier
+# writes assets/video/carrier.mp4 and appends assets/ATTRIBUTIONS.md;
+# per-clip rights are not certified — check the source record before commercial use
 
 # Secrets (env → macOS Keychain → ~/.config/liosvideo/credentials.json)
 liosvideo key get ELEVENLABS_API_KEY

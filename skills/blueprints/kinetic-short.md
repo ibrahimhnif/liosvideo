@@ -3,6 +3,7 @@
 - **Target Aspect**: 9:16 Portrait (`1080x1920`)
 - **Aesthetic**: Punchy Social Media, bold kinetic typography, phone mockup
 - **Use Cases**: TikTok, Instagram Reels, YouTube Shorts, product teasers
+- **Layout**: every gap on the rhythm unit `u = Math.min(width, height) / 100`, safe margin `u * 6`, and `height * 0.12` kept clear at the bottom for platform UI
 
 ---
 

@@ -43,6 +43,38 @@ describe("ChatPane", () => {
     await expect.element(screen.getByText("make it blue")).toBeVisible();
   });
 
+  it("auto-connects to the configured default agent", async () => {
+    const { api } = fakeAgentApi();
+    (api.settings as any).mockResolvedValue({ defaultAgent: "gemini", projectAgents: {}, custom: [] });
+    await render(ChatPane, { api, playhead: { frame: 0, fps: 30 }, onClearSelection: () => {} });
+    await vi.waitFor(() => expect(api.connect).toHaveBeenCalled());
+  });
+
+  it("auto-connects to the only ready agent when no default is set", async () => {
+    const { api } = fakeAgentApi([{ id: "gemini", name: "Gemini CLI", state: "ready", custom: false }]);
+    await render(ChatPane, { api, playhead: { frame: 0, fps: 30 }, onClearSelection: () => {} });
+    await vi.waitFor(() => expect(api.connect).toHaveBeenCalledWith("gemini"));
+  });
+
+  it("stays disconnected when several agents are ready and none is default", async () => {
+    const { api } = fakeAgentApi([
+      { id: "gemini", name: "Gemini CLI", state: "ready", custom: false },
+      { id: "codex", name: "Codex", state: "ready", custom: false },
+    ]);
+    await render(ChatPane, { api, playhead: { frame: 0, fps: 30 }, onClearSelection: () => {} });
+    await vi.waitFor(() => expect(api.listAgents).toHaveBeenCalled());
+    await new Promise((r) => queueMicrotask(() => queueMicrotask(r)));
+    expect(api.connect).not.toHaveBeenCalled();
+  });
+
+  it("restores the running session instead of reconnecting", async () => {
+    const { api } = fakeAgentApi();
+    (api.current as any).mockResolvedValue({ agentId: "gemini", autoApprove: true });
+    const screen = await render(ChatPane, { api, playhead: { frame: 0, fps: 30 }, onClearSelection: () => {} });
+    await expect.element(screen.getByText("gemini")).toBeVisible();
+    expect(api.connect).not.toHaveBeenCalled();
+  });
+
   it("can reconnect while a slow connection is starting", async () => {
     const { screen, api, emit } = await setup();
     emit({ type: "status", state: "connecting", agentId: "gemini" });

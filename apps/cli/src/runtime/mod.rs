@@ -149,6 +149,10 @@ impl RuntimeHost {
     }
 
     pub async fn load_composition(&mut self, entry_file: &str) -> Result<CompositionInfo> {
+        // Timings must exist before the entry module is evaluated so scenes can size
+        // themselves from `vo("line").duration` at module scope.
+        self.inject_vo_timings()?;
+
         let specifier = self
             .loader
             .resolve_entry(entry_file)
@@ -168,8 +172,6 @@ impl RuntimeHost {
         eval_fut
             .await
             .map_err(|e| anyhow!("Error evaluating module '{specifier}': {e}"))?;
-
-        self.inject_vo_timings()?;
 
         let namespace = self
             .js_runtime
@@ -487,6 +489,41 @@ mod tests {
         assert_eq!(items.len(), 1);
         assert_eq!(items[0]["kind"], "rect");
         assert_eq!(items[0]["fill"], "#ff0000");
+
+        let _ = std::fs::remove_dir_all(dir);
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn sizes_scenes_from_vo_timings_at_module_scope() -> Result<()> {
+        let dir = std::env::temp_dir().join(format!("liosvideo_vo_duration_test_{}", std::process::id()));
+        let vo_dir = dir.join("assets").join("audio").join("vo");
+        std::fs::create_dir_all(&vo_dir)?;
+        std::fs::write(
+            vo_dir.join("intro-line-1.timing.json"),
+            r#"{"lineId":"intro-line-1","duration":6.0,"words":[]}"#,
+        )?;
+
+        let composition_code = r##"
+            import { composition, scene, text, vo } from "liosvideo";
+
+            const timing = vo("intro-line-1");
+            const intro = scene(
+                "intro",
+                { duration: Math.max(2.5, timing.duration + 0.6) },
+                ({ root }) => { root.add(text({ name: "t", text: "hi" })); },
+            );
+
+            export default composition({ width: 640, height: 360, fps: 30, scenes: [intro] });
+        "##;
+        std::fs::write(dir.join("long.ts"), composition_code)?;
+
+        let mut host = RuntimeHost::new(dir.clone())?;
+        let info = host.load_composition("long.ts").await?;
+
+        assert_eq!(info.duration, 6.6);
+        assert_eq!(info.total_frames, 198);
+        assert_eq!(info.scenes[0].end_frame, 198);
 
         let _ = std::fs::remove_dir_all(dir);
         Ok(())

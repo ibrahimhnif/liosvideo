@@ -165,6 +165,9 @@ one white tape strip ·
 9. **Fonts:** the CLI uses system fonts. Project TTFs in `assets/fonts` are a
    copy; they must be installed in `~/Library/Fonts` to render.
 10. **Naming:** semantic `name` on nodes, no `/` inside names.
+11. **Whitespace.** Keep overlays inside the safe area: `u = Math.min(width, height) / 100`,
+    margin `u * 6`, gaps on `u * [1, 2, 3, 4, 6, 8]`. In 9:16 leave `height * 0.12` clear at
+    the bottom; captions sit on the safe line, never on the frame edge.
 
 ---
 

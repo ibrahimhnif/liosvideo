@@ -279,6 +279,7 @@ Styles: `pixel-art`, `chalkboard`, `glow-sketch`, `ps2-lowpoly`, `comic`, `flat-
 ### When to Download External Assets
 - When a video scene requires real-world footage, b-roll, photos, icons, custom fonts, sound effects, or brand logos that cannot be cleanly synthesized via vector shapes (`rect`, `circle`, `path`) or 3D meshes.
 - Source high-quality, royalty-free, or permissively licensed media (Unsplash, Pexels, Wikimedia Commons, FreeSound, Google Fonts, GitHub raw assets).
+- For archival/historical B-roll use Destockd first: `destockd_search` then `destockd_download` (CLI: `liosvideo asset search …` / `asset download …`). It downloads FedFlix/government footage into `assets/video/` and appends the attribution row. Rights are not certified per clip — check the source record before commercial use, and keep the row in `assets/ATTRIBUTIONS.md`.
 - Store deterministic assets in standard directories:
   - Images / logos: `assets/images/<filename>`
   - Video clips / b-roll: `assets/video/<filename>`
@@ -365,3 +366,12 @@ Before declaring an edit complete:
      Co-authored-by: Antigravity <antigravity@deepmind.google>
      ```
      (or matching the active agent: `Co-authored-by: Claude <noreply@anthropic.com>`, etc.).
+6. **Whitespace & Safe Areas**:
+   - Rhythm unit `u = Math.min(width, height) / 100`; every gap and padding is `u * [1, 2, 3, 4, 6, 8]`.
+   - Keep content at least `u * 6` from every edge; in 9:16 keep `height * 0.12` clear at the bottom (platform UI) and `height * 0.05` at the top.
+   - Headline `lineHeight` 1.1–1.2, body 1.4–1.5; text breaks only on `\n`, so keep each line ≤ 60 characters (≤ 32 in 9:16). See the director skill's *Whitespace, Safe Areas & Spacing*.
+7. **Length & Pacing**:
+   - Total duration is `Σ scene.duration`; plan it first: 9:16 shorts 20–45 s (5–9 scenes), 16:9 explainers 2–5 min, tutorials 5–15 min, documentation/courses **15–60 min** (40–150 scenes).
+   - Long-form is built in chapters: one module per chapter, 5–12 beats each, rendered in ranges (`--frames`) and concatenated.
+   - Script ≈ 2.4 words/s (30 s ≈ 75 words, 30 min ≈ 4,300 words); scene duration = `vo(id).duration + 0.6` s, minimum 2.5 s.
+   - The scaffold's 3 s `intro.ts` and 3-line `script.md` are placeholders — expand to the target and verify with `liosvideo info`.

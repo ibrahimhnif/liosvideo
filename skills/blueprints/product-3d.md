@@ -1,6 +1,7 @@
 # Blueprint: 3D Product Showcase
 
 - **Target Aspect**: 16:9 Landscape (`1920x1080`)
+- **Layout**: every gap on the rhythm unit `u = Math.min(width, height) / 100`, safe margin `u * 6` (9:16 also keeps `height * 0.12` clear at the bottom)
 - **Aesthetic**: Futuristic Dark Tech with Three.js WebGPU compositing
 - **Use Cases**: AI models, hardware devices, 3D tech products, interactive geometry
 

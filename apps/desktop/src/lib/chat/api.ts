@@ -84,7 +84,18 @@ export type AgentEvent =
   | { type: "update"; update: any }
   | { type: "permission"; requestId: string; toolCall: any; options: PermissionOption[]; autoApproved?: boolean; selectedOptionId?: string }
   | { type: "asset_request"; requestId: string; id: string; kind: string; description: string }
-  | { type: "turn"; state: "started" | "ended"; stopReason?: string; error?: string; commit?: CommitInfo | null };
+  | { type: "turn"; state: "started" | "ended"; stopReason?: string; error?: string; commit?: CommitInfo | null }
+  | {
+      type: "limit";
+      kind: "usage_limit" | "auth" | "model_unavailable";
+      message: string;
+      agentId?: string;
+      resetHint?: string;
+    }
+  | { type: "handoff"; from: string; to: string; selected: number; omitted: number };
+
+/** The live backend session, so the chat can restore itself instead of reconnecting. */
+export type CurrentAgent = { agentId: string; autoApprove: boolean };
 
 export interface AgentApi {
   listAgents(): Promise<AgentStatus[]>;
@@ -97,8 +108,20 @@ export interface AgentApi {
   addCustom(agent: CustomAgent): Promise<AgentSettings>;
   removeCustom(id: string): Promise<AgentSettings>;
   connect(id?: string): Promise<void>;
+  /** The session already running in Rust, if any. */
+  current(): Promise<CurrentAgent | null>;
   authenticate(methodId: string): Promise<void>;
   prompt(text: string, selection?: SelectionContext, images?: ImageInput[]): Promise<string>;
+  /** Continues on another agent (or model) with a rendered context handoff. */
+  switchPrompt(input: {
+    agentId?: string;
+    configId?: string;
+    value?: any;
+    handoff: string;
+    text: string;
+    selection?: SelectionContext;
+    images?: ImageInput[];
+  }): Promise<string>;
   cancel(): Promise<void>;
   respond(requestId: string, optionId: string | null): Promise<void>;
   resolveAssetRequest(requestId: string, filePath?: string | null): Promise<void>;
@@ -135,9 +158,20 @@ export const tauriAgentApi: AgentApi = {
   addCustom: (agent) => invoke("add_custom_agent", { agent }),
   removeCustom: (id) => invoke("remove_custom_agent", { id }),
   connect: (id) => invoke("agent_connect", { agentId: id ?? null }),
+  current: () => invoke<CurrentAgent | null>("agent_current"),
   authenticate: (methodId) => invoke("agent_authenticate", { methodId }),
   prompt: (text, selection, images) =>
     invoke("agent_prompt", { text, selection: selection ?? null, images: images ?? null }),
+  switchPrompt: (input) =>
+    invoke("agent_switch_prompt", {
+      agentId: input.agentId ?? null,
+      configId: input.configId ?? null,
+      value: input.value ?? null,
+      handoff: input.handoff,
+      text: input.text,
+      selection: input.selection ?? null,
+      images: input.images ?? null,
+    }),
   cancel: () => invoke("agent_cancel"),
   respond: (requestId, optionId) => invoke("agent_permission_respond", { requestId, optionId }),
   resolveAssetRequest: (requestId, filePath) =>
@@ -160,7 +194,7 @@ export const tauriAgentApi: AgentApi = {
     invoke<ProjectStats>("record_token_usage", { inputTokens, outputTokens, model }),
   openTerminal: (command) => invoke("open_system_terminal", { command: command ?? null }),
   on(handler) {
-    const offs = (["status", "update", "permission", "turn", "asset_request"] as const).map((type) =>
+    const offs = (["status", "update", "permission", "turn", "asset_request", "limit", "handoff"] as const).map((type) =>
       listen<any>(`agent://${type}`, (e) => handler({ type, ...e.payload })),
     );
     return () => offs.forEach((off) => void off.then((f) => f()));

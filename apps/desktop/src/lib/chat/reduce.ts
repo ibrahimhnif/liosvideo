@@ -23,7 +23,16 @@ export type ChatItem =
   | { kind: "permission"; id: string; requestId: string; gen: number; title: string; options: PermissionOption[]; answer?: string; autoApproved?: boolean }
   | { kind: "asset"; id: string; requestId: string; assetId: string; assetKind: string; description: string; answer?: "provided" | "skipped" | "cancelled"; filePath?: string }
   | { kind: "voice"; id: string; lineId: string; text?: string; audioPath?: string }
-  | { kind: "notice"; id: string; level: "info" | "error"; text: string };
+  | { kind: "notice"; id: string; level: "info" | "error"; text: string }
+  | {
+      kind: "limit";
+      id: string;
+      limitKind: "usage_limit" | "auth" | "model_unavailable";
+      message: string;
+      agentId?: string;
+      resetHint?: string;
+    }
+  | { kind: "handoff"; id: string; from: string; to: string; selected: number; omitted: number };
 
 export type Connection = {
   state: ConnectionState; agentId: string; message?: string; authMethods?: AuthMethod[];
@@ -193,6 +202,28 @@ export function applyEvent(s: ChatState, e: ChatEvent): ChatState {
       if (e.state === "started") return { ...s, turn: "running" };
       const ended = { ...s, items: cancelOpen(s.items), turn: "idle" as const };
       return e.error ? notice(ended, "error", e.error) : ended;
+    }
+    case "limit": {
+      const item: ChatItem = {
+        kind: "limit",
+        id: `l${s.nextId}`,
+        limitKind: e.kind,
+        message: e.message,
+        agentId: e.agentId,
+        resetHint: e.resetHint,
+      };
+      return { ...s, items: [...s.items, item], nextId: s.nextId + 1 };
+    }
+    case "handoff": {
+      const item: ChatItem = {
+        kind: "handoff",
+        id: `h${s.nextId}`,
+        from: e.from,
+        to: e.to,
+        selected: e.selected,
+        omitted: e.omitted,
+      };
+      return { ...s, items: [...s.items, item], nextId: s.nextId + 1 };
     }
     case "status": {
       const { type: _, ...connection } = e;

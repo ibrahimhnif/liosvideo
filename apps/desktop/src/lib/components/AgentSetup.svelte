@@ -30,6 +30,14 @@
 
   const rescan = () => attempt(async () => (agents = await api.rescan()));
 
+  /** Saving the choice also connects the chat to that agent, so picking one is all it takes. */
+  function pick(a: AgentStatus, assign: () => Promise<AgentSettings>) {
+    attempt(async () => {
+      settings = await assign();
+      await api.connect(a.id);
+    });
+  }
+
   function install(a: AgentStatus) {
     installing = a.id;
     logs[a.id] = [];
@@ -71,11 +79,11 @@
       <li class={a.state}>
         {#if a.state === "ready"}
           <label class="pick">
-            <input type="radio" name="default-agent" checked={settings.defaultAgent === a.id} onchange={() => attempt(async () => (settings = await api.setDefault(a.id)))} />
+            <input type="radio" name="default-agent" checked={settings.defaultAgent === a.id} onchange={() => pick(a, () => api.setDefault(a.id))} />
             <span class="name">{a.name}</span>
             {#if a.version}<span class="meta">{a.version}</span>{/if}
           </label>
-          <button class="small" onclick={() => attempt(async () => (settings = await api.setProjectAgent(a.id)))}>Use for this project</button>
+          <button class="small" onclick={() => pick(a, () => api.setProjectAgent(a.id))}>Use for this project</button>
           {#if a.custom}<button class="small" onclick={() => attempt(async () => ((settings = await api.removeCustom(a.id)), (agents = await api.rescan())))}>Remove</button>{/if}
         {:else if a.state === "enable"}
           <span class="name">{a.name}</span>

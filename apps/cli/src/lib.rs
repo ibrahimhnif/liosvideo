@@ -3,6 +3,7 @@ pub mod agents;
 pub mod assets;
 pub mod cli;
 pub mod color;
+pub mod destockd;
 pub mod gpu;
 pub mod mcp;
 pub mod media;

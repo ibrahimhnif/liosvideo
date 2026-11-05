@@ -1,6 +1,7 @@
 # Blueprint: Minimal Dev Screencast
 
 - **Target Aspect**: 16:9 Landscape (`1920x1080`), responsive down to 9:16
+- **Layout**: every gap on the rhythm unit `u = Math.min(width, height) / 100`, safe margin `u * 6` (9:16 also keeps `height * 0.12` clear at the bottom)
 - **Aesthetic**: Tokyo Night / Minimal Engineer Dark
 - **Use Cases**: Terminal tool breakdowns, developer tutorials, GitHub repo highlights
 

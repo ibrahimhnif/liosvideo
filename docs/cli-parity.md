@@ -68,8 +68,9 @@ backend feature set as the desktop app, with no Node.js, Chromium, or FFmpeg dep
 | Stats / conversation | `liosvideo project stats`, `liosvideo project token-usage`, `liosvideo project conversation get|set` |
 | TTS | `liosvideo tts voices|generate|timings` |
 | Asset import | `liosvideo asset import <id> <file>`, `save-image`, `save-video`, `record-voice` |
+| Free archival B-roll | `liosvideo asset search <query> [--page N] [--json]`, `asset download <film> <shot> [--name f] [--force]` (Destockd) |
 | API keys | `liosvideo key get|set|delete <service>` |
-| ACP agent | `liosvideo agent list|prompt|chat|auth|set-config|install-adapter|…` |
+| ACP agent | `liosvideo agent list|prompt|chat|auth|set-config|install-adapter|…`; `--handoff <file|auto>` continues on another agent ([details](./acp-handoff.md)) |
 | MCP server | `liosvideo mcp serve [--stdio|--tcp addr]`, `mcp tools`, `mcp call <tool>` |
 | File watcher | `liosvideo watch [--exec <command>]` |
 

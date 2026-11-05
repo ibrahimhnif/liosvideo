@@ -26,6 +26,7 @@ Use this skill whenever:
 2. **Responsive Composition**:
    - Scenes should cleanly adapt between **16:9** (`1920x1080`) and **9:16** (`1080x1920`).
    - Use dynamic coordinates derived from `width` and `height`, and anchor points (`anchorX: 0.5, anchorY: 0.5` for center-aligned elements).
+   - Keep the safe area clear and every gap on the rhythm unit `u = Math.min(width, height) / 100` — see *Whitespace, Safe Areas & Spacing* in §5.
 
 3. **Stable Node Naming**:
    - Assign semantic `name` attributes to all actionable nodes (`card`, `headline`, `highlight`, `badge`).
@@ -43,6 +44,11 @@ Use this skill whenever:
      Co-authored-by: Antigravity <antigravity@deepmind.google>
      ```
      (or matching the active agent: `Co-authored-by: Claude <noreply@anthropic.com>`, etc.).
+
+6. **Plan the Length**:
+   - Total duration is `Σ scene.duration` — pick a target before writing scenes.
+   - 9:16 short/reel: **20–45 s** (5–9 scenes). 16:9 explainer/product: **60–180 s** (6–12 scenes).
+   - Size the script to the target (~2.4 words/s) and derive each scene from its narration (`vo.duration + 0.6 s`, minimum 2.5 s). Never ship the 3 s scaffold stub.
 
 ---
 
@@ -83,6 +89,7 @@ When creating or restyling scenes, consult the modular skill guides inspired by 
   - `product-3d.md`: Three.js 3D hero setup, lighting, and floating spec chips.
   - `kinetic-short.md`: 9:16 mobile phone mockup, word-sync highlighting, and pop animations.
   - `saas-launch.md`: macOS browser window (`chrome()`), metric chips, and CTA banner.
+  - `documentation-longform.md`: chaptered **15–60 min** documentation/course structure — chapter cards, progress, beat sheets and range rendering.
 
 ---
 
@@ -237,17 +244,20 @@ export default scene(
   "intro",
   { duration: 4.0, background: "#0b0d12" },
   ({ root, width, height, duration, random }) => {
+    const u = Math.min(width, height) / 100; // rhythm unit (≈11px at 1080p)
+    const safe = u * 6;                      // outer margin on every edge
+
     // 1. Container Card
     const card = root.add(
       rect({
         name: "card",
-        width: Math.min(width * 0.85, 1200),
-        height: Math.min(height * 0.7, 700),
+        width: Math.min(width - safe * 2, u * 90),
+        height: Math.min(height - safe * 2, u * 62),
         x: width / 2,
         y: height / 2,
         anchorX: 0.5,
         anchorY: 0.5,
-        radius: 20,
+        radius: u,
         fill: "#161b22",
         stroke: "#30363d",
         strokeWidth: 2,
@@ -272,7 +282,7 @@ export default scene(
         fontWeight: 700,
         color: "#f0f6fc",
         x: card.width / 2,
-        y: card.height / 2 - 40,
+        y: card.height / 2 - u * 2,
         anchorX: 0.5,
         anchorY: 0.5,
         opacity: 0
@@ -280,7 +290,7 @@ export default scene(
     );
 
     title.to(
-      { opacity: 1, y: card.height / 2 - 60 },
+      { opacity: 1, y: card.height / 2 - u * 3 },
       { at: 0.5, duration: 0.5, ease: "outCubic" }
     );
 
@@ -297,6 +307,23 @@ export default scene(
 );
 ```
 
+### Whitespace, Safe Areas & Spacing
+
+Whitespace is the difference between a slide and a good video: fewer elements, bigger gaps, and edges that stay clear of platform UI.
+
+```ts
+const u = Math.min(width, height) / 100; // rhythm unit: ≈11px at 1080p
+const safe = u * 6;                      // outer margin on every edge
+```
+
+1. **One rhythm.** Every gap and padding is `u * 1, 2, 3, 4, 6 or 8` — one step inside a group, two steps between groups. Never hand-pick 13 / 37 / 55 px.
+2. **Safe area.** Nothing crosses `safe` on any edge. In 9:16 reserve `height * 0.12` at the bottom (platform UI, captions) and `height * 0.05` at the top (status bar).
+3. **Proximity before separators.** Related items sit ≤ 1 step apart; unrelated blocks ≥ 2 steps. If two blocks still feel glued, separate them with weight, colour or a divider before adding space.
+4. **Text air.** Headline `lineHeight` 1.1–1.2, body 1.4–1.5, caption 1.2. Heading → body is `u`; paragraph → paragraph is `u * 2`. Text does not wrap by width — `text` breaks only on `\n`, so keep each line ≤ 60 characters (≤ 32 in 9:16) and insert the breaks yourself.
+5. **Card padding.** Inner padding ≥ `u * 1.5`, `radius` = `u * 0.5–1`; text and icons never touch an edge.
+6. **Fill 55–70%.** Content covers 55–70% of the frame; when it feels full, remove an element instead of shrinking the gaps.
+7. **Exits leave no holes.** Entrances may start outside the safe area, but the resting layout stays balanced: fade or slide the whole group instead of leaving an empty slot.
+
 ### Built-In Realistic Mockups
 - `desktop`: macOS wallpaper, menu bar, and window layout.
 - `window`: macOS window with native titlebar and traffic light controls.
@@ -310,6 +337,40 @@ export default scene(
 ---
 
 ## 6. Audio & Voice-Over Synchronization
+
+### Length Budget & Pacing
+
+Total duration is just `Σ scene.duration` (`layoutComposition` adds scenes; transitions do not extend the timeline), so length is a decision, not a side effect of how many scenes you happened to write.
+
+- **Pick the format and its target first.**
+
+| Format | Target | Scenes |
+| :--- | :--- | :--- |
+| 9:16 hook / teaser | 10–20 s | 2–4 |
+| 9:16 short / Reel / TikTok | 20–45 s (sweet spot 25–35 s) | 5–9 |
+| 16:9 explainer / product | 2–5 min | 6–15 |
+| Tutorial / walkthrough | 5–15 min | 15–40 |
+| Documentation / course | **15–60 min** (30 min is normal) | 40–150 |
+
+Long-form is a first-class target: a 30-minute documentation video is normal, so never stop at a 2–3 minute cut unless the user asked for a short.
+
+- **Size the script.** Narration runs ~2.4 words/s (≈145 wpm): 30 s → 70–75 words in 5–7 lines; 5 min → ~720 words; 15 min → ~2,150 words; 30 min → ~4,300 words in 120–180 lines.
+- **Derive scenes from narration.** `duration = Math.max(2.5, vo("id").duration + 0.6)` (0.4–0.8 s tail after the last word). Never cut a sentence to keep a scene short.
+- **One beat per scene.** 2.5–8 s for short-form; 8–20 s for tutorials and docs when a diagram, code block or screen recording needs reading time. Something visible changes every 2–4 s (short) / 4–8 s (long-form).
+- **Verify.** `liosvideo info <entry>` prints the total duration (`inspect_manifest` in the app). Compare with the target and add scenes/lines — never slow the motion down to pad time.
+
+### Long-Form Structure (10–60 min)
+
+A 30-minute video is ~54,000 frames at 30 fps. It is built as chapters, never as one giant scene or one giant file.
+
+1. **One module per chapter.** `scenes/ch01-setup.ts`, `scenes/ch02-…`, each exporting its scenes; `long.ts` spreads them (`scenes: [...ch01, ...ch02, ...]`). Keep ids stable (`ch03-02-diagram`) so re-renders reuse caches.
+2. **Chapter card.** Every chapter opens with a 2–4 s card: number, title, one-line goal, and optionally `3 / 12` progress.
+3. **Beat sheet first.** 5–12 beats per chapter, each mapping to one `script.md` line and one scene. Build and preview chapter by chapter; don't write 30 minutes of scenes before the first render.
+4. **Lower motion density.** Long-form holds shots: cuts, slow push-ins, highlights and typewriter lines, with `pop`/`shake`/zoom reserved for key moments.
+5. **Reuse, don't copy.** Screen frames, code panes, callouts and caption styles live in helpers (`scenes/parts.ts`), not copy-pasted per scene.
+6. **Audio.** One VO line per beat, a looped music bed at −18 to −24 dB, no sound effect on every beat.
+7. **Render in ranges, then concat.** Render chapter ranges (`liosvideo render long.ts --frames 0..5400 -o out/ch01.mp4`) and join with `ffmpeg -f concat -safe 0 -i list.txt -c copy out/doc.mp4`. End chapters on a hard cut — transitions do not survive a concat. A full 30-minute render peaks at about 2 GB of RAM for the audio mixdown.
+8. **Verify three frames.** First frame, a mid-chapter frame and the last frame (`liosvideo snapshot … --frame N`), plus `liosvideo info` for the total.
 
 ### Narration Workflow
 1. Write the script in `script.md` using stable HTML comments:
@@ -338,6 +399,20 @@ export default scene(
   - Video clips / b-roll: `assets/video/<filename>`
   - Fonts: `assets/fonts/<filename>`
   - Audio & SFX: `assets/audio/music/<filename>`
+
+### Destockd (free archival B-roll)
+
+`destockd_search` and `destockd_download` (CLI: `liosvideo asset search …` / `asset download …`) search
+~41,000 public-domain or unrestricted US-government shots from the FedFlix archive with CLIP visual
+search — describe what should be on screen, not keywords.
+
+- Use it first for archival/historical B-roll. Hits carry `film`, `shot`, `clip` (MP4), `preview` and `keyframe`.
+- `destockd_download` streams the clip into `assets/video/` and appends its `assets/ATTRIBUTIONS.md` row.
+  Use the returned `relPath` in `video({ src })` and give the clip a clear `name`.
+- Rights are **not** certified per clip: check the linked archive.org / NARA record before commercial use
+  and keep the attribution row.
+- Disturbing material (war/atrocity footage) is excluded by default; pass `include_disturbing: true` only
+  when the brief needs it.
 
 ### Mandatory Asset Attribution (`assets/ATTRIBUTIONS.md`)
 - Whenever you download or incorporate external assets, maintain an attribution record in `assets/ATTRIBUTIONS.md`:

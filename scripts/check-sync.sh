@@ -21,6 +21,8 @@ pairs=(
   "apps/desktop/src-tauri/src/agents/settings.rs|apps/cli/src/agents/settings.rs"
   "apps/desktop/src-tauri/src/agents/shell_path.rs|apps/cli/src/agents/shell_path.rs"
   "apps/desktop/src-tauri/src/acp/rpc.rs|apps/cli/src/acp/rpc.rs"
+  "apps/desktop/src-tauri/src/acp/limits.rs|apps/cli/src/acp/limits.rs"
+  "apps/desktop/src-tauri/src/destockd.rs|apps/cli/src/destockd.rs"
   "apps/desktop/src-tauri/src/acp/client.rs|apps/cli/src/acp/client.rs"
   "apps/desktop/src-tauri/src/acp/session.rs|apps/cli/src/acp/session.rs"
   "apps/desktop/src-tauri/src/mcp/tools.rs|apps/cli/src/mcp/tools.rs"

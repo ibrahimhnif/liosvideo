@@ -1,6 +1,7 @@
 mod acp;
 mod agents;
 pub mod audio;
+mod destockd;
 pub mod export;
 mod git;
 pub mod keychain;
@@ -107,7 +108,9 @@ pub fn run() {
             mcp::asset_tools::resolve_asset_request,
             acp::commands::agent_connect,
             acp::commands::agent_authenticate,
+            acp::commands::agent_current,
             acp::commands::agent_prompt,
+            acp::commands::agent_switch_prompt,
             acp::commands::agent_cancel,
             acp::commands::agent_permission_respond,
             acp::commands::agent_set_config_option,

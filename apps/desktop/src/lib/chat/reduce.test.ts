@@ -182,6 +182,24 @@ describe("applyEvent", () => {
     });
   });
 
+  it("records limit and handoff events as timeline rows", () => {
+    const s = run([
+      { type: "limit", kind: "usage_limit", message: "rate limit", agentId: "claude", resetHint: "resets 5pm" },
+      { type: "handoff", from: "Claude Code", to: "Codex", selected: 12, omitted: 3 },
+    ]);
+    expect(s.items).toEqual([
+      {
+        kind: "limit",
+        id: "l1",
+        limitKind: "usage_limit",
+        message: "rate limit",
+        agentId: "claude",
+        resetHint: "resets 5pm",
+      },
+      { kind: "handoff", id: "h2", from: "Claude Code", to: "Codex", selected: 12, omitted: 3 },
+    ]);
+  });
+
   it("cancels unanswered asset requests when a turn ends", () => {
     let s = run([
       { type: "turn", state: "started" },

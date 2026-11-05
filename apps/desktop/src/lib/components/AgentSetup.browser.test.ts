@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { render } from "vitest-browser-svelte";
 import type { AgentStatus } from "$lib/chat/api";
 import { fakeAgentApi } from "$lib/chat/fake";
@@ -32,10 +32,18 @@ describe("AgentSetup", () => {
     expect(api.rescan).toHaveBeenCalled();
   });
 
-  it("chooses the default agent", async () => {
+  it("chooses the default agent and connects the chat", async () => {
     const { screen, api } = await setup();
     await screen.getByRole("radio", { name: /Antigravity CLI/ }).click();
     expect(api.setDefault).toHaveBeenCalledWith("agy");
+    await vi.waitFor(() => expect(api.connect).toHaveBeenCalledWith("agy"));
+  });
+
+  it("connects when an agent is picked for this project", async () => {
+    const { screen, api } = await setup();
+    await screen.getByRole("button", { name: "Use for this project" }).click();
+    expect(api.setProjectAgent).toHaveBeenCalledWith("agy");
+    await vi.waitFor(() => expect(api.connect).toHaveBeenCalledWith("agy"));
   });
 
   it("adds a custom agent with parsed args and env", async () => {
