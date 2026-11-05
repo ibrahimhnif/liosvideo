@@ -31,6 +31,7 @@ pairs=(
   "packages/runtime/src/gpu/shaders/quad.wgsl|apps/cli/src/gpu/shaders/quad.wgsl"
   "packages/runtime/src/gpu/shaders/blur.wgsl|apps/cli/src/gpu/shaders/blur.wgsl"
   "packages/runtime/src/gpu/shaders/composite.wgsl|apps/cli/src/gpu/shaders/composite.wgsl"
+  "packages/runtime/src/gpu/shaders/filter.wgsl|apps/cli/src/gpu/shaders/filter.wgsl"
 )
 
 drift=0
