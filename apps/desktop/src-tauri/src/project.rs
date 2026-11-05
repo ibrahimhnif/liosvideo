@@ -375,6 +375,25 @@ pub async fn create_project(
     open_at(&app, &state, root).await
 }
 
+/// One animation style for the pickers.
+#[derive(serde::Serialize)]
+pub struct StyleInfo {
+    id: &'static str,
+    title: &'static str,
+}
+
+/// The ten animation styles, in catalog order.
+#[tauri::command]
+pub fn list_styles() -> Vec<StyleInfo> {
+    crate::scaffold::STYLES.iter().map(|(id, title)| StyleInfo { id, title }).collect()
+}
+
+/// Installs a style's module and doc into the open project (never overwrites); the watcher picks the files up.
+#[tauri::command]
+pub fn install_style(state: State<'_, ProjectState>, id: String) -> Result<Vec<String>> {
+    crate::scaffold::install_style(&state.root()?, &id)
+}
+
 #[tauri::command]
 pub fn recent_projects(app: AppHandle) -> Result<Vec<String>> {
     Ok(recent::load_recent(&recent_file(&app)?))

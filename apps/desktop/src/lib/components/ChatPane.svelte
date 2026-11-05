@@ -30,6 +30,8 @@
   import ChatItem from "./ChatItem.svelte";
   import ScopeWarningCard from "./ScopeWarningCard.svelte";
   import SelectionChip from "./SelectionChip.svelte";
+  import StyleMenu from "./StyleMenu.svelte";
+  import { installStyle, stylePrompt, type StyleInfo } from "$lib/styles/api";
 
   let {
     api,
@@ -327,6 +329,17 @@
   }
 
   const fail = (e: unknown) => push({ type: "turn", state: "ended", error: String(e) });
+
+  /** Installs the style's files, then puts the restyle request in the composer for the user to send. */
+  async function applyStyle(style: StyleInfo) {
+    try {
+      await installStyle(style.id);
+    } catch (e) {
+      fail(`Couldn't install the ${style.title} style: ${e}`);
+      return;
+    }
+    text = stylePrompt(style.title, style.id, selection ? selectionLabel(selection) : undefined);
+  }
 
   async function attachImageFile(file: File) {
     try {
@@ -853,6 +866,7 @@
         <ImagePlus size={13} />
         <span>Attach</span>
       </button>
+      <StyleMenu onPick={applyStyle} disabled={running} />
       <span class="spacer"></span>
       <button
         type="submit"

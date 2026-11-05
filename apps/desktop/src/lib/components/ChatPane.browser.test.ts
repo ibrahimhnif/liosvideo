@@ -2,8 +2,17 @@ import { describe, expect, it, vi } from "vitest";
 import { render } from "vitest-browser-svelte";
 import { userEvent } from "vitest/browser";
 import { fakeAgentApi } from "$lib/chat/fake";
-import type { Selection } from "$lib/timeline/model";
+import { selectionLabel, type Selection } from "$lib/timeline/model";
+import { STYLE_FIXTURE } from "$lib/styles/fixtures";
+import { stylePrompt } from "$lib/styles/api";
 import ChatPane from "./ChatPane.svelte";
+
+const installStyle = vi.fn(async (_id: string): Promise<string[]> => ["styles/comic.ts"]);
+vi.mock("$lib/styles/api", async (orig) => ({
+  ...(await orig<typeof import("$lib/styles/api")>()),
+  listStyles: vi.fn(async () => STYLE_FIXTURE),
+  installStyle: (id: string) => installStyle(id),
+}));
 
 const selection: Selection = { composition: "long.ts", sceneId: "intro", sceneFile: "scenes/intro.ts", path: "intro/title", startFrame: 6, endFrame: 24 };
 
@@ -363,5 +372,27 @@ describe("ChatPane", () => {
     expect(sentPrompt).toContain("video({ src: \"assets/video/intro-clip.mp4\" })");
     // Verify NO binary images/videos payload was passed
     expect(sentImages).toBeUndefined();
+  });
+
+  it("installs a style from the Style menu and fills the restyle prompt", async () => {
+    installStyle.mockClear();
+    const { screen, emit } = await setup(selection);
+    emit(ready);
+    await screen.getByRole("button", { name: "Style" }).click();
+    await screen.getByRole("menuitem", { name: "Comic Art" }).click();
+    expect(installStyle).toHaveBeenCalledWith("comic");
+    await expect.element(screen.getByPlaceholder(/Ask the agent/)).toHaveValue(stylePrompt("Comic Art", "comic", selectionLabel(selection)));
+  });
+
+  it("shows an install error and leaves the composer alone", async () => {
+    installStyle.mockRejectedValueOnce("Unknown style: comic");
+    const { screen, emit } = await setup(selection);
+    emit(ready);
+    const box = screen.getByPlaceholder(/Ask the agent/);
+    await box.fill("draft");
+    await screen.getByRole("button", { name: "Style" }).click();
+    await screen.getByRole("menuitem", { name: "Comic Art" }).click();
+    await expect.element(screen.getByText(/Unknown style: comic/)).toBeVisible();
+    await expect.element(box).toHaveValue("draft");
   });
 });
