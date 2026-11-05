@@ -3,7 +3,7 @@ import { composition, scene } from "../../src/composition";
 import { evaluateFrame } from "../../src/evaluate";
 import { rect } from "../../src/graph/kinds";
 import { createRenderer, type Renderer } from "../../src/gpu/renderer";
-import type { RenderItem, RenderList } from "../../src/renderlist";
+import type { Filters, RenderItem, RenderList } from "../../src/renderlist";
 
 const SIZE = 256;
 const I: [number, number, number, number, number, number] = [1, 0, 0, 1, 0, 0];
@@ -226,5 +226,125 @@ describe("text cache", () => {
     };
     expect(litIn(0, 0)).toBe(true);
     expect(litIn((599 % 30) * 8, Math.floor(599 / 30) * 12)).toBe(true);
+  });
+});
+
+const NO_FILTERS: Filters = { pixelate: 0, posterize: 0, halftone: 0, outline: 0, outlineColor: "#111111", chalk: 0, glow: 0, glowIntensity: 1 };
+const filtered = (items: RenderItem[], f: Partial<Filters>, opacity = 1): RenderItem => ({
+  kind: "layer", path: "fl", items, opacity, blur: 0, filters: { ...NO_FILTERS, ...f },
+});
+const hex = (v: number) => Math.round(v).toString(16).padStart(2, "0");
+/** vertical stripes `w` wide, red ramping left to right across `width` */
+const gradient = (width = SIZE, w = 4): RenderItem[] =>
+  Array.from({ length: width / w }, (_, i) =>
+    rectItem({ path: `g${i}`, matrix: at(i * w, 0), width: w, height: width, fill: `#${hex((i * w * 255) / width)}4020` }),
+  );
+const diff = (a: number[], b: number[]) => Math.max(...a.map((v, i) => Math.abs(v - b[i])));
+
+describe("filters", () => {
+  it("pixelate makes uniform cells", async () => {
+    const r = await make();
+    r.render(list([filtered(gradient(), { pixelate: 8 })]), new Map());
+    const p = await r.readPixels();
+    for (let cx = 0; cx < SIZE; cx += 8) {
+      const first = px(p, cx, 16);
+      for (let dx = 0; dx < 8; dx++) for (let dy = 0; dy < 8; dy++) expect(diff(px(p, cx + dx, 16 + dy), first)).toBeLessThanOrEqual(1);
+    }
+    expect(diff(px(p, 0, 16), px(p, 248, 16))).toBeGreaterThan(100);
+  });
+
+  it("posterize limits the levels", async () => {
+    const r = await make();
+    r.render(list([filtered(gradient(), { posterize: 4 })]), new Map());
+    const p = await r.readPixels();
+    const reds = new Set(Array.from({ length: SIZE }, (_, x) => px(p, x, 100)[0]));
+    expect(reds.size).toBeLessThanOrEqual(4);
+    expect(reds.size).toBeGreaterThanOrEqual(3);
+  });
+
+  it("halftone draws dots that are darker in the middle of each cell", async () => {
+    const r = await make();
+    r.render(list([filtered([rectItem({ width: SIZE, height: SIZE, fill: "#808080" })], { halftone: 8 })]), new Map());
+    const p = await r.readPixels();
+    for (const [cx, cy] of [[64, 64], [128, 32], [200, 200]]) {
+      expect(lum(px(p, cx + 4, cy + 4))).toBeLessThan(lum(px(p, cx, cy)) - 20);
+    }
+  });
+
+  it("outline draws ink just outside the shape", async () => {
+    const r = await make();
+    const box = rectItem({ matrix: at(118, 118), width: 20, height: 20, fill: "#ffffff" });
+    r.render(list([filtered([box], { outline: 2, outlineColor: "#00ff00" })]), new Map());
+    const p = await r.readPixels();
+    const edge = px(p, 117, 128);
+    expect(edge[1]).toBeGreaterThan(150);
+    expect(edge[0]).toBeLessThan(80);
+    expect(lum(px(p, 128, 128))).toBeGreaterThan(240);
+    expect(px(p, 100, 128)).toEqual([0, 0, 0, 255]);
+  });
+
+  it("chalk erodes the shape the same way every frame", async () => {
+    const r = await make();
+    const frame = list([filtered([rectItem({ matrix: at(78, 78), width: 100, height: 100, fill: "#ffffff" })], { chalk: 0.8 })]);
+    r.render(frame, new Map());
+    const a = await r.readPixels();
+    r.render(frame, new Map());
+    const b = await r.readPixels();
+    expect([...a]).toEqual([...b]);
+    let sum = 0;
+    for (let y = 80; y < 176; y++) for (let x = 80; x < 176; x++) sum += lum(px(a, x, y));
+    const mean = sum / (96 * 96) / 255;
+    expect(mean).toBeGreaterThan(0.3);
+    expect(mean).toBeLessThan(0.9);
+  });
+
+  it("glow spreads light around the shape", async () => {
+    const r = await make();
+    const dot = rectItem({ matrix: at(123, 123), width: 10, height: 10, fill: "#ffffff" });
+    r.render(list([filtered([dot], { glow: 8 })]), new Map());
+    expect(lum(px(await r.readPixels(), 117, 128))).toBeGreaterThan(13);
+    r.render(list([{ kind: "layer", path: "l", items: [dot], opacity: 1, blur: 0 }]), new Map());
+    expect(lum(px(await r.readPixels(), 117, 128))).toBe(0);
+  });
+
+  it("filter sizes are composition px, scaled with the canvas", async () => {
+    const r = await make();
+    // alternating red / blue every 2 composition px = every device px at half scale
+    const stripes = Array.from({ length: SIZE }, (_, i) =>
+      rectItem({ path: `s${i}`, matrix: at(i * 2, 0), width: 2, height: SIZE * 2, fill: i % 2 ? "#0000ff" : "#ff0000" }),
+    );
+    // 6 composition px = 3 device px; cell centres land on alternating stripes
+    const half: RenderList = { width: SIZE * 2, height: SIZE * 2, background: "#000000", items: [filtered(stripes, { pixelate: 6 })], assets: [] };
+    r.render(half, new Map());
+    const p = await r.readPixels();
+    for (let cx = 0; cx + 3 <= SIZE; cx += 3) {
+      const first = px(p, cx, 16);
+      for (let dx = 0; dx < 3; dx++) expect(diff(px(p, cx + dx, 16), first)).toBeLessThanOrEqual(1);
+    }
+    expect(diff(px(p, 0, 16), px(p, 3, 16))).toBeGreaterThan(100);
+  });
+
+  it("combines with clip and opacity", async () => {
+    const r = await make();
+    const layer = { ...filtered(gradient(), { pixelate: 8 }, 0.5), clip: { matrix: at(64, 64), width: 128, height: 128, radius: 0 } } as RenderItem;
+    r.render(list([layer]), new Map());
+    const p = await r.readPixels();
+    expect(px(p, 32, 100)).toEqual([0, 0, 0, 255]);
+    const first = px(p, 128, 128);
+    for (let d = 0; d < 8; d++) expect(diff(px(p, 128 + d, 128), first)).toBeLessThanOrEqual(1);
+    expect(first[0]).toBeLessThan(80); // half of ~128 red
+    expect(first[0]).toBeGreaterThan(48);
+  });
+
+  it("keeps transparent pixels empty and colour hue on premultiplied edges", async () => {
+    const r = await make();
+    const red = rectItem({ matrix: at(50, 50), width: 100, height: 100, fill: "#ff0000", opacity: 0.5 });
+    r.render(list([filtered([red], { posterize: 4, pixelate: 3, halftone: 6 })]), new Map());
+    const p = await r.readPixels();
+    expect(px(p, 10, 10)).toEqual([0, 0, 0, 255]);
+    const inside = px(p, 100, 100);
+    expect(inside[1]).toBeLessThanOrEqual(2);
+    expect(inside[2]).toBeLessThanOrEqual(2);
+    expect(inside[0]).toBeGreaterThan(20);
   });
 });
