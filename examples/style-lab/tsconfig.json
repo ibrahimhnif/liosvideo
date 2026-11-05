@@ -13,6 +13,9 @@
     "paths": {
       "liosvideo": [
         "../../packages/runtime/src/index.ts"
+      ],
+      "three": [
+        "../../packages/runtime/node_modules/@types/three"
       ]
     }
   },

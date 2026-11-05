@@ -4,6 +4,8 @@ import { describe, expect, it } from "vitest";
 import { composition, type SceneDef } from "../src/composition";
 import { buildManifest } from "../src/manifest";
 import { STYLES } from "../../../examples/style-lab/styles/catalog";
+import showcase from "../../../examples/style-lab/showcase";
+import long from "../../../examples/style-lab/long";
 
 const LAB = join(__dirname, "../../../examples/style-lab");
 const styleMods = import.meta.glob("../../../examples/style-lab/styles/*.ts", { eager: true }) as Record<string, Record<string, any>>;
@@ -12,7 +14,6 @@ const styleOf = (id: string) => styleMods[`../../../examples/style-lab/styles/${
 const sceneOf = (id: string) => sceneMods[`../../../examples/style-lab/scenes/${id}.ts`]?.default;
 
 const IDS = ["pixel-art", "chalkboard", "glow-sketch", "ps2-lowpoly", "comic", "flat-vector", "minimal-mono", "cgi-motion", "brick", "explainer-3d"];
-const flat = STYLES.filter((s) => !s.three);
 
 function countNodes(tree: { children: any[] }): number {
   return 1 + tree.children.reduce((n, c) => n + countNodes(c), 0);
@@ -30,13 +31,13 @@ describe("style lab", () => {
   });
 
   it("every catalogued style has a module, a demo scene and a doc", () => {
-    for (const s of flat) {
+    for (const s of STYLES) {
       for (const f of [`styles/${s.id}.ts`, `scenes/${s.id}.ts`, `docs/${s.id}.md`]) expect(existsSync(join(LAB, f)), f).toBe(true);
     }
   });
 
   it("demo scenes build deterministically at 16:9 and 9:16", () => {
-    for (const s of flat) {
+    for (const s of STYLES) {
       const scene = sceneOf(s.id);
       expect(scene?.id, s.id).toBe(s.id);
       for (const [w, h] of [[1920, 1080], [1080, 1920]]) {
@@ -77,11 +78,24 @@ describe("style lab", () => {
   });
 
   it("every style module exports theme and look", () => {
-    for (const s of flat) {
+    for (const s of STYLES) {
       expect(styleOf(s.id)?.theme?.colors, s.id).toBeTypeOf("object");
       expect(styleOf(s.id)?.look, s.id).toBeTypeOf("object");
     }
   });
 
-  it.todo("3D styles (ps2-lowpoly, cgi-motion, brick, explainer-3d) — Task 5");
+  it("3D styles use three()", () => {
+    const kinds = (n: { kind: string; children: any[] }): string[] => [n.kind, ...n.children.flatMap(kinds)];
+    for (const s of STYLES.filter((x) => x.three)) {
+      expect(kinds(manifest(sceneOf(s.id), 1080, 1920).scenes[0].tree), s.id).toContain("three");
+    }
+  });
+
+  it("the showcase lists every style once", () => {
+    const ids = ["title", ...STYLES.map((s) => s.id)];
+    expect(buildManifest(showcase).scenes.map((s) => s.id)).toEqual(ids);
+    expect([showcase.width, showcase.height, showcase.fps]).toEqual([1080, 1920, 30]);
+    expect(buildManifest(long).scenes.map((s) => s.id)).toEqual(ids);
+    expect([long.width, long.height]).toEqual([1920, 1080]);
+  });
 });
