@@ -6,6 +6,7 @@ import filterSrc from "./shaders/filter.wgsl?raw";
 import commonSrc from "./shaders/common.wgsl?raw";
 import compositeSrc from "./shaders/composite.wgsl?raw";
 import quadSrc from "./shaders/quad.wgsl?raw";
+import { PathRasterizer } from "./path";
 import { TextRasterizer } from "./text";
 
 export { measureText } from "./text";
@@ -185,6 +186,9 @@ export async function createRenderer(
   const text = new TextRasterizer();
   const textTextures = new Map<string, GPUTexture>();
   const textUsed = new Set<string>();
+  const paths = new PathRasterizer();
+  const pathTextures = new Map<string, GPUTexture>();
+  const pathUsed = new Set<string>();
   const imageTextures = new WeakMap<ImageBitmap, GPUTexture>();
   const warned = new Set<string>();
   const shaderPipelines = new Map<string, GPURenderPipeline | null>();
@@ -506,7 +510,7 @@ export async function createRenderer(
     evictText();
   }
 
-  /** After submit: drop text rasters the frame didn't use, once the cache is over its limit. */
+  /** After submit: drop text/path rasters the frame didn't use, once a cache is over its limit. */
   function evictText() {
     if (textTextures.size > TEXT_CACHE_LIMIT) {
       for (const [key, tex] of textTextures) {
@@ -517,6 +521,16 @@ export async function createRenderer(
     }
     if (text.size > TEXT_CACHE_LIMIT) text.retain(textUsed);
     textUsed.clear();
+
+    if (pathTextures.size > TEXT_CACHE_LIMIT) {
+      for (const [key, tex] of pathTextures) {
+        if (pathUsed.has(key)) continue;
+        tex.destroy();
+        pathTextures.delete(key);
+      }
+    }
+    if (paths.size > TEXT_CACHE_LIMIT) paths.retain(pathUsed);
+    pathUsed.clear();
   }
 
   function writeInstance(data: Float32Array, index: number, leaf: Leaf, assets: AssetMap, sx: number, shaderFrames: Map<string, GPUTexture>): GPUTexture {
@@ -537,11 +551,20 @@ export async function createRenderer(
       if (leaf.stroke) stroke = parseColor(leaf.stroke);
       params = [leaf.radius, leaf.strokeWidth, leaf.opacity, MODE_RECT];
     } else if (leaf.kind === "path") {
-      w = leaf.width || 100;
-      h = leaf.height || 100;
-      color = parseColor(leaf.fill);
-      if (leaf.stroke) stroke = parseColor(leaf.stroke);
-      params = [0, leaf.strokeWidth, leaf.opacity, MODE_SOLID];
+      const rounded = Math.round(Math.sqrt(Math.abs(a * d - b * c)) * sx * 100) / 100;
+      const raster = paths.raster(leaf, Math.max(0.01, Number.isFinite(rounded) ? rounded : 0));
+      pathUsed.add(raster.key);
+      let tex = pathTextures.get(raster.key);
+      if (!tex) {
+        tex = uploadSource(raster.canvas);
+        pathTextures.set(raster.key, tex);
+      }
+      texture = tex;
+      w = raster.width;
+      h = raster.height;
+      [e, f] = [e + a * raster.x + c * raster.y, f + b * raster.x + d * raster.y];
+      color = [1, 1, 1, 1];
+      params = [0, 0, leaf.opacity, MODE_TEXTURE];
     } else if (leaf.kind === "shader") {
       w = leaf.width || 100;
       h = leaf.height || 100;
@@ -643,6 +666,7 @@ export async function createRenderer(
     target?.destroy();
     pool.forEach((t) => t.destroy());
     textTextures.forEach((t) => t.destroy());
+    pathTextures.forEach((t) => t.destroy());
     shaderTextures.forEach((entry) => entry.texture.destroy());
     white.destroy();
     context.unconfigure();

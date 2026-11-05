@@ -138,7 +138,7 @@ export default composition({
 
 ### Geometric Primitives & Media
 - `circle({ radius: 50, fill: "#38bdf8" })`: Creates perfect circles for avatars, indicators, or floating particles.
-- `path({ d: "M 0 0 L 100 0 L 50 86 Z", fill: "#f59e0b" })`: Vector SVG paths for triangles, stars, badges, and custom polygons.
+- `path({ d: "M 0 0 L 100 0 L 50 86 Z", fill: "#f59e0b" })`: Vector SVG paths for triangles, stars, badges, and custom polygons. The node sizes itself to the path's bounds; use `fill: ""` with `stroke`/`strokeWidth` for outline-only shapes.
 - `rect({ width, height, radius, fill, stroke })`: Basic rectangles with rounded borders.
 - `image({ src: "assets/images/hero.png", width: 400, height: 300, fit: "contain" })`: External raster or SVG images.
 - `video({ src: "assets/video/clip.mp4", width, height, fit: "cover", loop: true })`: Video footage rendered in real-time.

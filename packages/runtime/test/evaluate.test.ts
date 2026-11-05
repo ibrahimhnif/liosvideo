@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { composition, scene } from "../src/composition";
 import { collectAssets, evaluateFrame } from "../src/evaluate";
-import { group, image, rect } from "../src/graph/kinds";
+import { group, image, path, rect } from "../src/graph/kinds";
 import type { LayerItem, RectItem } from "../src/renderlist";
 
 const comp = (build: Parameters<typeof scene>[2], extra: Parameters<typeof scene>[1] = { duration: 2 }) =>
@@ -17,6 +17,16 @@ describe("evaluateFrame", () => {
     expect(item.kind).toBe("rect");
     expect(item.path).toBe("s/g/rect0");
     expect(item.matrix[4]).toBeCloseTo(55);
+  });
+
+  it("emits the path bounds renderers rasterise into", () => {
+    const c = comp(({ root }) => {
+      root.add(path({ d: "M 0 0 L 100 0 L 50 86 Z", stroke: "#ffffff", strokeWidth: 4 }));
+    });
+    expect(evaluateFrame(c, 0).items[0]).toMatchObject({
+      kind: "path",
+      bounds: { x: -2, y: -2, width: 104, height: 90 },
+    });
   });
 
   it("wraps a blurred group into a layer", () => {

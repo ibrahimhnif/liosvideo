@@ -82,6 +82,54 @@ async fn renders_snapshot_frame_to_png() -> Result<()> {
     Ok(())
 }
 
+/// Same pixel properties as the desktop renderer's path tests (packages/runtime/test/gpu).
+#[tokio::test]
+async fn renders_paths_like_the_preview() -> Result<()> {
+    let dir = std::env::temp_dir().join(format!("liosvideo_path_test_{}", std::process::id()));
+    std::fs::create_dir_all(&dir)?;
+    let composition_code = r##"
+        import { composition, scene, path } from "liosvideo";
+
+        const s = scene("s", { duration: 1.0, background: "#000000" }, ({ root }) => {
+            root.add(path({ name: "tri", x: 4, y: 4, d: "M 0 0 L 56 0 L 28 40 Z", fill: "#ff0000" }));
+            root.add(path({ name: "line", y: 50, d: "M 6 8 L 58 8", fill: "", stroke: "#00ff00", strokeWidth: 6 }));
+        });
+
+        export default composition({ width: 64, height: 64, fps: 30, background: "#000000", scenes: [s] });
+    "##;
+    let entry_file = dir.join("paths.ts");
+    std::fs::write(&entry_file, composition_code)?;
+    let out_png = dir.join("paths.png");
+    render_snapshot(
+        &entry_file,
+        0,
+        &out_png,
+        liosvideo_cli::pipeline::Preset::Native,
+    )
+    .await?;
+    let img = image::open(&out_png)?.to_rgba8();
+
+    // filled triangle: red inside, transparent at the bound-box corners
+    let inside = img.get_pixel(32, 16).0;
+    assert!(
+        inside[0] > 240 && inside[1] < 10,
+        "expected red fill, got {inside:?}"
+    );
+    assert_eq!(img.get_pixel(6, 42).0, [0, 0, 0, 255]);
+    assert_eq!(img.get_pixel(58, 42).0, [0, 0, 0, 255]);
+
+    // stroke-only path: a green line at y = 58 and nothing above it
+    let line = img.get_pixel(32, 58).0;
+    assert!(
+        line[1] > 240 && line[0] < 10,
+        "expected green stroke, got {line:?}"
+    );
+    assert_eq!(img.get_pixel(32, 50).0, [0, 0, 0, 255]);
+
+    let _ = std::fs::remove_dir_all(&dir);
+    Ok(())
+}
+
 /// Same pixel properties as the desktop renderer's filter tests (packages/runtime/test/gpu).
 #[tokio::test]
 async fn renders_filters_like_the_preview() -> Result<()> {

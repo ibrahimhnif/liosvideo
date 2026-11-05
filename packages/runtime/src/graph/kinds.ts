@@ -1,3 +1,4 @@
+import { pathBounds } from "../math/svgpath";
 import { BASE_DEFAULTS, Node, type BaseProps, type NodeInit } from "./node";
 
 export interface RectProps extends BaseProps {
@@ -107,7 +108,12 @@ export interface PathProps extends BaseProps {
 
 export class PathNode extends Node<PathProps> {
   constructor(init: NodeInit<PathProps> & { d: string }) {
-    super("path", { ...BASE_DEFAULTS, d: "", fill: "#ffffff", stroke: "", strokeWidth: 0 }, init);
+    const bounds = pathBounds(init.d, init.stroke ? (init.strokeWidth ?? 0) : 0);
+    super("path", { ...BASE_DEFAULTS, d: "", fill: "#ffffff", stroke: "", strokeWidth: 0 }, {
+      ...init,
+      width: init.width ?? bounds.width,
+      height: init.height ?? bounds.height,
+    });
   }
 }
 

@@ -100,6 +100,95 @@ fn color_of(value: &Value, key: &str) -> Option<[f32; 4]> {
         .and_then(|s| parse_color(s).ok())
 }
 
+/// Transparent margin around a rasterised path, in device pixels (see gpu/path.ts).
+const PATH_PAD_PX: u32 = 1;
+
+fn escape_xml(text: &str) -> String {
+    let mut out = String::with_capacity(text.len());
+    for ch in text.chars() {
+        match ch {
+            '&' => out.push_str("&amp;"),
+            '<' => out.push_str("&lt;"),
+            '>' => out.push_str("&gt;"),
+            '"' => out.push_str("&quot;"),
+            '\'' => out.push_str("&apos;"),
+            _ => out.push(ch),
+        }
+    }
+    out
+}
+
+fn css_color(color: [f32; 4]) -> String {
+    let channel = |v: f32| (v.clamp(0.0, 1.0) * 255.0).round() as u32;
+    format!(
+        "#{:02x}{:02x}{:02x}",
+        channel(color[0]),
+        channel(color[1]),
+        channel(color[2])
+    )
+}
+
+/// Rasterises an SVG `d` path into premultiplied RGBA, using the same quad mapping
+/// as the desktop renderer. `origin`/`quad` are in the path's local units.
+#[allow(clippy::too_many_arguments)]
+fn rasterize_path(
+    d: &str,
+    fill: Option<[f32; 4]>,
+    stroke: Option<[f32; 4]>,
+    stroke_width: f32,
+    origin_x: f32,
+    origin_y: f32,
+    quad_width: f32,
+    quad_height: f32,
+    width_px: u32,
+    height_px: u32,
+) -> Option<RasterImage> {
+    let mut paint = String::new();
+    match fill {
+        Some(color) if color[3] > 0.0 && !d.is_empty() => {
+            paint.push_str(&format!(
+                r#" fill="{}" fill-opacity="{}""#,
+                css_color(color),
+                color[3]
+            ));
+        }
+        _ => paint.push_str(r#" fill="none""#),
+    }
+    if let Some(color) = stroke {
+        if color[3] > 0.0 && stroke_width > 0.0 && !d.is_empty() {
+            paint.push_str(&format!(
+                r#" stroke="{}" stroke-opacity="{}" stroke-width="{}""#,
+                css_color(color),
+                color[3],
+                stroke_width
+            ));
+        }
+    }
+
+    let svg = format!(
+        r#"<svg xmlns="http://www.w3.org/2000/svg" width="{width_px}" height="{height_px}" viewBox="{} {} {} {}"><path d="{}"{paint}/></svg>"#,
+        origin_x,
+        origin_y,
+        quad_width,
+        quad_height,
+        escape_xml(d)
+    );
+
+    let options = resvg::usvg::Options::default();
+    let tree = resvg::usvg::Tree::from_str(&svg, &options).ok()?;
+    let mut pixmap = resvg::tiny_skia::Pixmap::new(width_px.max(1), height_px.max(1))?;
+    resvg::render(
+        &tree,
+        resvg::tiny_skia::Transform::default(),
+        &mut pixmap.as_mut(),
+    );
+    Some(RasterImage {
+        width: pixmap.width(),
+        height: pixmap.height(),
+        data: pixmap.take(),
+    })
+}
+
 pub struct FrameData {
     instances: wgpu::Buffer,
     globals: wgpu::BindGroup,
@@ -117,6 +206,7 @@ pub struct Renderer {
     white: wgpu::Texture,
     white_bind: wgpu::BindGroup,
     text_textures: HashMap<String, (wgpu::Texture, wgpu::BindGroup)>,
+    path_textures: HashMap<String, (wgpu::Texture, wgpu::BindGroup)>,
     image_textures: HashMap<String, (wgpu::Texture, wgpu::BindGroup)>,
     video_textures: HashMap<String, VideoTexture>,
     text: TextEngine,
@@ -300,6 +390,7 @@ impl Renderer {
             white,
             white_bind,
             text_textures: HashMap::new(),
+            path_textures: HashMap::new(),
             image_textures: HashMap::new(),
             video_textures: HashMap::new(),
             text: TextEngine::new(),
@@ -524,13 +615,61 @@ impl Renderer {
                 ];
             }
             "path" => {
-                width = non_zero(f32_of(leaf, "width", 0.0), 100.0);
-                height = non_zero(f32_of(leaf, "height", 0.0), 100.0);
-                color = color_of(leaf, "fill").unwrap_or([0.0, 0.0, 0.0, 0.0]);
-                if let Some(s) = color_of(leaf, "stroke") {
-                    stroke = s;
+                // Mirrors PathRasterizer in packages/runtime/src/gpu/path.ts: the quad covers the
+                // path's local bounds plus a one-pixel transparent margin at `scale` device px/unit.
+                let bounds = leaf.get("bounds").unwrap_or(&Value::Null);
+                let bx = f32_of(bounds, "x", 0.0);
+                let by = f32_of(bounds, "y", 0.0);
+                let bw = f32_of(bounds, "width", 0.0);
+                let bh = f32_of(bounds, "height", 0.0);
+                let scale =
+                    (((a * d - b * c).abs().sqrt() * sx * 100.0).round() / 100.0).max(0.01);
+
+                let width_px = ((bw * scale).ceil() as u32)
+                    .saturating_add(PATH_PAD_PX * 2)
+                    .clamp(1, 8192);
+                let height_px = ((bh * scale).ceil() as u32)
+                    .saturating_add(PATH_PAD_PX * 2)
+                    .clamp(1, 8192);
+                let origin_x = bx - PATH_PAD_PX as f32 / scale;
+                let origin_y = by - PATH_PAD_PX as f32 / scale;
+                let quad_width = width_px as f32 / scale;
+                let quad_height = height_px as f32 / scale;
+
+                let d_str = str_of(leaf, "d", "");
+                let fill = color_of(leaf, "fill");
+                let stroke_color = color_of(leaf, "stroke");
+                let stroke_width = f32_of(leaf, "strokeWidth", 0.0);
+                let key = format!(
+                    "path:{}|{:?}|{:?}|{}|{}|{}|{}|{}|{}",
+                    d_str, fill, stroke_color, stroke_width, bx, by, bw, bh, scale
+                );
+
+                if let Some(image) = rasterize_path(
+                    d_str,
+                    fill,
+                    stroke_color,
+                    stroke_width,
+                    origin_x,
+                    origin_y,
+                    quad_width,
+                    quad_height,
+                    width_px,
+                    height_px,
+                ) {
+                    bind = self.path_texture(device, queue, &key, &image);
+                    e += a * origin_x + c * origin_y;
+                    f += b * origin_x + d * origin_y;
+                    width = quad_width;
+                    height = quad_height;
+                    color = [1.0, 1.0, 1.0, 1.0];
+                    params = [0.0, 0.0, opacity, MODE_TEXTURE];
+                } else {
+                    width = quad_width;
+                    height = quad_height;
+                    color = [0.0, 0.0, 0.0, 0.0];
+                    params = [0.0, 0.0, opacity, MODE_SOLID];
                 }
-                params = [0.0, f32_of(leaf, "strokeWidth", 0.0), opacity, MODE_SOLID];
             }
             "shader" => {
                 width = non_zero(f32_of(leaf, "width", 0.0), 100.0);
@@ -705,6 +844,23 @@ impl Renderer {
         let texture = upload_raw_texture(device, queue, image.width, image.height, &image.data);
         let bind = make_texture_bind(device, &self.texture_layout, &self.sampler, &texture);
         self.text_textures
+            .insert(key.to_string(), (texture, bind.clone()));
+        bind
+    }
+
+    fn path_texture(
+        &mut self,
+        device: &wgpu::Device,
+        queue: &wgpu::Queue,
+        key: &str,
+        image: &RasterImage,
+    ) -> wgpu::BindGroup {
+        if let Some((_, bind)) = self.path_textures.get(key) {
+            return bind.clone();
+        }
+        let texture = upload_raw_texture(device, queue, image.width, image.height, &image.data);
+        let bind = make_texture_bind(device, &self.texture_layout, &self.sampler, &texture);
+        self.path_textures
             .insert(key.to_string(), (texture, bind.clone()));
         bind
     }

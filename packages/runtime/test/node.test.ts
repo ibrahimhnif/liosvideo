@@ -54,11 +54,13 @@ describe("Node props", () => {
     });
   });
 
-  it("creates vector path node", () => {
+  it("creates vector path node sized from its path", () => {
     const p = path({ d: "M 0 0 L 100 0 L 50 100 Z", fill: "#00ff00" });
     expect(p.propsAt(0)).toMatchObject({
       d: "M 0 0 L 100 0 L 50 100 Z",
       fill: "#00ff00",
+      width: 100,
+      height: 100,
     });
   });
 

@@ -125,6 +125,35 @@ describe("renderer", () => {
     expect(lit).toBeGreaterThan(50);
   });
 
+  it("rasterises a vector path instead of a solid box", async () => {
+    const r = await make();
+    const triangle = {
+      kind: "path" as const, path: "p", matrix: at(50, 50),
+      d: "M 0 0 L 100 0 L 50 86 Z", bounds: { x: 0, y: 0, width: 100, height: 86 },
+      width: 100, height: 86, fill: "#ff0000", strokeWidth: 0, opacity: 1,
+    };
+    r.render(list([triangle]), new Map());
+    const pixels = await r.readPixels();
+    expect(px(pixels, 100, 60)[0]).toBeGreaterThan(240);
+    expect(px(pixels, 100, 120)[0]).toBeGreaterThan(240);
+    // the corners of the bounding box are outside the triangle
+    expect(lum(px(pixels, 52, 132))).toBeLessThan(10);
+    expect(lum(px(pixels, 148, 132))).toBeLessThan(10);
+  });
+
+  it("strokes a path without filling it", async () => {
+    const r = await make();
+    const line = {
+      kind: "path" as const, path: "p", matrix: at(20, 20),
+      d: "M 0 50 L 100 50", bounds: { x: -5, y: 45, width: 110, height: 10 },
+      width: 100, height: 10, fill: "", stroke: "#00ff00", strokeWidth: 10, opacity: 1,
+    };
+    r.render(list([line]), new Map());
+    const pixels = await r.readPixels();
+    expect(px(pixels, 70, 70)[1]).toBeGreaterThan(240);
+    expect(lum(px(pixels, 70, 40))).toBeLessThan(10);
+  });
+
   it("draws an image asset", async () => {
     const r = await make();
     const c = new OffscreenCanvas(4, 4);

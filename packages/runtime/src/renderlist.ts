@@ -1,5 +1,6 @@
 import type { ImageFit } from "./graph/kinds";
 import type { Affine } from "./math/affine";
+import type { PathBounds } from "./math/svgpath";
 
 export type RectItem = {
   kind: "rect";
@@ -68,6 +69,8 @@ export type PathItem = {
   path: string;
   matrix: Affine;
   d: string;
+  /** Tight local-space box of `d` (stroke included) that the rasterised quad covers. */
+  bounds: PathBounds;
   width: number;
   height: number;
   fill: string;

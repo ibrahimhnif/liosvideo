@@ -3,6 +3,7 @@ import { clampFrame, instantiateScene, layoutComposition, type Composition } fro
 import { CircleNode, ImageNode, PathNode, RectNode, ShaderNode, TextNode, ThreeNode, VideoNode } from "./graph/kinds";
 import type { BaseProps, Node } from "./graph/node";
 import { multiply, type Affine } from "./math/affine";
+import { pathBounds } from "./math/svgpath";
 import type { Filters, RenderItem, RenderList } from "./renderlist";
 
 /** The node's filters, or undefined when none is on. */
@@ -32,7 +33,8 @@ function drawable(node: Node<any>, t: number, matrix: Affine, opacity: number, d
   if (node instanceof PathNode) {
     const p = node.propsAt(t);
     return {
-      kind: "path", path, matrix, d: p.d, width: p.width, height: p.height,
+      kind: "path", path, matrix, d: p.d, bounds: pathBounds(p.d, p.stroke ? p.strokeWidth : 0),
+      width: p.width, height: p.height,
       fill: p.fill, stroke: p.stroke || undefined, strokeWidth: p.strokeWidth, opacity,
     };
   }
