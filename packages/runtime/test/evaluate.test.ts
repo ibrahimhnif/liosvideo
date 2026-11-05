@@ -28,6 +28,42 @@ describe("evaluateFrame", () => {
     expect(layer.items.map((i) => i.path)).toEqual(["s/g/rect0"]);
   });
 
+  it("wraps a filtered group into a layer with its filters", () => {
+    const c = comp(({ root }) => {
+      root.add(group({ name: "g", pixelate: 6, outline: 2 })).add(rect({ width: 10, height: 10 }));
+    });
+    const [layer] = evaluateFrame(c, 0).items as LayerItem[];
+    expect(layer).toMatchObject({
+      kind: "layer", path: "s/g",
+      filters: { pixelate: 6, posterize: 0, halftone: 0, outline: 2, outlineColor: "#111111", chalk: 0, glow: 0, glowIntensity: 1 },
+    });
+  });
+
+  it("a filter tweened to zero stops isolating the node", () => {
+    const c = comp(({ root }) => {
+      root.add(group({ name: "g", pixelate: 40 })).to({ pixelate: 0 }, { at: 0, duration: 1, ease: "linear" }).add(rect({ width: 10, height: 10 }));
+    });
+    const [mid] = evaluateFrame(c, 15).items as LayerItem[];
+    expect(mid).toMatchObject({ kind: "layer", filters: { pixelate: 20 } });
+    expect(evaluateFrame(c, 30).items).toMatchObject([{ kind: "rect", path: "s/g/rect0" }]);
+  });
+
+  it("nested filtered groups make nested layers", () => {
+    const c = comp(({ root }) => {
+      root.add(group({ name: "outer", posterize: 4 })).add(group({ name: "inner", glow: 8 })).add(rect({ width: 1, height: 1 }));
+    });
+    const [outer] = evaluateFrame(c, 0).items as LayerItem[];
+    expect(outer).toMatchObject({ kind: "layer", path: "s/outer", filters: { posterize: 4, glow: 0 } });
+    expect(outer.items[0]).toMatchObject({ kind: "layer", path: "s/outer/inner", filters: { posterize: 0, glow: 8 } });
+  });
+
+  it("an unfiltered layer carries no filters", () => {
+    const c = comp(({ root }) => {
+      root.add(group({ name: "g", blur: 2 })).add(rect({ width: 1, height: 1 }));
+    });
+    expect((evaluateFrame(c, 0).items[0] as LayerItem).filters).toBeUndefined();
+  });
+
   it("keeps a translucent leaf as a plain item", () => {
     const c = comp(({ root }) => {
       root.add(rect({ width: 10, height: 10, opacity: 0.5 }));

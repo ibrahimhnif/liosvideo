@@ -1,9 +1,16 @@
 import { applyTransition } from "./anim/transition";
 import { clampFrame, instantiateScene, layoutComposition, type Composition } from "./composition";
 import { CircleNode, ImageNode, PathNode, RectNode, ShaderNode, TextNode, ThreeNode, VideoNode } from "./graph/kinds";
-import type { Node } from "./graph/node";
+import type { BaseProps, Node } from "./graph/node";
 import { multiply, type Affine } from "./math/affine";
-import type { RenderItem, RenderList } from "./renderlist";
+import type { Filters, RenderItem, RenderList } from "./renderlist";
+
+/** The node's filters, or undefined when none is on. */
+export function activeFilters(p: BaseProps): Filters | undefined {
+  if (!(p.pixelate > 0 || p.posterize > 0 || p.halftone > 0 || p.outline > 0 || p.chalk > 0 || p.glow > 0)) return undefined;
+  const { pixelate, posterize, halftone, outline, outlineColor, chalk, glow, glowIntensity } = p;
+  return { pixelate, posterize, halftone, outline, outlineColor, chalk, glow, glowIntensity };
+}
 
 /** The node's own drawable (groups have none), with opacity already multiplied in. */
 function drawable(node: Node<any>, t: number, matrix: Affine, opacity: number, duration: number): RenderItem | undefined {
@@ -72,7 +79,8 @@ function emit(node: Node<any>, t: number, duration: number, parent: Affine, inhe
   const opacity = inherited * p.opacity;
   if (opacity <= 0) return;
   const matrix = multiply(parent, node.localMatrix(t));
-  const isolated = p.blur > 0 || p.clip || (p.opacity < 1 && node.children.length > 0);
+  const filters = activeFilters(p);
+  const isolated = p.blur > 0 || p.clip || filters !== undefined || (p.opacity < 1 && node.children.length > 0);
   const childOpacity = isolated ? 1 : opacity;
   const target: RenderItem[] = isolated ? [] : out;
 
@@ -87,6 +95,7 @@ function emit(node: Node<any>, t: number, duration: number, parent: Affine, inhe
       items: target,
       opacity,
       blur: p.blur,
+      ...(filters ? { filters } : {}),
       ...(p.clip ? { clip: { matrix, width: p.width, height: p.height, radius: p.radius } } : {}),
     });
   }
