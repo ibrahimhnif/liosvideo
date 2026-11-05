@@ -158,17 +158,17 @@ pub fn validate_scene_content(
                 }
             }
 
-            // Check if import is from external npm package (not relative and not liosvideo)
+            // Check if import is from external npm package (not relative, liosvideo or three)
             if let Some(from_pos) = line.find("from") {
                 let spec = line[from_pos + 4..].trim().trim_matches(';').trim();
                 if (spec.starts_with('"') && spec.ends_with('"'))
                     || (spec.starts_with('\'') && spec.ends_with('\''))
                 {
                     let pkg = &spec[1..spec.len() - 1];
-                    if !pkg.starts_with('.') && !pkg.starts_with('/') && pkg != "liosvideo" {
+                    if !pkg.starts_with('.') && !pkg.starts_with('/') && pkg != "liosvideo" && pkg != "three" {
                         issues.push(SceneValidationIssue {
                             severity: "error".to_string(),
-                            message: format!("Illegal external package import \"{pkg}\". Scenes may only import from 'liosvideo' or relative project files."),
+                            message: format!("Illegal external package import \"{pkg}\". Scenes may only import from 'liosvideo', 'three' or relative project files."),
                             line: Some(line_num),
                         });
                     }
@@ -359,6 +359,17 @@ export default scene("intro", { duration: 5.0 }, () => {});
             .issues
             .iter()
             .any(|i| i.message.contains("Illegal external package import")));
+    }
+
+    #[test]
+    fn allows_three_import() {
+        let code = r##"
+import * as THREE from "three";
+import { scene, three } from "liosvideo";
+export default scene("intro", { duration: 5.0 }, () => {});
+"##;
+        let res = validate_scene_content(code, "scenes/intro.ts", None);
+        assert!(!res.issues.iter().any(|i| i.message.contains("Illegal")), "{:?}", res.issues);
     }
 
     #[test]
