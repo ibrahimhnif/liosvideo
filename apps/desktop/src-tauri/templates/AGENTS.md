@@ -428,7 +428,7 @@ A project can carry one of ten ready-made animation styles. If `.liosvideo/proje
 - Keep text that must stay crisp outside groups that carry filter props (`pixelate`, `posterize`, `halftone`, `outline`, `chalk`, `glow`).
 - Never overwrite `styles/<style>.ts` wholesale; extend it.
 
-Styles: `pixel-art`, `chalkboard`, `glow-sketch`, `ps2-lowpoly`, `comic`, `flat-vector`, `minimal-mono`, `cgi-motion`, `brick`, `explainer-3d`. A new one can be installed from the app's chat **Style** menu or with `liosvideo project new <name> --style <id>`.
+Styles: `pixel-art`, `chalkboard`, `glow-sketch`, `ps2-lowpoly`, `comic`, `flat-vector`, `minimal-mono`, `cgi-motion`, `brick`, `explainer-3d`, `archive-doc`, `teal-tutorial`, `product-studio`. A new one can be installed from the app's chat **Style** menu or with `liosvideo project new <name> --style <id>`.
 
 ---
 

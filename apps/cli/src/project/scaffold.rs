@@ -135,8 +135,8 @@ fn template_files(id: &str) -> Vec<(&'static str, &'static str)> {
     files
 }
 
-/// The ten animation styles from `examples/style-lab`, in catalog order: (id, title).
-pub const STYLES: [(&str, &str); 10] = [
+/// The animation styles from `examples/style-lab`, in catalog order: (id, title).
+pub const STYLES: [(&str, &str); 13] = [
     ("pixel-art", "Pixel Art"),
     ("chalkboard", "Chalkboard"),
     ("glow-sketch", "Glow Sketch"),
@@ -147,6 +147,9 @@ pub const STYLES: [(&str, &str); 10] = [
     ("cgi-motion", "CGI Motion"),
     ("brick", "Brick Build (LEGO-like)"),
     ("explainer-3d", "3D Explainer (ZackD Films style)"),
+    ("archive-doc", "Archive Documentary"),
+    ("teal-tutorial", "Teal Tutorial"),
+    ("product-studio", "Product Studio (3D)"),
 ];
 
 /// A style's files, embedded from `examples/style-lab`: [module, doc, demo scene].
@@ -160,7 +163,7 @@ macro_rules! style_kit {
     };
 }
 
-const STYLE_KITS: [[(&str, &str); 3]; 10] = [
+const STYLE_KITS: [[(&str, &str); 3]; 13] = [
     style_kit!("pixel-art"),
     style_kit!("chalkboard"),
     style_kit!("glow-sketch"),
@@ -171,6 +174,9 @@ const STYLE_KITS: [[(&str, &str); 3]; 10] = [
     style_kit!("cgi-motion"),
     style_kit!("brick"),
     style_kit!("explainer-3d"),
+    style_kit!("archive-doc"),
+    style_kit!("teal-tutorial"),
+    style_kit!("product-studio"),
 ];
 
 /// `None` or blank means no style; an unknown id is an error.
@@ -478,7 +484,7 @@ mod tests {
 
     #[test]
     fn validates_styles() {
-        assert_eq!(STYLES.len(), 10);
+        assert_eq!(STYLES.len(), 13);
         for (id, _) in STYLES {
             assert_eq!(validate_style_id(Some(id)).unwrap(), Some(id));
         }

@@ -11,7 +11,7 @@ The kits live in `examples/style-lab/`. Each style is three files:
 - `scenes/<id>.ts` — a 4 s demo laid out for 16:9 and 9:16. Start from it.
 - `docs/<id>.md` — look, palette, motion, helpers, do / don't. **Read it before writing scenes in that style.**
 
-## The ten styles
+## The styles
 
 | id | Title | Use it when |
 | :- | :- | :- |
@@ -25,6 +25,9 @@ The kits live in `examples/style-lab/`. Each style is three files:
 | `cgi-motion` | CGI Motion | product reveals, launches, premium brand moments (3D) — [doc](../../../examples/style-lab/docs/cgi-motion.md) |
 | `brick` | Brick Build (LEGO-like) | building, growth, step-by-step assembly, kids (3D) — [doc](../../../examples/style-lab/docs/brick.md) |
 | `explainer-3d` | 3D Explainer (ZackD Films style) | "what happens when…" shorts, science and body explainers, 9:16 (3D) — [doc](../../../examples/style-lab/docs/explainer-3d.md) |
+| `archive-doc` | Archive Documentary | history and news explainers with archive photos, captions and source credits — [doc](../../../examples/style-lab/docs/archive-doc.md) |
+| `teal-tutorial` | Teal Tutorial | software how-tos: steps, code, UI mockups — [doc](../../../examples/style-lab/docs/teal-tutorial.md) |
+| `product-studio` | Product Studio (3D) | product reviews and launches: studio sweep, orbit camera, part callouts (3D) — [doc](../../../examples/style-lab/docs/product-studio.md) |
 
 `styles/catalog.ts` exports this list as `STYLES` (`id`, `title`, `inspiration`, `description`, `ratio`, `three`).
 

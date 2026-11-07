@@ -1,4 +1,4 @@
-/** The ten animation styles, in the order the picker and the showcase list them. */
+/** The animation styles, in the order the picker and the showcase list them. */
 export type StyleInfo = {
   id: string;
   title: string;
@@ -21,4 +21,7 @@ export const STYLES: StyleInfo[] = [
   { id: "cgi-motion", title: "CGI Motion", inspiration: "product CGI", description: "A glossy soft-lit 3D object on a slow orbiting camera.", ratio: "both", three: true },
   { id: "brick", title: "Brick Build (LEGO-like)", inspiration: "LEGO-like toy bricks", description: "Toy bricks with studs that drop in and stack into shapes.", ratio: "both", three: true },
   { id: "explainer-3d", title: "3D Explainer (ZackD Films style)", inspiration: "ZackD Films", description: "Soft 3D close-ups with shallow depth of field and captions.", ratio: "9:16", three: true },
+  { id: "archive-doc", title: "Archive Documentary", inspiration: "history explainers", description: "Dimmed archive photos with grain, serif headlines, karaoke captions and source credits.", ratio: "both", three: false },
+  { id: "teal-tutorial", title: "Teal Tutorial", inspiration: "software how-tos", description: "Numbered steps, code that writes itself and UI mockups on dark teal.", ratio: "both", three: false },
+  { id: "product-studio", title: "Product Studio (3D)", inspiration: "product reviews", description: "A product on a seamless studio sweep, an orbit camera and part callouts.", ratio: "both", three: true },
 ];

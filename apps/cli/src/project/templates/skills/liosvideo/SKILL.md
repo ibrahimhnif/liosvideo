@@ -651,4 +651,4 @@ When `.liosvideo/project.json` has a `"style"`, the project is committed to that
 2. Build every scene from `styles/<style>.ts`: `theme` for colours/fonts/easings, `look` spread on the art's group (filters), helpers for the style's signature shapes and moves.
 3. Restyling an existing scene ("restyle this in the Comic Art style"): keep its content, timing and voice-over sync; replace colours, fonts, shapes and motion with the kit's; keep crisp text outside filtered groups.
 4. Lay out for both 16:9 and 9:16 (`const portrait = height > width`), and verify with `capture_frame` at both ratios.
-5. 3D styles (`ps2-lowpoly`, `cgi-motion`, `brick`, `explainer-3d`) use `three()`; draw all randomness in the scene builder with `random()`, never in `setup`/`update`.
+5. 3D styles (`ps2-lowpoly`, `cgi-motion`, `brick`, `explainer-3d`, `product-studio`) use `three()`; draw all randomness in the scene builder with `random()`, never in `setup`/`update`.

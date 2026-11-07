@@ -1,6 +1,6 @@
 import type { StyleInfo } from "./api";
 
-/** The ten styles as `list_styles` returns them (mirrors STYLES in scaffold.rs). */
+/** The styles as `list_styles` returns them (mirrors STYLES in scaffold.rs). */
 export const STYLE_FIXTURE: StyleInfo[] = [
   { id: "pixel-art", title: "Pixel Art" },
   { id: "chalkboard", title: "Chalkboard" },
@@ -12,4 +12,7 @@ export const STYLE_FIXTURE: StyleInfo[] = [
   { id: "cgi-motion", title: "CGI Motion" },
   { id: "brick", title: "Brick Build (LEGO-like)" },
   { id: "explainer-3d", title: "3D Explainer (ZackD Films style)" },
+  { id: "archive-doc", title: "Archive Documentary" },
+  { id: "teal-tutorial", title: "Teal Tutorial" },
+  { id: "product-studio", title: "Product Studio (3D)" },
 ];

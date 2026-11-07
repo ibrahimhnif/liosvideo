@@ -13,7 +13,7 @@ const sceneMods = import.meta.glob("../../../examples/style-lab/scenes/*.ts", { 
 const styleOf = (id: string) => styleMods[`../../../examples/style-lab/styles/${id}.ts`];
 const sceneOf = (id: string) => sceneMods[`../../../examples/style-lab/scenes/${id}.ts`]?.default;
 
-const IDS = ["pixel-art", "chalkboard", "glow-sketch", "ps2-lowpoly", "comic", "flat-vector", "minimal-mono", "cgi-motion", "brick", "explainer-3d"];
+const IDS = ["pixel-art", "chalkboard", "glow-sketch", "ps2-lowpoly", "comic", "flat-vector", "minimal-mono", "cgi-motion", "brick", "explainer-3d", "archive-doc", "teal-tutorial", "product-studio"];
 
 function countNodes(tree: { children: any[] }): number {
   return 1 + tree.children.reduce((n, c) => n + countNodes(c), 0);
@@ -25,9 +25,9 @@ function manifest(scene: SceneDef, width: number, height: number) {
 }
 
 describe("style lab", () => {
-  it("catalogues the ten styles in spec order", () => {
+  it("catalogues the styles in spec order", () => {
     expect(STYLES.map((s) => s.id)).toEqual(IDS);
-    expect(STYLES.filter((s) => s.three).map((s) => s.id)).toEqual(["ps2-lowpoly", "cgi-motion", "brick", "explainer-3d"]);
+    expect(STYLES.filter((s) => s.three).map((s) => s.id)).toEqual(["ps2-lowpoly", "cgi-motion", "brick", "explainer-3d", "product-studio"]);
   });
 
   it("every catalogued style has a module, a demo scene and a doc", () => {
@@ -62,8 +62,11 @@ describe("style lab", () => {
   it("no nondeterminism", () => {
     for (const dir of ["styles", "scenes"]) {
       for (const f of readdirSync(join(LAB, dir)).filter((n) => n.endsWith(".ts"))) {
-        const src = readFileSync(join(LAB, dir, f), "utf8");
-        expect(src, `${dir}/${f}`).not.toMatch(/Math\.random|Date\.now|\bawait\b|new Promise/);
+        // code only: a demo code string or a keyword list may mention "await"
+        const code = readFileSync(join(LAB, dir, f), "utf8")
+          .replace(/\/\*[\s\S]*?\*\/|\/\/.*$/gm, "")
+          .replace(/"(?:[^"\\\n]|\\.)*"|'(?:[^'\\\n]|\\.)*'|`(?:[^`\\]|\\.)*`/g, '""');
+        expect(code, `${dir}/${f}`).not.toMatch(/Math\.random|Date\.now|\bawait\b|new Promise/);
       }
     }
   });

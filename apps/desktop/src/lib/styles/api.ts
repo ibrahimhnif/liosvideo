@@ -1,9 +1,9 @@
 import { invoke } from "@tauri-apps/api/core";
 
-/** One of the ten animation styles (`STYLES` in scaffold.rs). */
+/** One of the animation styles (`STYLES` in scaffold.rs). */
 export type StyleInfo = { id: string; title: string };
 
-/** The ten styles, in catalog order. */
+/** The styles, in catalog order. */
 export const listStyles = (): Promise<StyleInfo[]> => invoke<StyleInfo[]>("list_styles");
 
 /** Installs a style's module and doc into the open project; returns the paths written. */

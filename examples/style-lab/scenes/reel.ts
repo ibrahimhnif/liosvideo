@@ -12,7 +12,10 @@ import minimalMono from "./minimal-mono";
 import cgiMotion from "./cgi-motion";
 import brick from "./brick";
 import explainer3d from "./explainer-3d";
+import archiveDoc from "./archive-doc";
+import tealTutorial from "./teal-tutorial";
+import productStudio from "./product-studio";
 
-const demos = [pixelArt, chalkboard, glowSketch, ps2Lowpoly, comic, flatVector, minimalMono, cgiMotion, brick, explainer3d];
+const demos = [pixelArt, chalkboard, glowSketch, ps2Lowpoly, comic, flatVector, minimalMono, cgiMotion, brick, explainer3d, archiveDoc, tealTutorial, productStudio];
 
 export const reel: SceneDef[] = [title, ...demos.map((d) => ({ ...d, transition: transition("fade", { duration: 0.3 }) }))];
