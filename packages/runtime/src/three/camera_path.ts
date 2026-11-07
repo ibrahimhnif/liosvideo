@@ -1,5 +1,6 @@
 import type * as THREE from "three";
 import { type Ease, ease } from "../anim/easing";
+import { sfxCue, type SfxCue, type SfxSpec } from "../audio/sfx";
 
 export type Vec3 = [number, number, number];
 
@@ -11,6 +12,8 @@ export interface CameraKey {
   target?: Vec3;
   /** Vertical field of view in degrees for a perspective camera (default: keep the camera's). */
   fov?: number;
+  /** Sound effect as the camera leaves this key (`on: "end"`: as it reaches the next one). */
+  sfx?: SfxSpec;
 }
 
 export type CameraSpline = "catmull" | "linear";
@@ -33,12 +36,15 @@ export interface CameraPath {
   sample(time: number): CameraPose;
   /** Moves `camera` to the pose at `time`, aims it at the target and applies the fov. */
   apply(camera: THREE.Camera, time: number): void;
+  /** Sound effects of the move, in scene seconds; the composition adds them to the soundtrack. */
+  readonly sfx: readonly SfxCue[];
 }
 
 const SPLINES: readonly CameraSpline[] = ["catmull", "linear"];
 
-function fromSampler(sample: (time: number) => CameraPose): CameraPath {
+function fromSampler(sample: (time: number) => CameraPose, sfx: SfxCue[] = []): CameraPath {
   return {
+    sfx,
     sample,
     apply(camera, time) {
       const pose = sample(time);
@@ -92,6 +98,9 @@ export function cameraPath(keys: CameraKey[], options: CameraPathOptions = {}): 
     return { at: k.at, position: [...k.position] as Vec3, target, fov };
   });
   const last = filled.length - 1;
+  const cues = sorted.flatMap((k, i) =>
+    k.sfx === undefined ? [] : [sfxCue(k.sfx, k.at, sorted[Math.min(i + 1, last)].at, `cameraPath key at ${k.at}s`)],
+  );
 
   return fromSampler((time) => {
     if (time <= filled[0].at || last === 0) return pose(filled[0]);
@@ -110,7 +119,7 @@ export function cameraPath(keys: CameraKey[], options: CameraPathOptions = {}): 
       target: catmull3(p.target, a.target, b.target, n.target, u),
       fov: fovAt,
     };
-  });
+  }, cues);
 }
 
 function pose(k: { position: Vec3; target: Vec3; fov?: number }): CameraPose {
@@ -129,7 +138,11 @@ interface Span {
   ease?: Ease;
   /** A fixed fov, or [from, to] to zoom the lens during the move. */
   fov?: Fov;
+  /** Sound effect with the move, at `start` (or `on: "end"`). */
+  sfx?: SfxSpec;
 }
+
+const spanCues = (o: Span, what: string): SfxCue[] => (o.sfx === undefined ? [] : [sfxCue(o.sfx, o.start, o.end, what)]);
 
 function spanProgress({ start, end, ease: e = "inOutCubic" }: Span): (time: number) => number {
   ease(e, 0.5);
@@ -152,7 +165,7 @@ export function orbit(o: Span & { target: Vec3; radius: number; height?: number 
       target: [...o.target],
       fov: fovAt(o.fov, u),
     };
-  });
+  }, spanCues(o, "orbit()"));
 }
 
 /** Slides the camera in a straight line from `from` to `to`, aimed at `target` the whole way. */
@@ -161,7 +174,7 @@ export function dolly(o: Span & { from: Vec3; to: Vec3; target: Vec3 }): CameraP
   return fromSampler((time) => {
     const u = progress(time);
     return { position: lerp3(o.from, o.to, u), target: [...o.target], fov: fovAt(o.fov, u) };
-  });
+  }, spanCues(o, "dolly()"));
 }
 
 /** Moves the camera `amount` (0–1) of the way from `from` towards `target`; pair with `fov: [a, b]` for a push-in zoom. */

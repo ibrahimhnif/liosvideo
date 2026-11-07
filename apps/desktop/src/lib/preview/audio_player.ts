@@ -1,5 +1,5 @@
 import { convertFileSrc, invoke } from "@tauri-apps/api/core";
-import { duckGainAt, duckSchedule, resolveMix, type AudioRole, type MixOptions } from "liosvideo";
+import { type AudioRole, duckGainAt, duckSchedule, fadeGainAt, fadePlan, type MixOptions, resolveMix } from "liosvideo";
 
 export interface AudioClipDef {
   src: string;
@@ -10,6 +10,8 @@ export interface AudioClipDef {
   volume?: number;
   ducking?: boolean;
   role?: AudioRole;
+  fadeIn?: number;
+  fadeOut?: number;
 }
 
 export interface AudioPlayerOptions {
@@ -226,7 +228,18 @@ export class AudioPlayer {
         gain.gain.value = volume;
       }
 
-      source.connect(gain);
+      // fade in / out on its own gain stage (timeline seconds -> context time, from the playhead)
+      const playedSec = Math.max(0, Math.min(durationSec, (effectiveEndFrame - clip.startFrame) / this.currentFps));
+      const fades = fadePlan(clipStartSec, playedSec, clip.fadeIn, clip.fadeOut);
+      if (fades.length) {
+        const fade = ctx.createGain();
+        fade.gain.setValueAtTime(fadeGainAt(fades, Math.max(playheadSec, clipStartSec)), now + delay);
+        for (const [t, g] of fades) if (t > playheadSec && t > clipStartSec) fade.gain.linearRampToValueAtTime(g, now + t - playheadSec);
+        source.connect(fade);
+        fade.connect(gain);
+      } else {
+        source.connect(gain);
+      }
       gain.connect(ctx.destination);
 
       const when = now + delay;

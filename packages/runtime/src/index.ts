@@ -16,6 +16,7 @@ export * from "./audio/narration";
 export * from "./three/assets";
 export * from "./three/camera_path";
 export * from "./audio/mix";
+export * from "./audio/sfx";
 export * from "./components/captions";
 export * from "./components/credit";
 export * from "./components/callout";

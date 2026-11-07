@@ -1,4 +1,5 @@
 import type { AudioRole, MixOptions } from "./audio/mix";
+import type { SfxOptions } from "./audio/sfx";
 import { planVo, sceneCues, type SceneVoOptions, type VoCue } from "./audio/narration";
 import { group } from "./graph/kinds";
 import type { Node } from "./graph/node";
@@ -47,6 +48,10 @@ export type AudioClip = {
   /** "vo" lines duck the music; "music" always ducks; "sfx" never does. */
   role?: AudioRole;
   loop?: boolean;
+  /** Seconds to fade in from silence at the start of the clip. */
+  fadeIn?: number;
+  /** Seconds to fade out to silence at the end of the clip. */
+  fadeOut?: number;
 };
 
 export type AudioTrack = {
@@ -75,6 +80,8 @@ export type Composition = {
   mix?: MixOptions;
   /** VO lines of `scene({ vo })` scenes are added as audio automatically; false turns that off. */
   narration?: false | { volume?: number };
+  /** Sound effects of moves (`sfx` on `to()`, camera paths): file names and levels; false leaves them out. */
+  sfx?: false | SfxOptions;
 };
 
 export type SceneSpan = { id: string; startFrame: number; endFrame: number };

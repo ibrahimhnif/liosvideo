@@ -241,4 +241,26 @@ describe("AudioPlayer", () => {
     player.play(0, 30);
     expect(mockCtx.createdGains[0].gain.events).toEqual([]);
   });
+
+  it("fades clips in and out from wherever the playhead is", async () => {
+    // a 5 s sound from 1 s (frame 30 at 30 fps), fading in 0.5 s and out 1 s
+    const clips: AudioClipDef[] = [{ src: "sfx/whoosh.wav", startFrame: 30, endFrame: 180, role: "sfx", fadeIn: 0.5, fadeOut: 1 }];
+    await player.setClips(clips);
+
+    player.play(0, 30); // playhead at 0: the clip starts 1 s later, now = 10
+    const fade = mockCtx.createdGains.find((g) => g.gain.events.length > 0)!;
+    expect(fade.gain.events).toEqual([
+      ["set", 0, 11],
+      ["ramp", 1, 11.5],
+      ["ramp", 1, 15],
+      ["ramp", 0, 16],
+    ]);
+
+    mockCtx.createdGains = [];
+    player.play(165, 30); // playhead at 5.5 s, halfway through the fade out (5 s to 6 s)
+    const late = mockCtx.createdGains.find((g) => g.gain.events.length > 0)!;
+    expect(late.gain.events[0][0]).toBe("set");
+    expect(late.gain.events[0][1]).toBeCloseTo(0.5);
+    expect(late.gain.events.slice(1)).toEqual([["ramp", 0, 10.5]]);
+  });
 });

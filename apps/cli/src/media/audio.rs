@@ -266,9 +266,29 @@ fn mix_clip_with_gain(
 
     let samples_to_mix = available_source.min(max_samples);
 
+    // fades: linear from silence at the first frame / to silence at the last frame
+    let frames = samples_to_mix / 2;
+    let fade_frames = |seconds: Option<f64>| {
+        seconds
+            .filter(|s| *s > 0.0)
+            .map(|s| (s * sample_rate as f64) as f32)
+    };
+    let fade_in = fade_frames(clip.fade_in);
+    let fade_out = fade_frames(clip.fade_out);
+    let envelope = |frame: usize| -> f32 {
+        let mut g = 1.0f32;
+        if let Some(n) = fade_in {
+            g = g.min(frame as f32 / n);
+        }
+        if let Some(n) = fade_out {
+            g = g.min(frames.saturating_sub(1 + frame) as f32 / n);
+        }
+        g
+    };
+
     for i in 0..samples_to_mix {
         let at = start_master_sample + i;
-        master[at] += clip_samples[start_source_sample + i] * volume * gain(at / 2);
+        master[at] += clip_samples[start_source_sample + i] * volume * gain(at / 2) * envelope(i / 2);
     }
 }
 
@@ -388,6 +408,8 @@ mod tests {
             volume,
             ducking: None,
             role: None,
+            fade_in: None,
+            fade_out: None,
         }
     }
 
@@ -450,6 +472,26 @@ mod tests {
         assert_eq!(resampled.len(), 8);
         assert_eq!(resampled[0], 0.0);
         assert!((resampled[2] - 0.5).abs() < 1e-4);
+    }
+
+    #[test]
+    fn fades_a_clip_in_and_out() {
+        let sample_rate = 1000;
+        let samples = vec![1.0f32; 20]; // 10 stereo frames
+        let mut clip = clip("sfx.wav", 0, None, None, None);
+        clip.fade_in = Some(0.004); // 4 frames
+        clip.fade_out = Some(0.004);
+        let mut master = vec![0.0f32; 20];
+
+        mix_clip_into(&mut master, &samples, &clip, 1000.0, sample_rate);
+
+        let frame = |i: usize| master[i * 2];
+        assert_eq!(frame(0), 0.0);
+        assert!((frame(2) - 0.5).abs() < 1e-6);
+        assert!((frame(5) - 1.0).abs() < 1e-6);
+        assert!((frame(7) - 0.5).abs() < 1e-6);
+        assert_eq!(frame(9), 0.0);
+        assert_eq!(master[3], master[2], "both channels get the same gain");
     }
 
     #[test]

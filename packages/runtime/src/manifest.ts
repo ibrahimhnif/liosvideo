@@ -1,6 +1,8 @@
 import { instantiateScene, layoutComposition, type AudioClip, type Composition, type SceneSpan } from "./composition";
 import type { Node } from "./graph/node";
 import type { AudioRole, MixOptions } from "./audio/mix";
+import { resolveSfx, type SfxCue } from "./audio/sfx";
+import { ThreeNode } from "./graph/three";
 
 export type FrameSpan = { startFrame: number; endFrame: number };
 export type ManifestNode = { path: string; name: string; kind: string; spans: FrameSpan[]; children: ManifestNode[] };
@@ -20,6 +22,8 @@ export type ManifestAudioClip = {
   volume?: number;
   ducking?: boolean;
   role?: AudioRole;
+  fadeIn?: number;
+  fadeOut?: number;
 };
 export type ManifestAudioTrack = {
   id: string;
@@ -87,13 +91,17 @@ export function buildManifest(c: Composition): TimelineManifest {
           volume: clip.volume,
           ducking: clip.ducking,
           role: clip.role ?? track.role,
+          ...(clip.fadeIn !== undefined ? { fadeIn: clip.fadeIn } : {}),
+          ...(clip.fadeOut !== undefined ? { fadeOut: clip.fadeOut } : {}),
         };
       }),
     };
   });
 
   const narration = narrationTracks(c, scenes, audioTracks ?? []);
-  const tracks = audioTracks || narration.length ? [...(audioTracks ?? []), ...narration] : undefined;
+  const effects = sfxTracks(c, scenes, totalFrames);
+  const added = [...narration, ...effects];
+  const tracks = audioTracks || added.length ? [...(audioTracks ?? []), ...added] : undefined;
 
   return {
     width: c.width,
@@ -132,6 +140,42 @@ function narrationTracks(c: Composition, scenes: SceneSpan[], listed: ManifestAu
         ],
       });
     }
+  });
+  return out;
+}
+
+/** Sound effects of the scenes' moves (`sfx` on `to()` and on camera paths), in tree order. */
+function sfxTracks(c: Composition, scenes: SceneSpan[], totalFrames: number): ManifestAudioTrack[] {
+  if (c.sfx === false) return [];
+  const out: ManifestAudioTrack[] = [];
+  c.scenes.forEach((def, i) => {
+    const cues: SfxCue[] = [];
+    const walk = (node: Node<any>) => {
+      cues.push(...node.sfxCues());
+      if (node instanceof ThreeNode) cues.push(...(node.propsAt(0).cameraPath?.sfx ?? []));
+      node.children.forEach(walk);
+    };
+    walk(instantiateScene(c, def));
+    cues.forEach((cue, n) => {
+      const clip = resolveSfx(cue, c.sfx || undefined);
+      const startFrame = scenes[i].startFrame + Math.round(cue.at * c.fps);
+      out.push({
+        id: `sfx-${def.id}-${n + 1}-${cue.name.replace(/[^\w-]+/g, "_")}`,
+        name: `SFX ${cue.name}`,
+        clips: [
+          {
+            src: clip.src,
+            startFrame,
+            endFrame: clip.duration !== undefined ? startFrame + Math.round(clip.duration * c.fps) : Math.max(startFrame + 1, totalFrames),
+            ...(clip.duration !== undefined ? { duration: clip.duration } : {}),
+            volume: clip.volume,
+            role: "sfx",
+            fadeIn: clip.fadeIn,
+            fadeOut: clip.fadeOut,
+          },
+        ],
+      });
+    });
   });
   return out;
 }

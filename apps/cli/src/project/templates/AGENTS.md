@@ -479,6 +479,26 @@ credit(root, { source: ["ANTARA", "CNBC Indonesia"], asset: "assets/images/habib
 - `asset` fills the photo credit and licence from that file's row in `assets/ATTRIBUTIONS.md`, so the screen always matches the attribution table. The table's headers can be English or Indonesian (File/Asset, Source/Sumber, Author/Creator, License/Lisensi), and a row may list just the file name. With no author column, the source site is credited. AI-generated rows render as "AI illustration (Google Gemini)" (`lang: "id"`: "Ilustrasi AI").
 - Other options: `source`, `photo`, `license`, `text` (replaces the whole line), `lang` (`"en"` / `"id"`), `at` / `until` (fade in/out), `color`, `fontFamily`, `name`.
 
+### Motion-synced SFX (`sfx` on moves)
+
+Put whooshes, pops and hits on the move that makes them, not on a hand-kept timeline:
+
+```ts
+card.to({ x: 600 }, { at: 1.2, duration: 0.5, sfx: "whoosh" });                       // at the move's start
+badge.to({ scaleX: 1, scaleY: 1 }, { at: 2, duration: 0.3, sfx: { name: "pop", on: "end", volume: 0.3 } });
+three({ /* … */ cameraPath: orbit({ /* … */ start: 0, end: 3, sfx: "whoosh" }) });      // camera presets
+cameraPath([{ at: 0, position: [0, 1, 6] }, { at: 2, position: [4, 1, 3], sfx: "whoosh" }, { at: 4, position: [4, 2, 0] }]); // leaving a key
+
+export default composition({
+  /* … */
+  sfx: { volume: 0.5, library: { whoosh: "assets/audio/sfx/whoosh_fast.wav", pop: { src: "assets/audio/sfx/pop.wav", volume: 0.3 } } },
+});
+```
+
+- A name is looked up in `sfx.library`, then used as a path if it has `/` or `.`, else `assets/audio/sfx/<name>.wav`. Level: the cue's `volume`, then the library entry's, then `sfx.volume`, then 0.5.
+- Options: `on: "start" | "end"`, `volume`, `offset` (seconds; negative leads the move), `duration` (trims the sound, with a fade-out). Every SFX clip gets a short fade in and out so nothing clicks; they never duck the music.
+- The composition adds them as `role: "sfx"` clips at scene start + move time; `composition({ sfx: false })` leaves them out. Any clip can fade too: `{ src, startAt, fadeIn: 0.5, fadeOut: 1 }`.
+
 ### Mix: Loudness & Ducking (automatic)
 
 Every render (CLI and desktop export) runs the mix through a master bus:

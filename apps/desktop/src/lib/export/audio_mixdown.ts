@@ -1,4 +1,4 @@
-import { duckGainAt, duckSchedule, master, resolveMix, type MasterReport, type TimelineManifest } from "liosvideo";
+import { duckGainAt, duckSchedule, fadePlan, master, resolveMix, type MasterReport, type TimelineManifest } from "liosvideo";
 
 export interface MixdownOptions {
   sampleRate?: number;
@@ -53,6 +53,7 @@ export async function mixdownAudio(
   const { plan, ducked } = duckSchedule(scheduled, mix.duck);
 
   playable.forEach(({ clip, buffer }, i) => {
+    const { start, played } = scheduled[i];
     const source = ctx.createBufferSource();
     source.buffer = buffer;
 
@@ -65,7 +66,17 @@ export async function mixdownAudio(
       gain.gain.value = volume;
     }
 
-    source.connect(gain);
+    // fade in / out: its own gain stage, so it multiplies with ducking
+    const fades = fadePlan(start, played, clip.fadeIn, clip.fadeOut);
+    if (fades.length) {
+      const fade = ctx.createGain();
+      fade.gain.setValueAtTime(fades[0][1], fades[0][0]);
+      for (const [t, g] of fades.slice(1)) fade.gain.linearRampToValueAtTime(g, t);
+      source.connect(fade);
+      fade.connect(gain);
+    } else {
+      source.connect(gain);
+    }
     gain.connect(ctx.destination);
 
     const when = clip.startFrame / manifest.fps;

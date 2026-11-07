@@ -44,6 +44,11 @@ pub struct AudioClipInfo {
     /// "vo" | "music" | "sfx"
     #[serde(default)]
     pub role: Option<String>,
+    /// Seconds to fade in from silence / out to silence at the clip's ends.
+    #[serde(default)]
+    pub fade_in: Option<f64>,
+    #[serde(default)]
+    pub fade_out: Option<f64>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]

@@ -198,4 +198,27 @@ describe("mixdownAudio mix bus", () => {
     });
     expect(res!.getChannelData(0)[100]).toBe(0.25);
   });
+
+  it("fades clips in and out with their own gain stage", async () => {
+    const manifest: TimelineManifest = {
+      width: 100,
+      height: 100,
+      fps: 30,
+      totalFrames: 150,
+      scenes: [],
+      audioTracks: [{ id: "sfx", name: "SFX", clips: [{ src: "sfx.wav", startFrame: 30, endFrame: 150, role: "sfx", volume: 0.5, fadeIn: 0.01, fadeOut: 0.1 }] }],
+    };
+    let mock: MockOfflineAudioContext | undefined;
+    await mixdownAudio(manifest, async () => new ArrayBuffer(8), {
+      createContext: (c, l, r) => (mock = new MockOfflineAudioContext(c, l, r)) as any,
+    });
+    const fade = mock!.gains.find((g) => g.gain.events.length > 0)!;
+    // the decoded sound is 3 s long and starts at 1 s
+    expect(fade.gain.events).toEqual([
+      ["set", 0, 1],
+      ["ramp", 1, 1.01],
+      ["ramp", 1, 3.9],
+      ["ramp", 0, 4],
+    ]);
+  });
 });

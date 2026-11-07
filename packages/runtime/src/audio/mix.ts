@@ -109,6 +109,33 @@ export function duckGainAt(plan: DuckPlan, t: number): number {
   return t1 === t0 ? g1 : g0 + ((g1 - g0) * (t - t0)) / (t1 - t0);
 }
 
+/**
+ * Breakpoints [t, gain] (timeline seconds) of a clip's fade in from silence and out to silence,
+ * for a clip that starts at `start` and plays `played` seconds; empty without fades.
+ */
+export function fadePlan(start: number, played: number, fadeIn = 0, fadeOut = 0): DuckPlan {
+  const plan: DuckPlan = [];
+  if (fadeIn > 0 && played > 0) plan.push([start, 0], [start + Math.min(fadeIn, played), 1]);
+  if (fadeOut > 0 && played > 0) {
+    const end = start + played;
+    plan.push([Math.max(start, end - fadeOut), 1], [end, 0]);
+  }
+  return plan.sort((a, b) => a[0] - b[0]);
+}
+
+/** Gain of a fade plan at timeline time `t`: held at the first / last value outside it, 1 without fades. */
+export function fadeGainAt(plan: DuckPlan, t: number): number {
+  if (!plan.length) return 1;
+  if (t <= plan[0][0]) return plan[0][1];
+  const last = plan[plan.length - 1];
+  if (t >= last[0]) return last[1];
+  let i = 1;
+  while (plan[i][0] < t) i++;
+  const [t0, g0] = plan[i - 1];
+  const [t1, g1] = plan[i];
+  return t1 === t0 ? g1 : g0 + ((g1 - g0) * (t - t0)) / (t1 - t0);
+}
+
 export interface ScheduledClip extends MixClip {
   /** Timeline start in seconds. */
   start: number;

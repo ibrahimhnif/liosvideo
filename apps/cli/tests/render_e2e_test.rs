@@ -214,3 +214,51 @@ async fn renders_frame_range_subset() -> Result<()> {
     let _ = std::fs::remove_dir_all(&dir);
     Ok(())
 }
+
+// A camera move with sfx: "whoosh" puts the sound at the move's start in the mixed soundtrack.
+#[tokio::test]
+async fn mixes_a_camera_move_whoosh_at_the_moves_start() -> Result<()> {
+    let dir = std::env::temp_dir().join(format!("liosvideo_sfx_test_{}", std::process::id()));
+    let sfx_dir = dir.join("assets/audio/sfx");
+    std::fs::create_dir_all(&sfx_dir)?;
+
+    // a 0.2 s, 1 kHz burst as the "whoosh"
+    let sample_rate = 48_000;
+    let mut pcm = Vec::new();
+    for i in 0..(sample_rate / 5) {
+        let s = ((2.0 * std::f32::consts::PI * 1000.0 * i as f32 / sample_rate as f32).sin() * 12000.0) as i16;
+        pcm.push(s);
+        pcm.push(s);
+    }
+    std::fs::write(sfx_dir.join("whoosh.wav"), create_test_wav(sample_rate, 2, &pcm))?;
+
+    let entry = dir.join("video.ts");
+    std::fs::write(
+        &entry,
+        r##"
+        import { composition, dolly, scene, three } from "liosvideo";
+
+        const intro = scene("intro", { duration: 1 }, () => {});
+        const shot = scene("shot", { duration: 2 }, ({ root, width, height }) => {
+            root.add(three({
+                name: "stage", width, height, setup() {},
+                cameraPath: dolly({ from: [-3, 1, 6], to: [3, 1, 6], target: [0, 0, 0], start: 0.5, end: 1.5, sfx: "whoosh" }),
+            }));
+        });
+
+        export default composition({ width: 64, height: 64, fps: 30, scenes: [intro, shot] });
+    "##,
+    )?;
+
+    // the same path a render takes: the runtime's manifest, then the CLI mixer
+    let mut host = liosvideo_cli::runtime::RuntimeHost::new(dir.clone())?;
+    let info = host.load_composition(entry.to_str().unwrap()).await?;
+    let audio = liosvideo_cli::media::audio::mix_audio_tracks(&dir, &info.audio, info.duration, 48_000, info.fps, None)?;
+    let onset = audio.iter().position(|s| s.abs() > 0.02).expect("the whoosh is in the mix") / 2;
+    let seconds = onset as f64 / 48_000.0;
+    // 1 s intro + 0.5 s into the shot (the 5 ms fade-in reaches the threshold within a millisecond)
+    assert!((seconds - 1.5).abs() < 0.005, "the whoosh starts at {seconds:.4} s");
+
+    let _ = std::fs::remove_dir_all(&dir);
+    Ok(())
+}

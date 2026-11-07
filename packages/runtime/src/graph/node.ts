@@ -2,6 +2,7 @@ import { EASE_NAMES, isEase, type Ease } from "../anim/easing";
 import { Track } from "../anim/track";
 import { multiply, rotate, scale, translate, type Affine } from "../math/affine";
 import { checkEnumProps, unknownValue } from "./enums";
+import { sfxCue, type SfxCue, type SfxSpec } from "../audio/sfx";
 
 export interface BaseProps {
   x: number;
@@ -57,6 +58,7 @@ export abstract class Node<P extends BaseProps = BaseProps> {
   private readonly base: P;
   private readonly tracks = new Map<keyof P, Track<PropValue>>();
   private readonly drivers: ((t: number) => Partial<P>)[] = [];
+  private readonly cues: SfxCue[] = [];
 
   protected constructor(readonly kind: string, defaults: P, init: NodeInit<P> = {}) {
     const { name, ...props } = init;
@@ -108,7 +110,11 @@ export abstract class Node<P extends BaseProps = BaseProps> {
     return this.to(props, { at, duration: 0 });
   }
 
-  to(props: Partial<P>, opts: { at: number; duration: number; ease?: Ease }): this {
+  /**
+   * Animates to `props`. `sfx: "whoosh"` (or `{ name, on: "start" | "end", volume, offset, duration }`)
+   * plays a sound effect with the move; the composition adds it to the soundtrack.
+   */
+  to(props: Partial<P>, opts: { at: number; duration: number; ease?: Ease; sfx?: SfxSpec }): this {
     checkEnumProps(props as Record<string, unknown>, this._name);
     if (opts.ease !== undefined && !isEase(opts.ease)) {
       throw unknownValue("ease", opts.ease, EASE_NAMES, `node "${this._name}" (${Object.keys(props).join(", ")})`);
@@ -122,7 +128,13 @@ export abstract class Node<P extends BaseProps = BaseProps> {
         ease: opts.ease ?? "inOutCubic",
       });
     }
+    if (opts.sfx !== undefined) this.cues.push(sfxCue(opts.sfx, opts.at, opts.at + opts.duration, `node "${this._name}"`));
     return this;
+  }
+
+  /** Sound effects of this node's moves, in scene seconds. */
+  sfxCues(): readonly SfxCue[] {
+    return this.cues;
   }
 
   /**
