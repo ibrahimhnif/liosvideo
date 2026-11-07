@@ -79,6 +79,25 @@ describe("renderer", () => {
     expect(p[3]).toBe(255);
   });
 
+  it("runs shaders that read only u, or neither binding", async () => {
+    const r = await make();
+    const shaderItem = (path: string, x: number, code: string, uniforms?: Record<string, number>): RenderItem => ({
+      kind: "shader", path, matrix: at(x, 0), width: SIZE / 2, height: SIZE, code, uniforms, opacity: 1, time: 0, progress: 0,
+    });
+    const frame = list([
+      shaderItem("onlyU", 0, `@fragment fn fs(@location(0) uv: vec2f) -> @location(0) vec4f { return vec4f(0.0, u.level.x, 0.0, 1.0); }`, { level: 0.8 }),
+      shaderItem("neither", SIZE / 2, `@fragment fn fs(@location(0) uv: vec2f) -> @location(0) vec4f { return vec4f(0.0, 0.0, 1.0, 1.0); }`),
+    ]);
+    await r.prepare(frame);
+    r.render(frame, new Map());
+    const pixels = await r.readPixels();
+    const left = px(pixels, 64, 128);
+    const right = px(pixels, 192, 128);
+    expect(Math.abs(left[1] - 204)).toBeLessThanOrEqual(2);
+    expect(left[0]).toBeLessThanOrEqual(2);
+    expect(right[2]).toBeGreaterThan(250);
+  });
+
   it("blurs layer edges", async () => {
     const r = await make();
     const white = rectItem({ matrix: at(64, 64), width: 128, height: 128, fill: "#ffffff" });

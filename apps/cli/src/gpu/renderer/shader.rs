@@ -26,6 +26,9 @@ const MAX_UNIFORMS: usize = 64;
 pub struct ShaderRenderer {
     pipelines: HashMap<u64, Option<wgpu::RenderPipeline>>,
     warned: HashMap<u64, ()>,
+    /// Both bindings, always: a shader that never reads `u` or `u_globals` would otherwise get an
+    /// "auto" layout without that binding, and the bind group would no longer match it.
+    layout: Option<(wgpu::BindGroupLayout, wgpu::PipelineLayout)>,
 }
 
 pub struct ShaderTexture {
@@ -43,6 +46,7 @@ impl ShaderRenderer {
         Self {
             pipelines: HashMap::new(),
             warned: HashMap::new(),
+            layout: None,
         }
     }
 
@@ -85,10 +89,11 @@ impl ShaderRenderer {
             return None;
         }
 
+        let (bind_layout, pipeline_layout) = self.layout.get_or_insert_with(|| shader_layout(device));
         let pipeline = match self.pipelines.entry(key) {
             std::collections::hash_map::Entry::Occupied(entry) => entry.into_mut(),
             std::collections::hash_map::Entry::Vacant(entry) => {
-                let built = build_pipeline(device, &source);
+                let built = build_pipeline(device, pipeline_layout, &source);
                 if built.is_none() && self.warned.insert(key, ()).is_none() {
                     eprintln!("Warning: shader failed to compile or validate; drawing a white box");
                 }
@@ -134,7 +139,7 @@ impl ShaderRenderer {
 
         let bind_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
             label: Some("liosvideo shader bind"),
-            layout: &pipeline.get_bind_group_layout(0),
+            layout: bind_layout,
             entries: &[
                 wgpu::BindGroupEntry {
                     binding: 0,
@@ -193,7 +198,30 @@ impl ShaderRenderer {
     }
 }
 
-fn build_pipeline(device: &wgpu::Device, source: &str) -> Option<wgpu::RenderPipeline> {
+fn shader_layout(device: &wgpu::Device) -> (wgpu::BindGroupLayout, wgpu::PipelineLayout) {
+    let uniform = |binding| wgpu::BindGroupLayoutEntry {
+        binding,
+        visibility: wgpu::ShaderStages::VERTEX_FRAGMENT,
+        ty: wgpu::BindingType::Buffer {
+            ty: wgpu::BufferBindingType::Uniform,
+            has_dynamic_offset: false,
+            min_binding_size: None,
+        },
+        count: None,
+    };
+    let bind = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
+        label: Some("liosvideo shader bind layout"),
+        entries: &[uniform(0), uniform(1)],
+    });
+    let pipeline = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
+        label: Some("liosvideo shader layout"),
+        bind_group_layouts: &[&bind],
+        push_constant_ranges: &[],
+    });
+    (bind, pipeline)
+}
+
+fn build_pipeline(device: &wgpu::Device, layout: &wgpu::PipelineLayout, source: &str) -> Option<wgpu::RenderPipeline> {
     // Validate on the CPU first: wgpu panics on uncaptured validation errors.
     let module = naga::front::wgsl::parse_str(source).ok()?;
     let mut validator = naga::valid::Validator::new(
@@ -209,7 +237,7 @@ fn build_pipeline(device: &wgpu::Device, source: &str) -> Option<wgpu::RenderPip
 
     let pipeline = device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
         label: Some("liosvideo user shader pipeline"),
-        layout: None,
+        layout: Some(layout),
         vertex: wgpu::VertexState {
             module: &shader,
             entry_point: Some("lios_vs_main"),

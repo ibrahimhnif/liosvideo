@@ -192,6 +192,13 @@ export async function createRenderer(
   const imageTextures = new WeakMap<ImageBitmap, GPUTexture>();
   const warned = new Set<string>();
   const shaderPipelines = new Map<string, GPURenderPipeline | null>();
+  // Both bindings, always: with layout "auto" a shader that never reads `u` (or `u_globals`) gets a
+  // layout without it, and the bind group below no longer matches.
+  const shaderBindLayout = device.createBindGroupLayout({
+    label: "liosvideo shader bind layout",
+    entries: [0, 1].map((binding) => ({ binding, visibility: GPUShaderStage.VERTEX | GPUShaderStage.FRAGMENT, buffer: { type: "uniform" as const } })),
+  });
+  const shaderPipelineLayout = device.createPipelineLayout({ label: "liosvideo shader layout", bindGroupLayouts: [shaderBindLayout] });
   const shaderTextures = new Map<string, { texture: GPUTexture; width: number; height: number }>();
   const shaderWarned = new Set<string>();
 
@@ -265,7 +272,7 @@ export async function createRenderer(
 
       const pipeline = await device.createRenderPipelineAsync({
         label: "liosvideo user shader pipeline",
-        layout: "auto",
+        layout: shaderPipelineLayout,
         vertex: { module, entryPoint: "lios_vs_main" },
         fragment: { module, entryPoint: "fs", targets: [{ format: LAYER_FORMAT }] },
       });
@@ -324,7 +331,7 @@ export async function createRenderer(
           frameBuffers.push(globals, uniforms);
 
           const bind = device.createBindGroup({
-            layout: pipeline.getBindGroupLayout(0),
+            layout: shaderBindLayout,
             entries: [
               { binding: 0, resource: { buffer: globals } },
               { binding: 1, resource: { buffer: uniforms } },
