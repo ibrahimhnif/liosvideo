@@ -26,6 +26,10 @@ export type TextItem = {
   color: string;
   lineHeight: number;
   opacity: number;
+  /** Line alignment inside the box; absent = left. */
+  align?: "left" | "center" | "right";
+  /** Layout box width (units); lines align within max(this, widest line). */
+  boxWidth?: number;
 };
 
 export type ImageItem = {

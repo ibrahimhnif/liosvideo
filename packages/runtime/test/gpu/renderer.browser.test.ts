@@ -125,6 +125,25 @@ describe("renderer", () => {
     expect(lit).toBeGreaterThan(50);
   });
 
+  it("aligns text lines inside the layout box", async () => {
+    const lit = async (align: "left" | "center" | "right") => {
+      const r = await make();
+      r.render(
+        list([{ kind: "text", path: "t", matrix: at(0, 20), text: "I", fontFamily: "SF Pro Text", fontSize: 48, fontWeight: 400, color: "#ffffff", lineHeight: 1.2, opacity: 1, align, boxWidth: 240 }]),
+        new Map(),
+      );
+      const pixels = await r.readPixels();
+      const cols: number[] = [];
+      for (let x = 0; x < SIZE; x++) for (let y = 20; y < 80; y++) if (lum(px(pixels, x, y)) > 128) { cols.push(x); break; }
+      r.destroy();
+      renderer = undefined;
+      return (Math.min(...cols) + Math.max(...cols)) / 2;
+    };
+    expect(await lit("left")).toBeLessThan(40);
+    expect(Math.abs((await lit("center")) - 120)).toBeLessThan(12);
+    expect(await lit("right")).toBeGreaterThan(200);
+  });
+
   it("rasterises a vector path instead of a solid box", async () => {
     const r = await make();
     const triangle = {

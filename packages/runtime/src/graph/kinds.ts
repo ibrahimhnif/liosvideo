@@ -14,7 +14,13 @@ export interface TextProps extends BaseProps {
   fontWeight: number;
   color: string;
   lineHeight: number;
+  /** Line alignment inside the text box. */
+  align: TextAlign;
+  /** Wraps words onto new lines past this width (layout units); 0 = only `\n` breaks. The box is then this wide. */
+  maxWidth: number;
 }
+
+export type TextAlign = "left" | "center" | "right";
 
 export type ImageFit = "fill" | "contain" | "cover";
 
@@ -46,24 +52,57 @@ export class RectNode extends Node<RectProps> {
 export type TextMeasurer = (p: TextProps) => { width: number; height: number };
 
 let measurer: TextMeasurer | undefined;
+const wrapCache = new Map<string, string>();
+const WRAP_CACHE_LIMIT = 2048;
 
 /** Installs how text is measured (the render worker uses Canvas2D). Text without an explicit size is sized by it. */
 export function setTextMeasurer(m: TextMeasurer | undefined): void {
   measurer = m;
+  wrapCache.clear();
+}
+
+/** Greedy word wrap: each `\n` line is broken at spaces so no line is wider than `maxWidth`; a lone long word keeps its own line. */
+function wrapText(p: TextProps, m: TextMeasurer): string {
+  const key = JSON.stringify([p.text, p.fontFamily, p.fontSize, p.fontWeight, p.lineHeight, p.maxWidth]);
+  const hit = wrapCache.get(key);
+  if (hit !== undefined) return hit;
+  const fits = (line: string) => m({ ...p, text: line }).width <= p.maxWidth;
+  const out: string[] = [];
+  for (const hard of p.text.split("\n")) {
+    let line = "";
+    for (const word of hard.split(" ").filter((w) => w !== "")) {
+      const next = line ? `${line} ${word}` : word;
+      if (line && !fits(next)) {
+        out.push(line);
+        line = word;
+      } else line = next;
+    }
+    out.push(line);
+  }
+  const wrapped = out.join("\n");
+  if (wrapCache.size >= WRAP_CACHE_LIMIT) wrapCache.clear();
+  wrapCache.set(key, wrapped);
+  return wrapped;
 }
 
 export class TextNode extends Node<TextProps> {
   constructor(init?: NodeInit<TextProps>) {
     super(
       "text",
-      { ...BASE_DEFAULTS, text: "", fontFamily: "SF Pro Text", fontSize: 48, fontWeight: 400, color: "#ffffff", lineHeight: 1.2 },
+      { ...BASE_DEFAULTS, text: "", fontFamily: "SF Pro Text", fontSize: 48, fontWeight: 400, color: "#ffffff", lineHeight: 1.2, align: "left", maxWidth: 0 },
       init,
     );
   }
 
   override propsAt(t: number): TextProps {
     const p = super.propsAt(t);
-    if (measurer && p.width === 0 && p.height === 0) Object.assign(p, measurer(p));
+    if (!measurer) return p;
+    if (p.maxWidth > 0) p.text = wrapText(p, measurer);
+    if (p.width === 0 && p.height === 0) {
+      const size = measurer(p);
+      p.width = p.maxWidth > 0 ? p.maxWidth : size.width;
+      p.height = size.height;
+    }
     return p;
   }
 }

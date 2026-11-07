@@ -46,13 +46,14 @@ export class TextRasterizer {
   }
 
   raster(item: TextItem, scale: number): RasterizedText {
-    const key = JSON.stringify([item.text, item.fontFamily, item.fontSize, item.fontWeight, item.color, item.lineHeight, scale]);
+    const key = JSON.stringify([item.text, item.fontFamily, item.fontSize, item.fontWeight, item.color, item.lineHeight, item.align ?? "left", item.boxWidth ?? 0, scale]);
     let hit = this.cache.get(key);
     if (hit) return hit;
 
     const box = layout(item, scale);
     const { lines, metrics, lineHeight } = box;
-    const width = Math.max(1, Math.ceil(box.width));
+    const width = Math.max(1, Math.ceil(Math.max(box.width, (item.boxWidth ?? 0) * scale)));
+    const k = item.align === "center" ? 0.5 : item.align === "right" ? 1 : 0;
     const height = Math.max(1, Math.ceil(box.height));
 
     const canvas = new OffscreenCanvas(width, height);
@@ -64,7 +65,7 @@ export class TextRasterizer {
       const m = metrics[i];
       const ascent = m.fontBoundingBoxAscent;
       const descent = m.fontBoundingBoxDescent;
-      ctx.fillText(line, 0, i * lineHeight + (lineHeight - (ascent + descent)) / 2 + ascent);
+      ctx.fillText(line, (width - m.width) * k, i * lineHeight + (lineHeight - (ascent + descent)) / 2 + ascent);
     });
     hit = { key, canvas, width: width / scale, height: height / scale };
     this.cache.set(key, hit);

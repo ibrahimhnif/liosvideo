@@ -50,6 +50,7 @@ function drawable(node: Node<any>, t: number, matrix: Affine, opacity: number, d
     return {
       kind: "text", path, matrix, text: p.text, fontFamily: p.fontFamily, fontSize: p.fontSize,
       fontWeight: p.fontWeight, color: p.color, lineHeight: p.lineHeight, opacity,
+      align: p.align, boxWidth: p.width,
     };
   }
   if (node instanceof ImageNode) {

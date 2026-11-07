@@ -6,7 +6,9 @@
 //   * hard `\n` line breaks only (no width-based wrapping)
 //   * line height = fontSize * lineHeight
 //   * each line box is vertically centred on the font box
-//   * left-aligned text, colour baked into the raster
+//   * lines aligned left/center/right inside max(boxWidth, widest line);
+//     word wrapping happens in the runtime, which inserts the `\n`s
+//   * colour baked into the raster
 //
 // Text metrics are close to, but not bit-identical with, Canvas2D.
 
@@ -36,6 +38,12 @@ pub struct TextProps {
     pub font_weight: u16,
     #[serde(default = "default_line_height", rename = "lineHeight")]
     pub line_height: f32,
+    /// "left" | "center" | "right"
+    #[serde(default = "default_align")]
+    pub align: String,
+    /// Layout box width in units; lines align within max(this, widest line).
+    #[serde(default, rename = "boxWidth")]
+    pub box_width: f32,
 }
 
 impl Default for TextProps {
@@ -46,8 +54,14 @@ impl Default for TextProps {
             font_size: DEFAULT_FONT_SIZE,
             font_weight: DEFAULT_FONT_WEIGHT,
             line_height: DEFAULT_LINE_HEIGHT,
+            align: default_align(),
+            box_width: 0.0,
         }
     }
+}
+
+fn default_align() -> String {
+    "left".to_string()
 }
 
 fn default_family() -> String {
@@ -140,13 +154,15 @@ impl TextEngine {
 
     pub fn raster(&mut self, props: &TextProps, color: &str, scale: f32) -> RasterResult {
         let key = format!(
-            "{}|{}|{}|{}|{}|{}|{}",
+            "{}|{}|{}|{}|{}|{}|{}|{}|{}",
             props.text,
             props.font_family,
             props.font_size,
             props.font_weight,
             color,
             props.line_height,
+            props.align,
+            props.box_width,
             scale
         );
 
@@ -164,15 +180,21 @@ impl TextEngine {
         let (layout_w, layout_h) = self.measure(props);
         let color_rgba = parse_color(color).unwrap_or([1.0, 1.0, 1.0, 1.0]);
 
-        let canvas_w = (layout_w * scale).ceil().max(1.0) as u32;
+        let canvas_w = (layout_w.max(props.box_width) * scale).ceil().max(1.0) as u32;
+        let k = match props.align.as_str() {
+            "center" => 0.5,
+            "right" => 1.0,
+            _ => 0.0,
+        };
         let canvas_h = (layout_h * scale).ceil().max(1.0) as u32;
 
         let mut canvas = vec![0u8; canvas_w as usize * canvas_h as usize * 4];
         let buffer = self.layout_buffer(props, scale);
 
         for run in buffer.layout_runs() {
+            let offset_x = ((canvas_w as f32 - run.line_w) * k).max(0.0);
             for glyph in run.glyphs {
-                let physical = glyph.physical((0.0, run.line_y), 1.0);
+                let physical = glyph.physical((offset_x, run.line_y), 1.0);
                 let TextEngine {
                     font_system, swash, ..
                 } = self;
@@ -342,6 +364,38 @@ mod tests {
             raster.image.data.iter().any(|&b| b > 0),
             "raster is not blank"
         );
+    }
+
+    fn lit_center_x(image: &RasterImage) -> f32 {
+        let (mut min, mut max) = (u32::MAX, 0u32);
+        for y in 0..image.height {
+            for x in 0..image.width {
+                if image.data[((y * image.width + x) * 4 + 3) as usize] > 128 {
+                    min = min.min(x);
+                    max = max.max(x);
+                }
+            }
+        }
+        (min + max) as f32 / 2.0
+    }
+
+    #[test]
+    fn aligns_lines_inside_the_box() {
+        let mut engine = TextEngine::new();
+        let mut props = TextProps {
+            text: "I".into(),
+            box_width: 240.0,
+            ..Default::default()
+        };
+        let left = engine.raster(&props, "#ffffff", 1.0);
+        assert_eq!(left.image.width, 240, "raster spans the box");
+        assert!(lit_center_x(&left.image) < 40.0);
+        props.align = "center".into();
+        let center = engine.raster(&props, "#ffffff", 1.0);
+        assert!((lit_center_x(&center.image) - 120.0).abs() < 12.0);
+        props.align = "right".into();
+        let right = engine.raster(&props, "#ffffff", 1.0);
+        assert!(lit_center_x(&right.image) > 200.0);
     }
 
     #[test]

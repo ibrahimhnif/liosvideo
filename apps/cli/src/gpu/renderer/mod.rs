@@ -722,6 +722,8 @@ impl Renderer {
                     font_size: f32_of(leaf, "fontSize", 48.0),
                     font_weight: f32_of(leaf, "fontWeight", 400.0) as u16,
                     line_height: f32_of(leaf, "lineHeight", 1.2),
+                    align: str_of(leaf, "align", "left").to_string(),
+                    box_width: f32_of(leaf, "boxWidth", 0.0),
                 };
                 let text_color = str_of(leaf, "color", "#ffffff");
                 let raster = self.text.raster(&props, text_color, scale);

@@ -1,7 +1,7 @@
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it } from "vitest";
 import { composition, scene } from "../src/composition";
 import { collectAssets, evaluateFrame } from "../src/evaluate";
-import { group, image, path, rect } from "../src/graph/kinds";
+import { group, image, path, rect, setTextMeasurer, text } from "../src/graph/kinds";
 import type { LayerItem, RectItem } from "../src/renderlist";
 
 const comp = (build: Parameters<typeof scene>[2], extra: Parameters<typeof scene>[1] = { duration: 2 }) =>
@@ -163,5 +163,18 @@ describe("collectAssets", () => {
       ],
     });
     expect(collectAssets(c)).toEqual(["assets/a.png", "assets/b.png"]);
+  });
+});
+
+describe("text items", () => {
+  afterEach(() => setTextMeasurer(undefined));
+
+  it("carries alignment and the layout box width to the renderer", () => {
+    setTextMeasurer((p) => ({ width: p.text.length * 10, height: 10 }));
+    const c = comp(({ root }) => {
+      root.add(text({ name: "t", text: "hi", align: "right", maxWidth: 200 }));
+    });
+    const item = evaluateFrame(c, 0).items.find((i) => i.kind === "text") as any;
+    expect(item).toMatchObject({ align: "right", boxWidth: 200, text: "hi" });
   });
 });

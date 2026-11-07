@@ -134,3 +134,39 @@ describe("text measurement", () => {
     expect(t.propsAt(1).width).toBe(6);
   });
 });
+
+describe("text wrapping and alignment", () => {
+  // 10 units per character, one line = fontSize tall per line
+  const mono = (p: { text: string; fontSize: number }) => {
+    const lines = p.text.split("\n");
+    return { width: Math.max(...lines.map((l) => l.length * 10)), height: lines.length * p.fontSize };
+  };
+  afterEach(() => setTextMeasurer(undefined));
+
+  it("wraps words greedily at maxWidth and takes maxWidth as its width", () => {
+    setTextMeasurer(mono);
+    const p = text({ text: "the quick brown fox", fontSize: 20, maxWidth: 100 }).propsAt(0);
+    expect(p.text).toBe("the quick\nbrown fox");
+    expect(p).toMatchObject({ width: 100, height: 40 });
+  });
+
+  it("keeps hard line breaks and wraps each line on its own", () => {
+    setTextMeasurer(mono);
+    expect(text({ text: "aa bb cc\ndd", maxWidth: 50 }).propsAt(0).text).toBe("aa bb\ncc\ndd");
+  });
+
+  it("leaves a word longer than maxWidth on its own line", () => {
+    setTextMeasurer(mono);
+    expect(text({ text: "a supercalifragilistic b", maxWidth: 50 }).propsAt(0).text).toBe("a\nsupercalifragilistic\nb");
+  });
+
+  it("does not wrap without maxWidth", () => {
+    setTextMeasurer(mono);
+    expect(text({ text: "the quick brown fox" }).propsAt(0).text).toBe("the quick brown fox");
+  });
+
+  it("defaults to left alignment", () => {
+    expect(text({ text: "x" }).propsAt(0).align).toBe("left");
+    expect(text({ text: "x", align: "center" }).propsAt(0).align).toBe("center");
+  });
+});
