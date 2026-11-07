@@ -34,7 +34,7 @@ Write the beat list for one chapter, build it, preview it, then move on.
 long.ts                    # spreads the chapters
 scenes/ch01-setup.ts       # export const ch01 = [card, ...beats]
 scenes/ch02-scenes.ts
-scenes/parts.ts            # chapterCard(), caption(), codePane(), progress()
+scenes/parts.ts            # chapterCard(), caption(), codePane()
 script.md                  # one <!-- vo:id --> per beat
 ```
 
@@ -59,10 +59,10 @@ selection keeps pointing at the same beat.
 
 ---
 
-## 3. Chapter card + progress (`scenes/parts.ts`)
+## 3. Chapter card (`scenes/parts.ts`)
 
 ```ts
-import { rect, scene, text } from "liosvideo";
+import { scene, text } from "liosvideo";
 
 export const chapterCard = (n: number, total: number, title: string, goal: string) =>
   scene(`ch${n}-00-card`, { duration: 3.5, background: "#0b0d12" }, ({ root, width, height }) => {
@@ -83,14 +83,10 @@ export const chapterCard = (n: number, total: number, title: string, goal: strin
       name: "goal", text: goal,
       x: safe, y: height * 0.38 + u * 11, fontSize: u * 3, lineHeight: 1.45, color: "#8b949e",
     }));
-
-    const bar = { y: height - safe - u, height: u * 0.6, radius: u * 0.3 };
-    root.add(rect({ name: "progress-track", x: safe, width: width - safe * 2, ...bar, fill: "#161b22" }));
-    root.add(rect({ name: "progress-fill", x: safe, width: (width - safe * 2) * (n / total), ...bar, fill: "#7aa2f7" }));
   });
 ```
 
-`text` does not wrap: break long titles and goals with `\n` yourself, ≤ 60 characters per line.
+No progress bar: every platform (YouTube, TikTok, Facebook) shows its own. The `CHAPTER n / total` kicker is enough.
 
 ---
 

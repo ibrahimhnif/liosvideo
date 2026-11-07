@@ -333,6 +333,7 @@ const L = layout({ width, height }); // L.u = rhythm unit (≈11px at 1080p), L.
 5. **Card padding.** Inner padding ≥ `u * 1.5`, `radius` = `u * 0.5–1`; text and icons never touch an edge.
 6. **Fill 55–70%.** Content covers 55–70% of the frame; when it feels full, remove an element instead of shrinking the gaps.
 7. **Exits leave no holes.** Entrances may start outside the safe area, but the resting layout stays balanced: fade or slide the whole group instead of leaving an empty slot.
+8. **No progress bars.** Never draw a progress bar or timeline indicator, in 16:9 or 9:16: YouTube, TikTok, Reels, Shorts and Facebook all show their own. Don't carry one over from an older project's shell.
 
 ### Built-In Realistic Mockups
 - `desktop`: macOS wallpaper, menu bar, and window layout.
@@ -374,7 +375,7 @@ Long-form is a first-class target: a 30-minute documentation video is normal, so
 A 30-minute video is ~54,000 frames at 30 fps. It is built as chapters, never as one giant scene or one giant file.
 
 1. **One module per chapter.** `scenes/ch01-setup.ts`, `scenes/ch02-…`, each exporting its scenes; `long.ts` spreads them (`scenes: [...ch01, ...ch02, ...]`). Keep ids stable (`ch03-02-diagram`) so re-renders reuse caches.
-2. **Chapter card.** Every chapter opens with a 2–4 s card: number, title, one-line goal, and optionally `3 / 12` progress.
+2. **Chapter card.** Every chapter opens with a 2–4 s card: number, title, one-line goal, and optionally the chapter number as text (`3 / 12`) — never a progress bar.
 3. **Beat sheet first.** 5–12 beats per chapter, each mapping to one `script.md` line and one scene. Build and preview chapter by chapter; don't write 30 minutes of scenes before the first render.
 4. **Lower motion density.** Long-form holds shots: cuts, slow push-ins, highlights and typewriter lines, with `pop`/`shake`/zoom reserved for key moments.
 5. **Reuse, don't copy.** Screen frames, code panes, callouts and caption styles live in helpers (`scenes/parts.ts`), not copy-pasted per scene.

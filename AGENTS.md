@@ -395,6 +395,7 @@ Before declaring an edit complete:
    - Keep content at least `u * 6` from every edge; in 9:16 keep `height * 0.12` clear at the bottom (platform UI) and `height * 0.05` at the top.
    - Place everything with `layout()` (slots, `L.cell`, `stack`) and size text with `L.type.*` — see *Layout Grid*. Give long text `maxWidth` (or put it in a `stack`) instead of hand-inserting `\n`.
    - Headline `lineHeight` 1.1–1.2, body 1.4–1.5. See the director skill's *Whitespace, Safe Areas & Spacing*.
+   - No progress bars or timeline indicators, in any format: YouTube, TikTok, Reels, Shorts and Facebook all draw their own scrubber. A chapter number as text (`3 / 12`) is fine.
 7. **Length & Pacing**:
    - Total duration is `Σ scene.duration`; plan it first: 9:16 shorts 20–45 s (5–9 scenes), 16:9 explainers 2–5 min, tutorials 5–15 min, documentation/courses **15–60 min** (40–150 scenes).
    - Long-form is built in chapters: one module per chapter, 5–12 beats each, rendered in ranges (`--frames`) and concatenated.
