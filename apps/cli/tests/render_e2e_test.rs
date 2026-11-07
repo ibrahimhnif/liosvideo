@@ -111,6 +111,7 @@ async fn renders_composition_with_audio_to_mp4() -> Result<()> {
         bitrate: None,
         audio_bitrate: None,
         loudness: None,
+        encoder: Default::default(),
         quiet: true,
     };
 
@@ -196,6 +197,7 @@ async fn renders_frame_range_subset() -> Result<()> {
         bitrate: None,
         audio_bitrate: None,
         loudness: None,
+        encoder: Default::default(),
         quiet: true,
     };
 

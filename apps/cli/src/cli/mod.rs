@@ -53,6 +53,9 @@ pub enum Commands {
         /// Keep the raw mix level (the -1 dBFS limiter still runs)
         #[arg(long, conflicts_with = "loudness")]
         no_normalize: bool,
+        /// H.264 encoder: auto (VideoToolbox on macOS, else OpenH264), hardware, software
+        #[arg(long, default_value = "auto")]
+        encoder: String,
         #[arg(long)]
         quiet: bool,
     },
@@ -441,6 +444,7 @@ mod tests {
                 audio_bitrate: None,
                 loudness: None,
                 no_normalize: false,
+                encoder: "auto".into(),
                 quiet: false,
             })
         );

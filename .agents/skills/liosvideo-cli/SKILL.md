@@ -63,7 +63,10 @@ liosvideo render <ENTRY> [OPTIONS]
 | `--audio-bitrate <BPS>` | AAC bitrate | `192000` | `--audio-bitrate 256000` |
 | `--loudness <LUFS>` | Integrated loudness target (whole programme, before `--frames`) | composition `mix`, else `-14` | `--loudness -16` |
 | `--no-normalize` | Keep the raw mix level (the -1 dBFS limiter still runs) | `false` | `--no-normalize` |
+| `--encoder <NAME>` | H.264 encoder: `auto` (VideoToolbox hardware on macOS, OpenH264 elsewhere or as fallback), `hardware` (VideoToolbox only, fails instead of falling back), `software` (OpenH264) | `auto` | `--encoder software` |
 | `--quiet` | Disable interactive terminal progress bar (clean CI logs) | `false` | `--quiet` |
+
+After the render, `Time:` shows where the time went (`evaluate` scene code, `3d`, `gpu`, `readback`, `encode`) and how long the encoder thread was busy; use it to find the slow stage before optimising a scene. On Apple Silicon the hardware encoder writes High-profile H.264 tagged BT.709 and runs on its own thread while the next frames render.
 
 #### Supported Frame Range Syntax:
 - `0..120` or `0-120`: From frame 0 to frame 120 (exclusive).

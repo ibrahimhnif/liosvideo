@@ -4,4 +4,4 @@ pub mod target;
 
 pub use context::GpuContext;
 pub use renderer::Renderer;
-pub use target::RenderTarget;
+pub use target::{PendingRead, RenderTarget};

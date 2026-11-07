@@ -45,6 +45,7 @@ async fn main() -> anyhow::Result<()> {
             audio_bitrate,
             loudness,
             no_normalize,
+            encoder,
             quiet,
         } => {
             let config = pipeline::RenderConfig {
@@ -61,6 +62,7 @@ async fn main() -> anyhow::Result<()> {
                 } else {
                     loudness.map(Some)
                 },
+                encoder: liosvideo_cli::media::encoder::VideoEncoderKind::parse(&encoder)?,
                 quiet,
             };
             on_js_thread(move || pipeline::run_render_job(config)).await?;

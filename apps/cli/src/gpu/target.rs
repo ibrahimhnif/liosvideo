@@ -56,6 +56,14 @@ impl RenderTarget {
     }
 
     pub async fn read_rgba(&self, device: &wgpu::Device, queue: &wgpu::Queue) -> Result<Vec<u8>> {
+        let pending = self.begin_read(device, queue);
+        self.finish_read(device, pending)
+    }
+
+    /// Queues a copy of the frame into the staging buffer and returns at once, so the CPU can work
+    /// on the next frame while the GPU finishes this one. Collect it with [`Self::finish_read`]
+    /// before this target renders again.
+    pub fn begin_read(&self, device: &wgpu::Device, queue: &wgpu::Queue) -> PendingRead {
         let mut encoder = device.create_command_encoder(&wgpu::CommandEncoderDescriptor {
             label: Some("RenderTarget Copy Encoder"),
         });
@@ -82,20 +90,26 @@ impl RenderTarget {
             },
         );
 
-        queue.submit(Some(encoder.finish()));
+        let submission = queue.submit(Some(encoder.finish()));
+        let (tx, rx) = std::sync::mpsc::channel();
+        self.staging_buffer
+            .slice(..)
+            .map_async(wgpu::MapMode::Read, move |result| {
+                let _ = tx.send(result);
+            });
+        PendingRead { submission, rx }
+    }
 
-        let buffer_slice = self.staging_buffer.slice(..);
-        let (tx, rx) = tokio::sync::oneshot::channel();
-        buffer_slice.map_async(wgpu::MapMode::Read, move |result| {
-            let _ = tx.send(result);
-        });
-
-        device.poll(wgpu::Maintain::wait());
-
-        rx.await
+    /// Waits for that copy only (not for work queued after it) and returns the RGBA bytes.
+    pub fn finish_read(&self, device: &wgpu::Device, pending: PendingRead) -> Result<Vec<u8>> {
+        device.poll(wgpu::Maintain::WaitForSubmissionIndex(pending.submission));
+        pending
+            .rx
+            .recv()
             .map_err(|e| anyhow!("Channel dropped: {e}"))?
             .context("Failed to map staging buffer")?;
 
+        let buffer_slice = self.staging_buffer.slice(..);
         let mapped_data = buffer_slice.get_mapped_range();
         let unpadded_bytes_per_row = (self.width * 4) as usize;
         let padded_bytes_per_row = self.padded_bytes_per_row as usize;
@@ -112,4 +126,10 @@ impl RenderTarget {
 
         Ok(rgba)
     }
+}
+
+/// A frame copy in flight; see [`RenderTarget::begin_read`].
+pub struct PendingRead {
+    submission: wgpu::SubmissionIndex,
+    rx: std::sync::mpsc::Receiver<std::result::Result<(), wgpu::BufferAsyncError>>,
 }

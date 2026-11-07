@@ -3,7 +3,7 @@ use std::path::{Path, PathBuf};
 
 use crate::cli::RenderProgressBar;
 use crate::gpu::{GpuContext, RenderTarget, Renderer};
-use crate::media::encoder::Mp4Encoder;
+use crate::media::encoder::{EncoderThread, Mp4Encoder, VideoEncoderKind};
 use crate::runtime::RuntimeHost;
 
 use super::preset::{resolve_bitrate, Preset};
@@ -21,6 +21,7 @@ pub struct RenderConfig {
     pub audio_bitrate: Option<u32>,
     /// Overrides the composition's loudness target: `Some(None)` keeps the raw level.
     pub loudness: Option<Option<f64>>,
+    pub encoder: VideoEncoderKind,
     pub quiet: bool,
 }
 
@@ -210,23 +211,34 @@ pub async fn run_render_job(config: RenderConfig) -> Result<()> {
 
     // Initialize headless GPU context, offscreen target, and renderer
     let gpu = GpuContext::new_headless().await?;
-    let target = RenderTarget::new(&gpu.device, target_width, target_height);
+    // Two targets: the GPU renders frame N+1 into one while the CPU reads and encodes frame N
+    // from the other. Frames still go to the encoder in order and are drawn exactly as before.
+    let targets = [
+        RenderTarget::new(&gpu.device, target_width, target_height),
+        RenderTarget::new(&gpu.device, target_width, target_height),
+    ];
+    let mut in_flight: Option<(usize, crate::gpu::PendingRead)> = None;
     let mut renderer = Renderer::new(&gpu.device, &gpu.queue, project_root.clone());
 
     // Initialize in-binary MP4 encoder
-    let mut encoder = Mp4Encoder::new(
-        &config.out,
-        target_width,
-        target_height,
-        fps,
-        crate::media::audio::DEFAULT_SAMPLE_RATE,
-        video_bitrate,
-        audio_bitrate,
-    )?;
+    let out = config.out.clone();
+    let kind = config.encoder;
+    let mut encoder = EncoderThread::spawn(3, move || {
+        Mp4Encoder::new_with_encoder(
+            &out,
+            target_width,
+            target_height,
+            fps,
+            crate::media::audio::DEFAULT_SAMPLE_RATE,
+            video_bitrate,
+            audio_bitrate,
+            kind,
+        )
+    })?;
 
     if !config.quiet {
         println!(
-            "Rendering: {} ({}x{} @ {}fps, {} frames: {}..{}, {} Mbps video)",
+            "Rendering: {} ({}x{} @ {}fps, {} frames: {}..{}, {} Mbps video, {})",
             entry_file,
             target_width,
             target_height,
@@ -234,11 +246,13 @@ pub async fn run_render_job(config: RenderConfig) -> Result<()> {
             total_render_frames,
             frame_range.start,
             frame_range.end,
-            video_bitrate as f64 / 1_000_000.0
+            video_bitrate as f64 / 1_000_000.0,
+            encoder.encoder_name()
         );
     }
 
     let progress = RenderProgressBar::new(total_render_frames as u64, config.quiet);
+    let mut times = StageTimes::default();
 
     for frame in frame_range {
         if let Some(scene) = comp_info
@@ -251,28 +265,37 @@ pub async fn run_render_job(config: RenderConfig) -> Result<()> {
             progress.set_scene("rendering");
         }
 
+        let t = std::time::Instant::now();
         let render_list = host.evaluate_frame(frame)?;
+        let t = times.add(Stage::Evaluate, t);
         let three_frames = host.render_three_nodes(frame, fps).await?;
+        let t = times.add(Stage::Three, t);
         let (_, scene_time, scene_progress) = crate::runtime::scene_clock(&comp_info, frame, fps);
+        let slot = frame % 2;
         renderer.render_frame(
             &gpu.device,
             &gpu.queue,
-            &target,
+            &targets[slot],
             &render_list,
             scene_time,
             scene_progress,
             &three_frames,
         )?;
-        let rgba = target.read_rgba(&gpu.device, &gpu.queue).await?;
-        encoder.push_frame(&rgba)?;
+        let pending = targets[slot].begin_read(&gpu.device, &gpu.queue);
+        times.add(Stage::Gpu, t);
+        if let Some((prev, read)) = in_flight.replace((slot, pending)) {
+            collect_frame(&targets[prev], read, &gpu.device, &mut encoder, &mut times)?;
+            progress.inc();
+        }
+    }
+    if let Some((prev, read)) = in_flight.take() {
+        collect_frame(&targets[prev], read, &gpu.device, &mut encoder, &mut times)?;
         progress.inc();
     }
 
-    if !audio_pcm.is_empty() {
-        encoder.push_audio(&audio_pcm)?;
-    }
-
-    encoder.finish()?;
+    let t = std::time::Instant::now();
+    let encode_busy = encoder.finish_with_audio(audio_pcm)?;
+    times.add(Stage::Encode, t);
     progress.finish_with_message("Done");
 
     // Never hand over a file that only looks fine until a player hits a broken reference frame.
@@ -304,9 +327,96 @@ pub async fn run_render_job(config: RenderConfig) -> Result<()> {
             elapsed,
             render_fps
         );
+        println!(
+            "Time: {} (encoder busy {:.1} s on its own thread)",
+            times.summary(),
+            encode_busy.as_secs_f64()
+        );
     }
 
     Ok(())
+}
+
+/// Waits for a frame's copy, then hands the pixels to the encoder.
+fn collect_frame(
+    target: &RenderTarget,
+    read: crate::gpu::PendingRead,
+    device: &wgpu::Device,
+    encoder: &mut EncoderThread,
+    times: &mut StageTimes,
+) -> Result<()> {
+    let t = std::time::Instant::now();
+    let rgba = target.finish_read(device, read)?;
+    let t = times.add(Stage::Readback, t);
+    encoder.push_frame(rgba)?;
+    times.add(Stage::Encode, t);
+    Ok(())
+}
+
+/// Where a render spends its time, so a slow render can be traced to one stage.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Stage {
+    /// Scene code: keyframes, layout, the render list
+    Evaluate,
+    /// three() nodes
+    Three,
+    /// Drawing the frame on the GPU
+    Gpu,
+    /// Copying the frame back to the CPU
+    Readback,
+    /// Colour conversion, H.264 and muxing
+    Encode,
+}
+
+const STAGES: [(Stage, &str); 5] = [
+    (Stage::Evaluate, "evaluate"),
+    (Stage::Three, "3d"),
+    (Stage::Gpu, "gpu"),
+    (Stage::Readback, "readback"),
+    (Stage::Encode, "encode"),
+];
+
+#[derive(Debug, Default, Clone)]
+pub struct StageTimes {
+    secs: [f64; 5],
+}
+
+impl StageTimes {
+    /// Adds the time since `since` to `stage` and returns now, to time the next stage from.
+    pub fn add(&mut self, stage: Stage, since: std::time::Instant) -> std::time::Instant {
+        let now = std::time::Instant::now();
+        self.add_secs(stage, (now - since).as_secs_f64());
+        now
+    }
+
+    pub fn add_secs(&mut self, stage: Stage, secs: f64) {
+        let i = STAGES.iter().position(|(s, _)| *s == stage).unwrap_or(0);
+        self.secs[i] += secs;
+    }
+
+    pub fn secs(&self, stage: Stage) -> f64 {
+        STAGES
+            .iter()
+            .position(|(s, _)| *s == stage)
+            .map(|i| self.secs[i])
+            .unwrap_or(0.0)
+    }
+
+    /// e.g. `evaluate 1.2 s (10%) · gpu 3.0 s (25%) · encode 7.8 s (65%)`; stages that took no
+    /// time are left out.
+    pub fn summary(&self) -> String {
+        let total: f64 = self.secs.iter().sum();
+        STAGES
+            .iter()
+            .zip(self.secs)
+            .filter(|(_, secs)| *secs >= 0.0005)
+            .map(|((_, name), secs)| {
+                let share = if total > 0.0 { secs / total * 100.0 } else { 0.0 };
+                format!("{name} {secs:.1} s ({share:.0}%)")
+            })
+            .collect::<Vec<_>>()
+            .join(" · ")
+    }
 }
 
 /// Inspect composition metadata and print human-readable summary or JSON.
@@ -378,5 +488,18 @@ mod tests {
 
         // Invalid range
         assert!(parse_frame_range(Some("50..10"), 100).is_err());
+    }
+
+    #[test]
+    fn summarises_where_the_render_time_went() {
+        let mut t = StageTimes::default();
+        t.add_secs(Stage::Evaluate, 1.0);
+        t.add_secs(Stage::Gpu, 1.0);
+        t.add_secs(Stage::Encode, 2.0);
+        assert_eq!(t.secs(Stage::Encode), 2.0);
+        assert_eq!(
+            t.summary(),
+            "evaluate 1.0 s (25%) · gpu 1.0 s (25%) · encode 2.0 s (50%)"
+        );
     }
 }
