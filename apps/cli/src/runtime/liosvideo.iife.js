@@ -1979,6 +1979,190 @@ var __liosvideo = (function(exports) {
 			};
 		});
 	}
+	// packages/runtime/src/assets/attributions.ts
+	const HEADERS = [
+		["asset", /^(asset|aset|file|berkas|path)\b/i],
+		["license", /(licen[cs]e|lisensi)/i],
+		["author", /(author|creator|pembuat|kreator|fotografer|photographer|credit)/i],
+		["source", /(source|sumber|url|link)/i],
+		["notes", /(notes?|usage|scene|catatan|pemakaian|adegan)/i]
+	];
+	const STANDARD = [
+		"asset",
+		"source",
+		"author",
+		"license",
+		"notes"
+	];
+	let rows = /* @__PURE__ */ new Map();
+	let byName = /* @__PURE__ */ new Map();
+	const normalise = (path) => path.trim().replace(/^`|`$/g, "").trim().replace(/^\.?\//, "");
+	const basename = (path) => path.split("/").pop() ?? path;
+	const cellsOf = (line) => line.trim().replace(/^\||\|$/g, "").split("|").map((c) => c.trim());
+	/**
+	* Parses the attribution table(s). Columns are matched by header name (Asset/File, Source/Sumber,
+	* Author/Creator, License/Lisensi, Notes/Scene), falling back to the standard order.
+	*/
+	function registerAttributions(markdown) {
+		rows = /* @__PURE__ */ new Map();
+		byName = /* @__PURE__ */ new Map();
+		let columns = STANDARD;
+		for (const line of (markdown ?? "").split("\n")) {
+			if (!line.trim().startsWith("|")) continue;
+			const cells = cellsOf(line);
+			if (cells.every((c) => /^:?-*:?$/.test(c))) continue;
+			const header = cells.map((c) => HEADERS.find(([, re]) => re.test(c))?.[0]);
+			if (header[0] === "asset" && !cells[0].includes(".")) {
+				columns = header;
+				continue;
+			}
+			const row = {
+				asset: "",
+				source: "",
+				author: "",
+				license: "",
+				notes: ""
+			};
+			cells.forEach((c, i) => {
+				const field = columns[i];
+				if (field && !row[field]) row[field] = field === "asset" ? normalise(c) : c;
+			});
+			if (!row.asset) continue;
+			rows.set(row.asset, row);
+			if (!byName.has(basename(row.asset))) byName.set(basename(row.asset), row);
+		}
+	}
+	/** The attribution row for a project asset path (or a row listing just its file name). */
+	function attribution(asset) {
+		const hosted = globalThis.__liosAttributions;
+		if (!rows.size && hosted) registerAttributions(hosted);
+		const path = normalise(asset);
+		return rows.get(path) ?? byName.get(basename(path));
+	}
+	// packages/runtime/src/components/credit.ts
+	const LABELS = {
+		en: {
+			source: "Source",
+			photo: "Photo",
+			ai: "AI illustration"
+		},
+		id: {
+			source: "Sumber",
+			photo: "Foto",
+			ai: "Ilustrasi AI"
+		}
+	};
+	/** "https://www.unsplash.com/photos/x" -> "unsplash.com"; anything else is returned as written. */
+	function siteOf(source) {
+		const host = /^https?:\/\/([^/]+)/i.exec(source.trim())?.[1];
+		return host ? host.replace(/^www\./i, "") : source;
+	}
+	/** The credit line for these options, e.g. "Source: ANTARA • Photo: Jane Doe, CC BY-SA 4.0". */
+	function creditText(opts) {
+		if (opts.text) return opts.text;
+		const L = LABELS[opts.lang ?? "en"];
+		const parts = [];
+		const sources = (Array.isArray(opts.source) ? opts.source : opts.source ? [opts.source] : []).filter(Boolean);
+		if (sources.length) parts.push(`${L.source}: ${sources.join(" • ")}`);
+		let photo = opts.photo;
+		let license = opts.license;
+		if (opts.asset) {
+			const row = attribution(opts.asset);
+			if (!row) throw new Error(`credit(): "${opts.asset}" has no row in assets/ATTRIBUTIONS.md; add one (Asset | Source | Author | License | Notes) first`);
+			if (/ai-generated/i.test(row.author)) {
+				const tool = /generated with ([^(]+)/i.exec(row.source)?.[1]?.trim();
+				parts.push(tool ? `${L.ai} (${tool})` : L.ai);
+				return parts.join(" • ");
+			}
+			photo ??= row.author || siteOf(row.source);
+			license ??= row.license;
+		}
+		if (photo) parts.push(`${L.photo}: ${photo}${license ? `, ${license}` : ""}`);
+		else if (license) parts.push(license);
+		return parts.join(" • ");
+	}
+	/**
+	* A one-line source / photo credit in a fixed spot, right-aligned: in the bottom margin under the
+	* caption slot in 16:9 and 1:1; at the top of the safe area in 9:16, where the bottom belongs to
+	* captions and the platform UI. It never meets the caption slot; long credits shrink to fit.
+	*/
+	function credit(root, opts) {
+		const { width, height } = root.propsAt(0);
+		if (!(width > 0 && height > 0)) throw new Error("credit(): add it to the scene root (it needs a width and height)");
+		const L = layout({
+			width,
+			height
+		});
+		const text = creditText(opts);
+		const fontFamily = opts.fontFamily ?? "SF Mono";
+		const { lineHeight, fontWeight } = L.type.label;
+		const background = opts.background === void 0 ? "#0000008c" : opts.background;
+		const padX = background ? L.u : 0;
+		const padY = background ? L.u * .4 : 0;
+		const room = L.safe.width - padX * 2;
+		let fontSize = L.type.label.fontSize;
+		const measured = measureText({
+			text,
+			fontSize,
+			fontFamily,
+			fontWeight,
+			lineHeight
+		});
+		if (measured.width > room) fontSize *= room / measured.width;
+		const textW = Math.min(measureText({
+			text,
+			fontSize,
+			fontFamily,
+			fontWeight,
+			lineHeight
+		}).width, room);
+		const textH = fontSize * lineHeight;
+		const portrait = L.orientation === "portrait";
+		const right = L.safe.x + L.safe.width - padX;
+		const cy = portrait ? L.safe.y + padY + textH / 2 : height - L.u * 6 / 2;
+		const group = new GroupNode({ name: (opts.name ?? "credit").replaceAll("/", "-") });
+		if (background) group.add(new RectNode({
+			name: "backdrop",
+			x: right + padX,
+			y: cy,
+			anchorX: 1,
+			anchorY: .5,
+			width: textW + padX * 2,
+			height: textH + padY * 2,
+			radius: L.u * .6,
+			fill: background
+		}));
+		group.add(new TextNode({
+			name: "text",
+			text,
+			fontFamily,
+			fontSize,
+			fontWeight,
+			lineHeight,
+			color: opts.color ?? "#ffffffd9",
+			align: "right",
+			x: right,
+			y: cy,
+			anchorX: 1,
+			anchorY: .5,
+			width: textW,
+			height: textH
+		}));
+		if (opts.at !== void 0 && opts.at > 0) {
+			group.assign({ opacity: 0 });
+			group.to({ opacity: 1 }, {
+				at: opts.at,
+				duration: .4,
+				ease: "outCubic"
+			});
+		}
+		if (opts.until !== void 0) group.to({ opacity: 0 }, {
+			at: opts.until,
+			duration: .3,
+			ease: "inOutCubic"
+		});
+		return root.add(group);
+	}
 	// packages/runtime/src/mockups/window.ts
 	var WindowNode = class extends GroupNode {
 		frame;
@@ -2736,6 +2920,7 @@ var __liosvideo = (function(exports) {
 	exports.WindowNode = WindowNode;
 	exports.apply = apply;
 	exports.applyTransition = applyTransition;
+	exports.attribution = attribution;
 	exports.buildManifest = buildManifest;
 	exports.captions = captions;
 	exports.chrome = chrome;
@@ -2743,6 +2928,8 @@ var __liosvideo = (function(exports) {
 	exports.clampFrame = clampFrame;
 	exports.collectAssets = collectAssets;
 	exports.composition = composition;
+	exports.credit = credit;
+	exports.creditText = creditText;
 	exports.cursor = cursor;
 	exports.desktop = desktop;
 	exports.duckGainAt = duckGainAt;
@@ -2772,6 +2959,7 @@ var __liosvideo = (function(exports) {
 	exports.peak = peak;
 	exports.phone = phone;
 	exports.rect = rect;
+	exports.registerAttributions = registerAttributions;
 	exports.registerVoTiming = registerVoTiming;
 	exports.registerVoTimings = registerVoTimings;
 	exports.resolveMix = resolveMix;

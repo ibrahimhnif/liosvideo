@@ -82,6 +82,11 @@ export class PreviewHost {
     this.post({ type: "timings", timings });
   }
 
+  /** assets/ATTRIBUTIONS.md, so `credit({ asset })` can quote an asset's row. */
+  setAttributions(markdown: string): void {
+    this.post({ type: "attributions", markdown });
+  }
+
   /** Loads a bundle. Rejects with SceneError, SupersededError, or a timeout Error. */
   load(code: string): Promise<LoadedInfo> {
     const generation = ++this.generation;

@@ -240,18 +240,27 @@
     }
   }
 
+  async function refreshAttributions() {
+    try {
+      const markdown = await invoke<string>("read_project_file", { rel: "assets/ATTRIBUTIONS.md" });
+      host?.setAttributions(markdown);
+    } catch {
+      host?.setAttributions(""); // no attribution file yet
+    }
+  }
+
   export function reload() {
     audioPlayer.clearCache();
     // timings must reach the worker before the bundle is evaluated so scenes can
     // size themselves from vo("line").duration at module scope
-    void refreshVoTimings().finally(() => builds.trigger());
+    void Promise.all([refreshVoTimings(), refreshAttributions()]).finally(() => builds.trigger());
   }
 
   onMount(() => {
     canvas = document.createElement("canvas");
     stage.appendChild(canvas);
     host = new PreviewHost(canvas, loadProjectImage);
-    const timingsReady = refreshVoTimings();
+    const timingsReady = Promise.all([refreshVoTimings(), refreshAttributions()]);
     host.onError((e) => {
       devLog(`preview-error ${e.phase} ${e.message}${e.location ? ` at ${e.location.file}:${e.location.line}` : ""}`);
       runtimeError = { message: e.message, stack: e.stack, location: e.location };
@@ -277,6 +286,8 @@
       // a revised image keeps its path, so swap the bitmap and redraw the current frame
       host.reloadAssets(payload.paths).then((hit) => hit && host.requestFrame(playhead.frame)).catch(() => {});
       const audioChanged = touchesAudio(payload.paths);
+      const creditsChanged = payload.paths.some((p) => p.endsWith("ATTRIBUTIONS.md"));
+      if (creditsChanged) refreshAttributions().then(() => builds.trigger());
       if (audioChanged) {
         for (const p of payload.paths) {
           audioPlayer.invalidate(p);

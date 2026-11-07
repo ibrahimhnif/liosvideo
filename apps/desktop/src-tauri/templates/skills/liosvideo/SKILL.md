@@ -143,6 +143,19 @@ export default scene("hook", { duration: vo("h1").duration + vo("h2").duration +
 - The spoken word changes colour and grows slightly. Options: `preset` (`"short"` / `"long"`, chosen from the orientation by default), `fontFamily`, `fontSize`, `fontWeight`, `color`, `activeColor` (default `#ffd60a`), `background` (pill fill, e.g. `"#000000aa"`), `maxWords`, `hold`, `start`, `gap`, `name`.
 - Keep other content out of the caption slot when captions are on.
 
+### Source & Photo Credits (`credit`)
+
+```ts
+import { credit } from "liosvideo";
+
+credit(root, { source: ["ANTARA", "CNBC Indonesia"], asset: "assets/images/habibie.jpg", lang: "id" });
+// -> "Sumber: ANTARA • CNBC Indonesia • Foto: Kantor Wapres RI, domain publik"
+```
+
+- One line in a fixed spot that never meets the captions. In 16:9 and 1:1 it sits right-aligned in the bottom margin under the caption slot. In 9:16 it sits at the top-right of the safe area, because the bottom belongs to captions and the platform UI. Long credits shrink to fit, and a translucent backdrop keeps it readable (`background: false` turns the backdrop off).
+- `asset` fills the photo credit and licence from that file's row in `assets/ATTRIBUTIONS.md`, so the screen always matches the attribution table. The table's headers can be English or Indonesian (File/Asset, Source/Sumber, Author/Creator, License/Lisensi), and a row may list just the file name. With no author column, the source site is credited. AI-generated rows render as "AI illustration (Google Gemini)" (`lang: "id"`: "Ilustrasi AI").
+- Other options: `source`, `photo`, `license`, `text` (replaces the whole line), `lang` (`"en"` / `"id"`), `at` / `until` (fade in/out), `color`, `fontFamily`, `name`.
+
 ### Mix: Loudness & Ducking (automatic)
 
 Every render (CLI and desktop export) runs the mix through a master bus:

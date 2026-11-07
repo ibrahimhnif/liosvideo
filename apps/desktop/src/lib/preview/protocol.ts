@@ -7,7 +7,8 @@ export type ToWorker =
   | { type: "render"; frame: number; id: number }
   | { type: "assets"; bitmaps: [string, ImageBitmap][] }
   | { type: "snapshot"; id: number }
-  | { type: "timings"; timings: Record<string, any> };
+  | { type: "timings"; timings: Record<string, any> }
+  | { type: "attributions"; markdown: string };
 
 export type FromWorker =
   | {

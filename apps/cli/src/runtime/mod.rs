@@ -154,10 +154,31 @@ impl RuntimeHost {
         Ok(())
     }
 
+    /// Hands `assets/ATTRIBUTIONS.md` to the runtime so `credit({ asset })` can quote its row.
+    fn inject_attributions(&mut self) -> Result<()> {
+        let path = self.project_root.join("assets").join("ATTRIBUTIONS.md");
+        let Ok(markdown) = std::fs::read_to_string(&path) else {
+            return Ok(());
+        };
+        let json = serde_json::to_string(&markdown).context("Failed to serialize attributions")?;
+        let script = format!(
+            r#"(() => {{
+                globalThis.__liosAttributions = {json};
+                const rt = globalThis.__liosvideo;
+                if (rt && typeof rt.registerAttributions === "function") rt.registerAttributions({json});
+            }})()"#
+        );
+        self.js_runtime
+            .execute_script("inject_attributions.js", script)
+            .map_err(|e| anyhow!("Failed to inject attributions: {e}"))?;
+        Ok(())
+    }
+
     pub async fn load_composition(&mut self, entry_file: &str) -> Result<CompositionInfo> {
         // Timings must exist before the entry module is evaluated so scenes can size
         // themselves from `vo("line").duration` at module scope.
         self.inject_vo_timings()?;
+        self.inject_attributions()?;
 
         let specifier = self
             .loader
@@ -543,6 +564,37 @@ mod tests {
             .filter_map(|i| i["text"].as_str())
             .collect();
         assert_eq!(texts, vec!["Halo", "semua."]);
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn credits_an_asset_from_the_attributions_file() -> Result<()> {
+        let dir = tempfile::tempdir()?;
+        std::fs::create_dir_all(dir.path().join("assets"))?;
+        std::fs::write(
+            dir.path().join("assets").join("ATTRIBUTIONS.md"),
+            "| Asset | Source / URL | Author / Creator | License | Notes |\n| :--- | :--- | :--- | :--- | :--- |\n| `assets/images/a.jpg` | https://x | Jane Doe | CC BY 4.0 | s1 |\n",
+        )?;
+        std::fs::write(
+            dir.path().join("long.ts"),
+            r##"
+            import { composition, credit, scene } from "liosvideo";
+            const s = scene("s", { duration: 1 }, ({ root }) => {
+                credit(root, { source: "ANTARA", asset: "assets/images/a.jpg" });
+            });
+            export default composition({ width: 1920, height: 1080, fps: 30, scenes: [s] });
+            "##,
+        )?;
+        let mut host = RuntimeHost::new(dir.path().to_path_buf())?;
+        host.load_composition("long.ts").await?;
+        let rl = host.evaluate_frame(0)?;
+        let texts: Vec<&str> = rl["items"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .filter_map(|i| i["text"].as_str())
+            .collect();
+        assert_eq!(texts, vec!["Source: ANTARA • Photo: Jane Doe, CC BY 4.0"]);
         Ok(())
     }
 

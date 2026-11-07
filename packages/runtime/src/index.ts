@@ -14,6 +14,8 @@ export * from "./manifest";
 export * from "./audio/timing";
 export * from "./audio/mix";
 export * from "./components/captions";
+export * from "./components/credit";
+export * from "./assets/attributions";
 export * from "./mockups/window";
 export * from "./mockups/desktop";
 export * from "./mockups/terminal";

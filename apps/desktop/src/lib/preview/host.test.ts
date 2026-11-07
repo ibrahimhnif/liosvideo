@@ -55,6 +55,12 @@ async function loadOk(host: PreviewHost, w: FakeWorker) {
 afterEach(() => vi.useRealTimers());
 
 describe("PreviewHost", () => {
+  it("hands the project's attribution table to the worker", () => {
+    const { host, workers } = setup();
+    host.setAttributions("| `assets/images/a.jpg` | x | Jane | CC BY | |");
+    expect(workers[0].posted.at(-1)).toEqual({ type: "attributions", markdown: "| `assets/images/a.jpg` | x | Jane | CC BY | |" });
+  });
+
   it("resolves load with the composition info", async () => {
     const { host, workers } = setup();
     await expect(loadOk(host, workers[0])).resolves.toMatchObject({ totalFrames: 90, fps: 30 });
