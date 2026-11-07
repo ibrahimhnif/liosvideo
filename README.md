@@ -59,7 +59,7 @@ curl -fsSL https://raw.githubusercontent.com/ibrahimhnif/liosvideo/main/install.
 To install a specific release version or custom directory:
 
 ```sh
-curl -fsSL https://raw.githubusercontent.com/ibrahimhnif/liosvideo/main/install.sh | sh -s -- --version v0.1.8 --install-dir ~/.local/bin
+curl -fsSL https://raw.githubusercontent.com/ibrahimhnif/liosvideo/main/install.sh | sh -s -- --version v0.1.9 --install-dir ~/.local/bin
 ```
 
 See the [latest release](https://github.com/ibrahimhnif/liosvideo/releases/latest) for release notes and all available assets.
