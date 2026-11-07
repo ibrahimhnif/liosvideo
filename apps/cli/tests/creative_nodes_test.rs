@@ -314,3 +314,52 @@ async fn keeps_a_callout_on_its_part_during_an_orbit() -> Result<()> {
     let _ = std::fs::remove_dir_all(&dir);
     Ok(())
 }
+
+// Same seeded field as "draws the same seeded particles" in packages/runtime/test/three_soft.test.ts
+// and test/gpu/creative.browser.test.ts: the bright pixels land in the same place in every renderer.
+#[tokio::test]
+async fn draws_the_same_seeded_particles() -> Result<()> {
+    let dir = write_project(
+        "particles",
+        r##"
+        import { composition, particles, scene, three } from "liosvideo";
+        import * as THREE from "three";
+
+        const shot = scene("shot", { duration: 4 }, ({ root }) => {
+            root.add(three({
+                name: "dust",
+                width: 96,
+                height: 96,
+                fov: 40,
+                setup({ scene: s, camera }) {
+                    s.background = new THREE.Color("#000000");
+                    const dust = particles({ count: 6, seed: 11, area: [3, 2, 0.5], velocity: [0, 0, 0], spread: 0, turbulence: 0, size: 0.4, lifetime: 10, fade: 0.1, color: "#ffffff" });
+                    s.add(dust.object);
+                    return { dust, camera };
+                },
+                update({ dust, camera }, _progress, time) {
+                    dust.update(time, camera);
+                },
+            }));
+        });
+
+        export default composition({ width: 96, height: 96, fps: 30, background: "#000000", scenes: [shot] });
+    "##,
+    )?;
+
+    let out = dir.join("dust.png");
+    let status = std::process::Command::new(env!("CARGO_BIN_EXE_liosvideo"))
+        .args(["snapshot", "main.ts", "--time", "2", "-o"])
+        .arg(&out)
+        .current_dir(&dir)
+        .status()?;
+    assert!(status.success(), "snapshot failed");
+    let image = image::open(&out)?;
+    let n = image.pixels().filter(|(_, _, p)| p[0] > 60).count() as f32;
+    let (x, y) = centroid(&image, |p| p[0] > 60).expect("particles are drawn");
+    assert!((x - 39.2).abs() < 1.0 && (y - 42.9).abs() < 1.0, "centroid ({x:.1}, {y:.1})");
+    assert!(n > 426.0 * 0.7 && n < 426.0 * 1.3, "{n} bright pixels");
+
+    let _ = std::fs::remove_dir_all(&dir);
+    Ok(())
+}

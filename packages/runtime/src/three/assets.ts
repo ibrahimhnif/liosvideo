@@ -2,6 +2,9 @@
 // `three({ async setup() { ... } })`. The host (desktop worker or CLI) registers the loaders,
 // which read files from the project and decode them the same way in both.
 import type * as THREE from "three";
+import type { ParticleOptions, Particles } from "./particles";
+
+export type { ParticleOptions, Particles } from "./particles";
 
 /** A loaded glTF / GLB model. */
 export interface Model {
@@ -25,6 +28,7 @@ export interface ThreeLoaders {
   gltf(src: string): Promise<Model>;
   hdr(src: string): Promise<THREE.DataTexture>;
   texture(src: string, opts?: TextureOptions): Promise<THREE.Texture>;
+  particles(opts?: ParticleOptions): Particles;
 }
 
 let loaders: ThreeLoaders | undefined;
@@ -34,8 +38,10 @@ export function registerThreeLoaders(impl: ThreeLoaders | undefined): void {
   loaders = impl;
 }
 
-function need(name: string): ThreeLoaders {
-  if (!loaders) throw new Error(`${name}() works inside three({ setup }): make setup async and await it there`);
+function need(name: string, awaited = true): ThreeLoaders {
+  if (!loaders) {
+    throw new Error(`${name}() works inside three({ setup })${awaited ? ": make setup async and await it there" : ""}`);
+  }
   return loaders;
 }
 
@@ -52,4 +58,12 @@ export async function hdr(src: string): Promise<THREE.DataTexture> {
 /** Loads an image from the project as a texture (`map`, `normalMap`, `roughnessMap`, …). */
 export async function texture(src: string, opts?: TextureOptions): Promise<THREE.Texture> {
   return need("texture").texture(src, opts);
+}
+
+/**
+ * Seeded, camera-facing glowing particles (dust, sparks, embers); call inside three({ setup }), add
+ * `.object` to the scene and call `.update(time, camera)` from update(). Same field every render.
+ */
+export function particles(opts?: ParticleOptions): Particles {
+  return need("particles", false).particles(opts);
 }

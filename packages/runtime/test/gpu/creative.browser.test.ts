@@ -4,6 +4,7 @@ import { ThreeNode } from "../../src/graph/three";
 import { ThreeRunner } from "../../src/gpu/three_runner";
 import { renderThreeNode, resetThreeSoftware } from "../../src/gpu/three_soft";
 import { cameraPath } from "../../src/three/camera_path";
+import { createParticles } from "../../src/three/particles";
 
 let runner: ThreeRunner | undefined;
 afterEach(() => runner?.dispose());
@@ -52,6 +53,20 @@ async function pixelAt(node: ThreeNode, time: number, duration: number, x: numbe
   const context = canvas.getContext("2d")!;
   context.drawImage(bitmap!, 0, 0);
   return Array.from(context.getImageData(x, y, 1, 1).data);
+}
+
+function brightCentroid(at: (x: number, y: number) => number, size: number) {
+  let sx = 0, sy = 0, n = 0;
+  for (let y = 0; y < size; y++) for (let x = 0; x < size; x++) if (at(x, y) > 60) { sx += x; sy += y; n++; }
+  return { x: sx / n, y: sy / n, n };
+}
+// The seeded field in "draws the same seeded particles" (software, WebGL) and
+// draws_the_same_seeded_particles (CLI) lands here in every renderer.
+function expectSameField(c: { x: number; y: number; n: number }) {
+  expect(c.x).toBeCloseTo(39.2, 0);
+  expect(c.y).toBeCloseTo(42.9, 0);
+  expect(c.n).toBeGreaterThan(426 * 0.7);
+  expect(c.n).toBeLessThan(426 * 1.3);
 }
 
 // The scenes below match the CLI tests in apps/cli/tests/creative_nodes_test.rs and the
@@ -104,6 +119,33 @@ describe("three in the desktop preview (WebGL)", () => {
     expect((await pixelAt(node, 0, 1, 42, 32))[0]).toBeGreaterThan(200);
     expect((await pixelAt(node, 0.99, 1, 22, 32))[0]).toBeGreaterThan(200);
     expect((await pixelAt(node, 0.99, 1, 42, 32))[3]).toBe(0);
+  });
+
+  it("draws the same seeded particles", async () => {
+    runner = new ThreeRunner();
+    const node = new ThreeNode({
+      name: "dust",
+      width: 96,
+      height: 96,
+      fov: 40,
+      setup({ scene, camera }) {
+        scene.background = new THREE.Color("#000000");
+        const dust = createParticles({ count: 6, seed: 11, area: [3, 2, 0.5], velocity: [0, 0, 0], spread: 0, turbulence: 0, size: 0.4, lifetime: 10, fade: 0.1, color: "#ffffff" });
+        scene.add(dust.object);
+        return { dust, camera };
+      },
+      update({ dust, camera }: any, _progress: number, time: number) {
+        dust.update(time, camera);
+      },
+    });
+    const bitmap = await runner.renderBitmap(node, 2, 4);
+    const canvas = document.createElement("canvas");
+    canvas.width = 96;
+    canvas.height = 96;
+    const context = canvas.getContext("2d")!;
+    context.drawImage(bitmap!, 0, 0);
+    const data = context.getImageData(0, 0, 96, 96).data;
+    expectSameField(brightCentroid((x, y) => data[(y * 96 + x) * 4], 96));
   });
 });
 

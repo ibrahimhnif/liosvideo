@@ -1875,8 +1875,8 @@ var __liosvideo = (function(exports) {
 	function registerThreeLoaders(impl) {
 		loaders = impl;
 	}
-	function need(name) {
-		if (!loaders) throw new Error(`${name}() works inside three({ setup }): make setup async and await it there`);
+	function need(name, awaited = true) {
+		if (!loaders) throw new Error(`${name}() works inside three({ setup })${awaited ? ": make setup async and await it there" : ""}`);
 		return loaders;
 	}
 	/** Loads a .glb / .gltf from the project (meshes, PBR materials, textures); parts by name via `model.part()`. */
@@ -1890,6 +1890,13 @@ var __liosvideo = (function(exports) {
 	/** Loads an image from the project as a texture (`map`, `normalMap`, `roughnessMap`, …). */
 	async function texture(src, opts) {
 		return need("texture").texture(src, opts);
+	}
+	/**
+	* Seeded, camera-facing glowing particles (dust, sparks, embers); call inside three({ setup }), add
+	* `.object` to the scene and call `.update(time, camera)` from update(). Same field every render.
+	*/
+	function particles(opts) {
+		return need("particles", false).particles(opts);
 	}
 	// packages/runtime/src/three/camera_path.ts
 	const SPLINES = ["catmull", "linear"];
@@ -4403,6 +4410,7 @@ var __liosvideo = (function(exports) {
 	exports.notification = notification;
 	exports.orbit = orbit;
 	exports.parseColor = parseColor;
+	exports.particles = particles;
 	exports.path = path;
 	exports.peak = peak;
 	exports.phone = phone;

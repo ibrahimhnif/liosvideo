@@ -527,7 +527,14 @@ function drawTriangle(triangle, color, alpha, depth, width, height, blend) {
         triangle.cameraPos,
       );
 
-      if (blend) {
+      if (blend && material.blending === THREE.AdditiveBlending) {
+        // additive (particles, glows): light adds up where it overlaps
+        const a = Math.min(1, Math.max(0, opacity * shaded[3]));
+        color[index * 3] += shaded[0] * a;
+        color[index * 3 + 1] += shaded[1] * a;
+        color[index * 3 + 2] += shaded[2] * a;
+        alpha[index] = Math.min(1, alpha[index] + a * a);
+      } else if (blend) {
         const a = Math.min(1, Math.max(0, opacity * shaded[3]));
         color[index * 3] = shaded[0] * a + color[index * 3] * (1 - a);
         color[index * 3 + 1] = shaded[1] * a + color[index * 3 + 1] * (1 - a);

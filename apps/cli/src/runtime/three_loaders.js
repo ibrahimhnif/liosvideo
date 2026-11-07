@@ -2790,6 +2790,195 @@ var HDRLoader = class extends DataTextureLoader {
 		return this;
 	}
 };
+// packages/runtime/src/math/random.ts
+/** Deterministic RNG (mulberry32 over an FNV-1a hash of the seed). */
+function seededRandom(seed) {
+	let h = 2166136261;
+	for (let i = 0; i < seed.length; i++) {
+		h ^= seed.charCodeAt(i);
+		h = Math.imul(h, 16777619);
+	}
+	let a = h >>> 0;
+	return () => {
+		a = a + 1831565813 >>> 0;
+		let t = a;
+		t = Math.imul(t ^ t >>> 15, t | 1);
+		t ^= t + Math.imul(t ^ t >>> 7, t | 61);
+		return ((t ^ t >>> 14) >>> 0) / 4294967296;
+	};
+}
+// packages/runtime/src/three/particles.ts
+function createParticles(o = {}) {
+	const count = Math.max(0, Math.floor(o.count ?? 300));
+	const segments = Math.max(3, Math.floor(o.segments ?? 8));
+	const per = segments + 1;
+	const life = Math.max(.001, o.lifetime ?? 4);
+	const fade = Math.min(.5, Math.max(0, o.fade ?? .25));
+	const center = o.center ?? [
+		0,
+		0,
+		0
+	];
+	const area = o.area ?? [
+		4,
+		2,
+		4
+	];
+	const drift = o.velocity ?? [
+		0,
+		.15,
+		0
+	];
+	const spread = o.spread ?? .1;
+	const gravity = o.gravity ?? [
+		0,
+		0,
+		0
+	];
+	const turbulence = o.turbulence ?? .05;
+	const [minSize, maxSize] = Array.isArray(o.size) ? o.size : [o.size ?? .02, o.size ?? .06];
+	const intensity = o.intensity ?? 1;
+	const palette = (Array.isArray(o.color) ? o.color : [o.color ?? "#ffd27a"]).map((c) => new THREE.Color(c));
+	const random = seededRandom(`particles:${o.seed ?? 1}`);
+	const start = Array.from({ length: count }, () => {
+		const origin = [
+			0,
+			1,
+			2
+		].map((k) => center[k] + (random() - .5) * area[k]);
+		const z = random() * 2 - 1;
+		const a = random() * Math.PI * 2;
+		const r = Math.sqrt(1 - z * z);
+		const speed = spread * random();
+		return {
+			origin,
+			velocity: [
+				drift[0] + r * Math.cos(a) * speed,
+				drift[1] + r * Math.sin(a) * speed,
+				drift[2] + z * speed
+			],
+			size: minSize + (maxSize - minSize) * random(),
+			phase: random() * life,
+			color: palette[Math.floor(random() * palette.length) % palette.length],
+			wobble: [
+				random(),
+				random(),
+				random()
+			].map((v) => v * Math.PI * 2),
+			rate: .6 + random() * .8
+		};
+	});
+	const geometry = new THREE.BufferGeometry();
+	const position = new THREE.BufferAttribute(new Float32Array(count * per * 3), 3);
+	const normal = new THREE.BufferAttribute(new Float32Array(count * per * 3), 3);
+	const color = new THREE.BufferAttribute(new Float32Array(count * per * 3), 3);
+	position.setUsage(THREE.DynamicDrawUsage);
+	normal.setUsage(THREE.DynamicDrawUsage);
+	color.setUsage(THREE.DynamicDrawUsage);
+	geometry.setAttribute("position", position);
+	geometry.setAttribute("normal", normal);
+	geometry.setAttribute("color", color);
+	const index = [];
+	for (let i = 0; i < count; i++) {
+		const c = i * per;
+		for (let k = 0; k < segments; k++) index.push(c, c + 1 + k, c + 1 + (k + 1) % segments);
+	}
+	geometry.setIndex(index);
+	const settings = {
+		vertexColors: true,
+		transparent: true,
+		depthWrite: false,
+		blending: THREE.AdditiveBlending,
+		side: THREE.DoubleSide
+	};
+	const material = o.lit ? new THREE.MeshLambertMaterial(settings) : new THREE.MeshBasicMaterial(settings);
+	const object = new THREE.Mesh(geometry, material);
+	object.name = "particles";
+	object.frustumCulled = false;
+	const cos = Array.from({ length: segments }, (_, k) => Math.cos(k / segments * Math.PI * 2));
+	const sin = Array.from({ length: segments }, (_, k) => Math.sin(k / segments * Math.PI * 2));
+	const smooth = (x) => {
+		const k = Math.min(1, Math.max(0, x));
+		return k * k * (3 - 2 * k);
+	};
+	return {
+		object,
+		verticesPerParticle: per,
+		birth(i) {
+			return life - start[i].phase;
+		},
+		update(time, camera) {
+			camera.updateMatrixWorld();
+			const m = camera.matrixWorld.elements;
+			const right = [
+				m[0],
+				m[1],
+				m[2]
+			];
+			const up = [
+				m[4],
+				m[5],
+				m[6]
+			];
+			const toward = [
+				m[8],
+				m[9],
+				m[10]
+			];
+			const pos = position.array;
+			const nrm = normal.array;
+			const col = color.array;
+			object.updateMatrixWorld();
+			const toLocal = object.matrixWorld.clone().invert().elements;
+			const back = [
+				0,
+				1,
+				2
+			].map((r) => toLocal[r] * toward[0] + toLocal[4 + r] * toward[1] + toLocal[8 + r] * toward[2]);
+			const backLength = Math.hypot(back[0], back[1], back[2]) || 1;
+			for (let r = 0; r < 3; r++) back[r] /= backLength;
+			const local = (x, y, z, out, at) => {
+				out[at] = toLocal[0] * x + toLocal[4] * y + toLocal[8] * z + toLocal[12];
+				out[at + 1] = toLocal[1] * x + toLocal[5] * y + toLocal[9] * z + toLocal[13];
+				out[at + 2] = toLocal[2] * x + toLocal[6] * y + toLocal[10] * z + toLocal[14];
+			};
+			for (let i = 0; i < count; i++) {
+				const s = start[i];
+				const age = ((time + s.phase) % life + life) % life;
+				const k = age / life;
+				const glow = (fade > 0 ? smooth(k / fade) * smooth((1 - k) / fade) : 1) * intensity;
+				const p = [
+					0,
+					1,
+					2
+				].map((d) => s.origin[d] + s.velocity[d] * age + .5 * gravity[d] * age * age + turbulence * Math.sin(age * s.rate * (1.3 + d * .4) + s.wobble[d]));
+				const half = s.size / 2;
+				const base = i * per;
+				local(p[0], p[1], p[2], pos, base * 3);
+				col[base * 3] = s.color.r * glow;
+				col[base * 3 + 1] = s.color.g * glow;
+				col[base * 3 + 2] = s.color.b * glow;
+				for (let r = 0; r < segments; r++) {
+					const v = (base + 1 + r) * 3;
+					const ox = (right[0] * cos[r] + up[0] * sin[r]) * half;
+					const oy = (right[1] * cos[r] + up[1] * sin[r]) * half;
+					const oz = (right[2] * cos[r] + up[2] * sin[r]) * half;
+					local(p[0] + ox, p[1] + oy, p[2] + oz, pos, v);
+					col[v] = col[v + 1] = col[v + 2] = 0;
+				}
+				for (let v = base; v < base + per; v++) {
+					nrm[v * 3] = back[0];
+					nrm[v * 3 + 1] = back[1];
+					nrm[v * 3 + 2] = back[2];
+				}
+			}
+			position.needsUpdate = true;
+			normal.needsUpdate = true;
+			color.needsUpdate = true;
+			geometry.computeBoundingSphere();
+		}
+	};
+}
 // packages/runtime/src/three/loaders.ts
 /** decodeImage for browsers and workers (the desktop preview): createImageBitmap, then read the pixels back. */
 async function decodeImageInBrowser(bytes, mimeType) {
@@ -2922,7 +3111,8 @@ function createThreeLoaders(host) {
 				tex.repeat.set(opts.repeat[0], opts.repeat[1]);
 			}
 			return tex;
-		}
+		},
+		particles: createParticles
 	};
 }
 export { createThreeLoaders, decodeImageInBrowser };

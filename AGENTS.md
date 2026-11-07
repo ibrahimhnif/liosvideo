@@ -261,6 +261,25 @@ const p = stage.project([0, 1, 0], t);   // { x, y, depth, visible } in the stag
 - Points are world coordinates (read them from your model in setup, or measure once); a part animated in `update` needs the same motion as `(t) => [x, y, z]`.
 - `node.drive((t) => ({ x, y }))` sets any node's props from scene time, after its keyframes, for other things that follow a projected point.
 
+Dust, sparks and embers come from `particles` (seeded: the same field in every render, any frame order):
+
+```ts
+import { particles, three } from "liosvideo";
+
+three({
+  name: "dust", width, height,
+  setup({ scene, camera }) {
+    const dust = particles({ count: 400, seed: 3, area: [6, 3, 4], velocity: [0, 0.12, 0], size: [0.02, 0.06], lifetime: 5, color: ["#ffd27a", "#fff1c1"] });
+    scene.add(dust.object);
+    return { dust, camera };
+  },
+  update({ dust, camera }, _progress, time) { dust.update(time, camera); },
+});
+```
+
+- Glowing camera-facing discs with additive blending; they shrink with distance and fade in and out over `fade` (fraction of `lifetime`, default 0.25). `lit: true` makes them catch the scene's lights instead of glowing.
+- Other options: `center`, `spread` (random speed), `gravity` (e.g. `[0, -9.8, 0]` for sparks), `turbulence`, `intensity`, `segments`. Call `particles()` inside `setup`.
+
 Cutaways (section cuts) use three.js clipping planes on the material, in world space; move the plane in `update`:
 
 ```ts

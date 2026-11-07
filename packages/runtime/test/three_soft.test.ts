@@ -2,12 +2,27 @@ import { afterEach, describe, expect, it } from "vitest";
 import * as THREE from "three";
 import { three } from "../src/graph/three";
 import { cameraPath } from "../src/three/camera_path";
+import { createParticles } from "../src/three/particles";
 import { prepareThreeNode, renderThreeNode, resetThreeSoftware } from "../src/gpu/three_soft";
 
 function coverage(pixels: Uint8Array): number {
   let n = 0;
   for (let i = 3; i < pixels.length; i += 4) if (pixels[i] > 0) n++;
   return n;
+}
+
+function brightCentroid(at: (x: number, y: number) => number, size: number) {
+  let sx = 0, sy = 0, n = 0;
+  for (let y = 0; y < size; y++) for (let x = 0; x < size; x++) if (at(x, y) > 60) { sx += x; sy += y; n++; }
+  return { x: sx / n, y: sy / n, n };
+}
+// The seeded field in "draws the same seeded particles" (software, WebGL) and
+// draws_the_same_seeded_particles (CLI) lands here in every renderer.
+function expectSameField(c: { x: number; y: number; n: number }) {
+  expect(c.x).toBeCloseTo(39.2, 0);
+  expect(c.y).toBeCloseTo(42.9, 0);
+  expect(c.n).toBeGreaterThan(426 * 0.7);
+  expect(c.n).toBeLessThan(426 * 1.3);
 }
 
 describe("software three renderer", () => {
@@ -128,5 +143,25 @@ describe("software three renderer", () => {
     const at = (n: ReturnType<typeof make>) => { const f = renderThreeNode(n, 0, 1)!; return f.pixels[(42 * f.width + 42) * 4 + 3]; };
     expect(at(make(false))).toBe(0);
     expect(at(make(true))).toBeGreaterThan(0);
+  });
+
+  it("draws the same seeded particles", () => {
+    const node = three({
+      name: "dust",
+      width: 96,
+      height: 96,
+      fov: 40,
+      setup({ scene, camera }) {
+        scene.background = new THREE.Color("#000000");
+        const dust = createParticles({ count: 6, seed: 11, area: [3, 2, 0.5], velocity: [0, 0, 0], spread: 0, turbulence: 0, size: 0.4, lifetime: 10, fade: 0.1, color: "#ffffff" });
+        scene.add(dust.object);
+        return { dust, camera };
+      },
+      update({ dust, camera }: any, _progress: number, time: number) {
+        dust.update(time, camera);
+      },
+    });
+    const frame = renderThreeNode(node, 2, 4)!;
+    expectSameField(brightCentroid((x, y) => frame.pixels[(y * 96 + x) * 4], 96));
   });
 });
