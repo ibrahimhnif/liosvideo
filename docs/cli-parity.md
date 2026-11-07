@@ -17,7 +17,7 @@ backend feature set as the desktop app, with no Node.js, Chromium, or FFmpeg dep
 | Colour pipeline | `rgba8unorm`, premultiplied alpha, no sRGB linearisation — matching the desktop renderer byte-for-byte. |
 | Shaders | `common.wgsl`, `quad.wgsl`, `blur.wgsl`, `composite.wgsl` are copied from `packages/runtime` and guarded by a unit test. |
 | Custom WGSL (`shader()`) | Both compile and run `code` for real with the same preamble, bindings and uniform contract. |
-| three.js (`three()`) | Both execute `setup` / `update`. Desktop uses WebGL when available and the same deterministic software rasteriser as the CLI otherwise. |
+| three.js (`three()`) | Both execute `setup` / `update` and apply the node's `shadows` / `toneMapping` / `exposure`. Desktop renders with WebGLRenderer; the CLI with three.js WebGPURenderer on the GPU (deno_webgpu over wgpu), falling back to the software rasteriser when no GPU is usable. |
 | Audio mixdown | Manifest audio clips: `startFrame`, `startOffset`, `duration`, `volume`; no looping, no ducking (same as desktop `audio_mixdown.ts`). |
 | Export | H.264 + AAC in MP4, presets `native | 1080p | 4k | shorts`, 10/30 Mbps defaults, 192 kbps AAC, 2-second keyframe interval. |
 | Validation | Same text-based scene validator (`scene_validator.rs`). |
@@ -38,15 +38,17 @@ backend feature set as the desktop app, with no Node.js, Chromium, or FFmpeg dep
    `u.<key>` (`vec4f` per `uniforms` entry). User code must define
    `@fragment fn fs(@location(0) uv: vec2f) -> @location(0) vec4f` and must not declare its own
    `@group` / `@binding`.
-4. **three.js fidelity** — the CLI always uses the deterministic software rasteriser; the desktop
-   prefers WebGL (textures, shadows, skinning, morph targets, instancing, post-processing and
-   custom `ShaderMaterial` work there) and falls back to the software rasteriser when WebGL is
-   unavailable, e.g. a WKWebView worker. The software rasteriser supports Mesh / Line / LineSegments /
-   LineLoop / Points, BufferGeometry (indexed or not, groups, multi-material), MeshBasic / Lambert /
-   Phong / Standard / Toon / Normal materials, Ambient / Hemisphere / Directional / Point / Spot
-   lights, vertex colours, flat shading, side modes and transparency. Not supported by the
-   software path: textures, shadows, skinning, morph targets, instancing, post-processing and
-   custom `ShaderMaterial`.
+4. **three.js fidelity** — the CLI renders `three()` nodes with three.js `WebGPURenderer`
+   (textures, shadows, tone mapping, emissive, PBR — the same three build as the desktop) and the
+   desktop with `WebGLRenderer`; a textured, shadowed MeshStandardMaterial scene differs by
+   ~46 dB PSNR. A colour `scene.background` is composited behind the GPU image untouched, as
+   WebGL does. Without a usable GPU (or with `LIOSVIDEO_THREE=software`) the CLI falls back to the
+   deterministic software rasteriser, which supports Mesh / Line / LineSegments / LineLoop /
+   Points, BufferGeometry (indexed or not, groups, multi-material), MeshBasic / Lambert / Phong /
+   Standard / Toon / Normal materials, Ambient / Hemisphere / Directional / Point / Spot lights,
+   vertex colours, flat shading, side modes and transparency, but no textures, shadows, tone
+   mapping, skinning, morph targets, instancing, post-processing or custom `ShaderMaterial`.
+   Decision record: `docs/spikes/2026-11-08-cli-webgpu-three.md`.
 5. **Video codecs** — MP4/H.264 only. WebM/VP9 falls back to the first frame with a warning.
 6. **GUI-only features** — timeline selection, preview playback, visual diff overlays and chat UI
    have no CLI equivalent; their stateful MCP siblings (`set_selection`, `seek`) are kept in memory.

@@ -109,6 +109,15 @@ var __liosvideo = (function(exports) {
 			"left",
 			"center",
 			"right"
+		],
+		toneMapping: [
+			"none",
+			"linear",
+			"reinhard",
+			"cineon",
+			"aces",
+			"agx",
+			"neutral"
 		]
 	};
 	const RUNTIME_FRAME = /(\/packages\/runtime\/src\/|liosvideo\.iife|node_modules|\/liosvideo\/src\/|^\s*at (new )?(Node|TextNode|ImageNode)\b)/;
@@ -708,6 +717,14 @@ var __liosvideo = (function(exports) {
 		}
 		get fov() {
 			return this.propsAt(0).fov;
+		}
+		get renderOptions() {
+			const p = this.propsAt(0);
+			return {
+				shadows: !!p.shadows,
+				toneMapping: p.toneMapping ?? "none",
+				exposure: p.exposure ?? 1
+			};
 		}
 	};
 	function three(init) {

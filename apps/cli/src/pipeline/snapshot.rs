@@ -34,7 +34,7 @@ pub async fn render_snapshot(
     let comp_info = host.load_composition(&entry_file).await?;
 
     let render_list = host.evaluate_frame(frame)?;
-    let three_frames = host.render_three_nodes(frame, comp_info.fps)?;
+    let three_frames = host.render_three_nodes(frame, comp_info.fps).await?;
     let (_, scene_time, scene_progress) =
         crate::runtime::scene_clock(&comp_info, frame, comp_info.fps);
 

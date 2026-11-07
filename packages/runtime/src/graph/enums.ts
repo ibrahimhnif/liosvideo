@@ -5,6 +5,7 @@
 export const PROP_ENUMS: Record<string, readonly string[]> = {
   fit: ["fill", "contain", "cover"],
   align: ["left", "center", "right"],
+  toneMapping: ["none", "linear", "reinhard", "cineon", "aces", "agx", "neutral"],
 };
 
 const RUNTIME_FRAME = /(\/packages\/runtime\/src\/|liosvideo\.iife|node_modules|\/liosvideo\/src\/|^\s*at (new )?(Node|TextNode|ImageNode)\b)/;

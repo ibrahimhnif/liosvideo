@@ -30,4 +30,16 @@ describe("ThreeNode", () => {
     expect(node.propsAt(2).opacity).toBe(0);
     expect(node.spans()).toEqual([{ start: 1, end: 2 }]);
   });
+
+  it("carries renderer settings, off by default", () => {
+    expect(three({ setup: () => {} }).renderOptions).toEqual({ shadows: false, toneMapping: "none", exposure: 1 });
+    const lit = three({ setup: () => {}, shadows: true, toneMapping: "aces", exposure: 1.4 });
+    expect(lit.renderOptions).toEqual({ shadows: true, toneMapping: "aces", exposure: 1.4 });
+  });
+
+  it("rejects an unknown tone mapping", () => {
+    expect(() => three({ name: "stage", setup: () => {}, toneMapping: "filmic" as any })).toThrow(
+      /Unknown toneMapping "filmic" on node "stage".*aces, agx, neutral/,
+    );
+  });
 });

@@ -252,7 +252,7 @@ pub async fn run_render_job(config: RenderConfig) -> Result<()> {
         }
 
         let render_list = host.evaluate_frame(frame)?;
-        let three_frames = host.render_three_nodes(frame, fps)?;
+        let three_frames = host.render_three_nodes(frame, fps).await?;
         let (_, scene_time, scene_progress) = crate::runtime::scene_clock(&comp_info, frame, fps);
         renderer.render_frame(
             &gpu.device,

@@ -2,6 +2,23 @@ use clap::{CommandFactory, Parser};
 use liosvideo_cli::cli::{self, commands};
 use liosvideo_cli::pipeline::{self, Preset};
 
+/// Runs `f` on its own current-thread runtime: the JS runtime's WebGPU ops (three.js on the GPU)
+/// must be driven from a current-thread tokio runtime.
+async fn on_js_thread<T, F, Fut>(f: F) -> anyhow::Result<T>
+where
+    T: Send + 'static,
+    F: FnOnce() -> Fut + Send + 'static,
+    Fut: std::future::Future<Output = anyhow::Result<T>>,
+{
+    tokio::task::spawn_blocking(move || {
+        tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()?
+            .block_on(f())
+    })
+    .await?
+}
+
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
     let cli = cli::Cli::parse();
@@ -46,7 +63,7 @@ async fn main() -> anyhow::Result<()> {
                 },
                 quiet,
             };
-            pipeline::run_render_job(config).await?;
+            on_js_thread(move || pipeline::run_render_job(config)).await?;
         }
         cli::Commands::Snapshot {
             entry,
@@ -54,7 +71,11 @@ async fn main() -> anyhow::Result<()> {
             frame,
             preset,
         } => {
-            pipeline::render_snapshot(&entry, frame, &out, Preset::parse(&preset)?).await?;
+            let preset = Preset::parse(&preset)?;
+            on_js_thread(move || async move {
+                pipeline::render_snapshot(&entry, frame, &out, preset).await
+            })
+            .await?;
         }
         cli::Commands::Verify { file } => {
             let report = liosvideo_cli::media::integrity::check_file(&file, None)

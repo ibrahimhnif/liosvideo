@@ -1,5 +1,26 @@
 import * as THREE from "three";
-import { ThreeNode } from "../graph/three";
+import { ThreeNode, type ThreeRenderOptions } from "../graph/three";
+
+const TONE_MAPPING: Record<string, THREE.ToneMapping> = {
+  none: THREE.NoToneMapping,
+  linear: THREE.LinearToneMapping,
+  reinhard: THREE.ReinhardToneMapping,
+  cineon: THREE.CineonToneMapping,
+  aces: THREE.ACESFilmicToneMapping,
+  agx: THREE.AgXToneMapping,
+  neutral: THREE.NeutralToneMapping,
+};
+
+/** Applies a three() node's renderer settings (shared by the desktop runner and the CLI GPU host). */
+export function applyRenderOptions(
+  renderer: { shadowMap: { enabled: boolean; type: THREE.ShadowMapType }; toneMapping: THREE.ToneMapping; toneMappingExposure: number },
+  opts: Required<ThreeRenderOptions>,
+): void {
+  renderer.shadowMap.enabled = opts.shadows;
+  renderer.shadowMap.type = THREE.PCFShadowMap;
+  renderer.toneMapping = TONE_MAPPING[opts.toneMapping] ?? THREE.NoToneMapping;
+  renderer.toneMappingExposure = opts.exposure;
+}
 
 interface NodeSession {
   scene: THREE.Scene;
@@ -80,6 +101,7 @@ export class ThreeRunner {
         // Fallback for headless environments without WebGL context
       }
 
+      if (renderer) applyRenderOptions(renderer, node.renderOptions);
       const userState = node.setupFn({ scene, camera, width, height }) ?? {};
       session = { scene, camera, userState, canvas, renderer, lastWidth: width, lastHeight: height };
       this.sessions.set(key, session);

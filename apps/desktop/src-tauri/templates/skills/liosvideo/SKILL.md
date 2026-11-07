@@ -251,6 +251,8 @@ Key Properties:
   - `progress`: `0.0` to `1.0` normalized scene progress.
   - `time`: Current scene timestamp in seconds.
   - **Rule**: Never use `requestAnimationFrame()`, `Date.now()`, or internal Three.js clocks. Derive all motion deterministically from `time` or `progress`.
+- `shadows: true`, `toneMapping: "aces" | "agx" | "neutral" | …`, `exposure`: renderer settings (there is no renderer in `setup`). Shadows still need `light.castShadow`, `mesh.castShadow` / `receiveShadow`. Off / `"none"` / `1` by default.
+- The desktop preview renders with WebGL and the CLI with three.js on the GPU, so textures, shadows, tone mapping and emissive look the same in both. Set `camera.fov` / `aspect` changes with `camera.updateProjectionMatrix()`, as in plain three.js.
 
 ```ts
 const globe = root.add(

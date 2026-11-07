@@ -39,13 +39,9 @@ globalThis.document = {
   removeEventListener: () => {},
 };
 
-globalThis.requestAnimationFrame = (cb) => {
-  return setTimeout(() => cb(Date.now()), 16);
-};
-
-globalThis.cancelAnimationFrame = (id) => {
-  clearTimeout(id);
-};
+// frames are driven by the renderer, never by an animation loop (and there are no timers)
+globalThis.requestAnimationFrame = (_cb) => 0;
+globalThis.cancelAnimationFrame = (_id) => {};
 
 if (!globalThis.performance) {
   globalThis.performance = {

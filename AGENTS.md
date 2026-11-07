@@ -150,7 +150,7 @@ export default scene(
 | **Text** | `text(props)` | Group properties plus `text, fontFamily, fontSize, fontWeight, color, lineHeight, align ("left" \| "center" \| "right"), maxWidth` (wraps words past `maxWidth`) |
 | **Image** | `image(props)` | Group properties plus `src` (project-relative path), `fit ("fill" \| "contain" \| "cover")` |
 | **Video** | `video(props)` | Group properties plus `src` (project-relative path, e.g. `"assets/video/clip.mp4"`), `fit ("fill" \| "contain" \| "cover")`, `startOffset`, `speed`, `loop` |
-| **Three (3D)** | `three(props)` | Group properties plus `camera ("perspective" \| "orthographic"), fov, setup({ scene, camera, width, height }), update(state, progress, time)` (Three.js 3D scenes, meshes, lights, materials) |
+| **Three (3D)** | `three(props)` | Group properties plus `camera ("perspective" \| "orthographic"), fov, shadows, toneMapping, exposure, setup({ scene, camera, width, height }), update(state, progress, time)` (Three.js 3D scenes, meshes, lights, materials) |
 | **Phone** | `phone(props)` | Smartphone device frame for 9:16 mobile compositions with bezel, screen, dynamic island, and home indicator |
 
 ### 3D Scenes with Three.js
@@ -190,6 +190,11 @@ export default scene("showcase-3d", { duration: 5 }, ({ root, width, height }) =
   );
 });
 ```
+
+Renderer settings are props, since `setup` gets no renderer:
+
+- `shadows: true`, `toneMapping: "aces" | "agx" | "neutral" | …`, `exposure`: renderer settings (there is no renderer in `setup`). Shadows still need `light.castShadow`, `mesh.castShadow` / `receiveShadow`. Off / `"none"` / `1` by default.
+- The desktop preview renders with WebGL and the CLI with three.js on the GPU, so textures, shadows, tone mapping and emissive look the same in both. Set `camera.fov` / `aspect` changes with `camera.updateProjectionMatrix()`, as in plain three.js.
 
 ### Custom Mockups & Components
 Agents can create domain-specific mockups (smartwatches, tablet frames, notification bubbles, custom app UIs) by authoring composite functions or classes extending `GroupNode` using `group()`, `rect()`, `circle()`, `path()`, and `text()`.

@@ -1,6 +1,7 @@
 pub mod loader;
 pub mod ops;
 pub mod shims;
+pub mod webgpu;
 
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
@@ -16,6 +17,7 @@ use crate::assets::ImageAsset;
 use loader::TsModuleLoader;
 
 const THREE_HOST_JS: &str = include_str!("three_host.js");
+const THREE_GPU_JS: &str = include_str!("three_gpu.js");
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct SceneInfo {
@@ -77,6 +79,8 @@ pub struct RuntimeHost {
     pub manifest: serde_json::Value,
     pub composition: Option<CompositionInfo>,
     three_host_loaded: bool,
+    /// three() nodes render on the GPU (three.js WebGPURenderer) until that proves impossible.
+    three_gpu: bool,
 }
 
 impl RuntimeHost {
@@ -84,7 +88,11 @@ impl RuntimeHost {
         let loader = TsModuleLoader::new(project_root.clone());
         let mut js_runtime = JsRuntime::new(RuntimeOptions {
             module_loader: Some(Rc::new(loader.clone())),
-            extensions: vec![ops::liosvideo_text::init_ops()],
+            extensions: {
+                let mut list = vec![ops::liosvideo_text::init_ops()];
+                list.extend(webgpu::extensions());
+                list
+            },
             ..Default::default()
         });
 
@@ -117,6 +125,7 @@ impl RuntimeHost {
             manifest: serde_json::Value::Null,
             composition: None,
             three_host_loaded: false,
+            three_gpu: false,
         })
     }
 
@@ -317,11 +326,35 @@ impl RuntimeHost {
         evaluation
             .await
             .map_err(|e| anyhow!("three host evaluation failed: {e}"))?;
+
+        // LIOSVIDEO_THREE=software keeps the CPU rasteriser (no GPU, or for comparison)
+        if std::env::var("LIOSVIDEO_THREE")
+            .map(|v| v == "software")
+            .unwrap_or(false)
+        {
+            return Ok(());
+        }
+        let specifier = ModuleSpecifier::parse("liosvideo://three-gpu-host")
+            .map_err(|e| anyhow!("Invalid three GPU host specifier: {e}"))?;
+        let loaded = async {
+            let module_id = self
+                .js_runtime
+                .load_side_es_module_from_code(&specifier, THREE_GPU_JS)
+                .await?;
+            let evaluation = self.js_runtime.mod_evaluate(module_id);
+            self.js_runtime.run_event_loop(Default::default()).await?;
+            evaluation.await
+        }
+        .await;
+        match loaded {
+            Ok(()) => self.three_gpu = true,
+            Err(error) => eprintln!("Warning: three.js GPU renderer failed to load, using the software rasteriser: {error}"),
+        }
         Ok(())
     }
 
     /// Run every `three(...)` node for `frame` and return RGBA frames keyed by node path.
-    pub fn render_three_nodes(
+    pub async fn render_three_nodes(
         &mut self,
         frame: usize,
         fps: f64,
@@ -334,6 +367,13 @@ impl RuntimeHost {
             return Ok(frames);
         };
         let (scene_index, time, progress) = scene_clock(&info, frame, fps);
+
+        if self.three_gpu {
+            if self.render_three_gpu(scene_index, time, progress).await? {
+                return Ok(self.take_three_frames());
+            }
+            self.three_gpu = false;
+        }
 
         let script = format!(
             r#"(() => {{
@@ -348,21 +388,56 @@ impl RuntimeHost {
         self.js_runtime
             .execute_script("render_three.js", script)
             .map_err(|e| anyhow!("Failed to render three nodes: {e}"))?;
+        frames.extend(self.take_three_frames());
+        Ok(frames)
+    }
 
+    /// Renders the scene's three() nodes with three.js WebGPURenderer; false when no GPU can be used.
+    async fn render_three_gpu(
+        &mut self,
+        scene_index: usize,
+        time: f32,
+        progress: f32,
+    ) -> Result<bool> {
+        let script = format!(
+            r#"(async () => {{
+                const host = globalThis.__liosvideoCliGpu;
+                const comp = globalThis.__activeComp;
+                if (!host || !comp) return false;
+                return await host.renderThreeSceneGpu(comp, {scene_index}, {time:.9}, {progress:.9});
+            }})()"#
+        );
+        let promise = self
+            .js_runtime
+            .execute_script("render_three_gpu.js", script)
+            .map_err(|e| anyhow!("Failed to render three nodes on the GPU: {e}"))?;
+        let resolved = self.js_runtime.resolve(promise);
+        let value = self
+            .js_runtime
+            .with_event_loop_promise(resolved, Default::default())
+            .await
+            .map_err(|e| anyhow!("Failed to render three nodes on the GPU: {e}"))?;
+        let scope = &mut self.js_runtime.handle_scope();
+        Ok(v8::Local::new(scope, value).is_true())
+    }
+
+    fn take_three_frames(&mut self) -> HashMap<String, Arc<ImageAsset>> {
         let op_state = self.js_runtime.op_state();
         let mut state = op_state.borrow_mut();
         let store = state.borrow_mut::<ops::ThreeFrames>();
-        for (path, (width, height, rgba)) in std::mem::take(&mut store.0) {
-            frames.insert(
-                path,
-                Arc::new(ImageAsset {
-                    width,
-                    height,
-                    rgba,
-                }),
-            );
-        }
-        Ok(frames)
+        std::mem::take(&mut store.0)
+            .into_iter()
+            .map(|(path, (width, height, rgba))| {
+                (
+                    path,
+                    Arc::new(ImageAsset {
+                        width,
+                        height,
+                        rgba,
+                    }),
+                )
+            })
+            .collect()
     }
 
     pub fn evaluate_frame(&mut self, frame: usize) -> Result<serde_json::Value> {
@@ -567,6 +642,77 @@ mod tests {
         Ok(())
     }
 
+    /// A textured, shadowed MeshStandardMaterial scene: on the GPU path the checker texture and
+    /// the shadow both show up (the software rasteriser can draw neither).
+    #[tokio::test]
+    async fn renders_a_textured_shadowed_scene_on_the_gpu() -> Result<()> {
+        let dir = tempfile::tempdir()?;
+        std::fs::write(
+            dir.path().join("long.ts"),
+            r##"
+            import { composition, scene, three } from "liosvideo";
+            import * as THREE from "three";
+            const s = scene("s", { duration: 1 }, ({ root }) => {
+              root.add(three({
+                name: "stage", width: 160, height: 120, fov: 40, shadows: true,
+                setup({ scene, camera }) {
+                  scene.background = new THREE.Color("#102030");
+                  camera.position.set(0, 4, 0.001); camera.lookAt(0, 0, 0);
+                  const data = new Uint8Array(4 * 4 * 4);
+                  for (let i = 0; i < 16; i++) data.set(((i + (i >> 2)) & 1) ? [255, 0, 0, 255] : [0, 255, 0, 255], i * 4);
+                  const tex = new THREE.DataTexture(data, 4, 4); tex.needsUpdate = true;
+                  const plane = new THREE.Mesh(new THREE.PlaneGeometry(3, 3), new THREE.MeshStandardMaterial({ map: tex }));
+                  plane.rotation.x = -Math.PI / 2; plane.receiveShadow = true; scene.add(plane);
+                  const blocker = new THREE.Mesh(new THREE.BoxGeometry(0.6, 0.1, 0.6), new THREE.MeshBasicMaterial({ color: "#000000", colorWrite: false, depthWrite: false }));
+                  blocker.position.set(0, 1, 0); blocker.castShadow = true; scene.add(blocker);
+                  scene.add(new THREE.AmbientLight("#ffffff", 0.2));
+                  const sun = new THREE.DirectionalLight("#ffffff", 3); sun.position.set(0, 5, 0); sun.castShadow = true; scene.add(sun);
+                },
+              }));
+            });
+            export default composition({ width: 160, height: 120, fps: 30, scenes: [s] });
+            "##,
+        )?;
+        let mut host = RuntimeHost::new(dir.path().to_path_buf())?;
+        host.load_composition("long.ts").await?;
+        let frames = host.render_three_nodes(0, 30.0).await?;
+        if !host.three_gpu {
+            eprintln!("no GPU here; skipping the GPU render check");
+            return Ok(());
+        }
+        let img = frames.values().next().expect("a three frame");
+        assert_eq!((img.width, img.height), (160, 120));
+        let px = |x: u32, y: u32| {
+            let i = ((y * img.width + x) * 4) as usize;
+            [
+                img.rgba[i],
+                img.rgba[i + 1],
+                img.rgba[i + 2],
+                img.rgba[i + 3],
+            ]
+        };
+        let lit: Vec<[u8; 4]> = [(20, 60), (140, 60), (80, 15), (80, 105)]
+            .iter()
+            .map(|&(x, y)| px(x, y))
+            .collect();
+        assert!(
+            lit.iter().any(|p| p[0] > 120 && p[1] < 60),
+            "red texels: {lit:?}"
+        );
+        assert!(
+            lit.iter().any(|p| p[1] > 120 && p[0] < 60),
+            "green texels: {lit:?}"
+        );
+        let centre = px(80, 60);
+        // lit texels read ~255 on one channel; in the shadow only the ambient light is left
+        assert!(
+            centre.iter().take(3).map(|&c| c as u32).sum::<u32>() < 150,
+            "the blocker's shadow darkens the centre: {centre:?}"
+        );
+        assert_eq!(px(0, 0)[3], 255);
+        Ok(())
+    }
+
     #[tokio::test]
     async fn credits_an_asset_from_the_attributions_file() -> Result<()> {
         let dir = tempfile::tempdir()?;
@@ -612,8 +758,15 @@ export default composition({ width: 640, height: 360, fps: 30, scenes: [s] });
 "##,
         )?;
         let mut host = RuntimeHost::new(dir.path().to_path_buf())?;
-        let err = host.load_composition("long.ts").await.unwrap_err().to_string();
-        assert!(err.contains("Unknown ease \"inOutBounce\" on node \"title\" (opacity)"), "{err}");
+        let err = host
+            .load_composition("long.ts")
+            .await
+            .unwrap_err()
+            .to_string();
+        assert!(
+            err.contains("Unknown ease \"inOutBounce\" on node \"title\" (opacity)"),
+            "{err}"
+        );
         assert!(err.contains("long.ts:4"), "{err}");
         assert!(err.contains("inOutSine"), "{err}");
         Ok(())

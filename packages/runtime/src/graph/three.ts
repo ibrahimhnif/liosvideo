@@ -8,7 +8,19 @@ export interface ThreeSetupContext {
   height: number;
 }
 
-export interface ThreeProps extends BaseProps {
+export type ThreeToneMapping = "none" | "linear" | "reinhard" | "cineon" | "aces" | "agx" | "neutral";
+
+/** Renderer settings of a three() node; the same in the desktop preview and the CLI render. */
+export interface ThreeRenderOptions {
+  /** Shadow maps for lights and meshes with castShadow / receiveShadow (default false). */
+  shadows?: boolean;
+  /** Tone mapping of the lit image (default "none"); "aces" or "agx" for filmic product shots. */
+  toneMapping?: ThreeToneMapping;
+  /** Exposure for tone mapping (default 1). */
+  exposure?: number;
+}
+
+export interface ThreeProps extends BaseProps, ThreeRenderOptions {
   camera: "perspective" | "orthographic";
   fov: number;
   setup: (ctx: ThreeSetupContext) => Record<string, any> | void;
@@ -51,6 +63,11 @@ export class ThreeNode extends Node<ThreeProps> {
 
   get fov(): number {
     return this.propsAt(0).fov;
+  }
+
+  get renderOptions(): Required<ThreeRenderOptions> {
+    const p = this.propsAt(0);
+    return { shadows: !!p.shadows, toneMapping: p.toneMapping ?? "none", exposure: p.exposure ?? 1 };
   }
 }
 

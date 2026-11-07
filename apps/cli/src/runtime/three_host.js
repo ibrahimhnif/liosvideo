@@ -40,6 +40,9 @@ function createSession(node, props, width, height) {
     : new THREE.PerspectiveCamera(props.fov || 50, width / height, 0.1, 1000);
   camera.position.z = orthographic ? 500 : 5;
 
+  if (props.shadows || (props.toneMapping && props.toneMapping !== "none")) {
+    warnOnce("shadows and toneMapping need the GPU renderer; the software rasteriser ignores them");
+  }
   let userState = undefined;
   if (typeof node.setupFn === "function") {
     userState = node.setupFn({ scene, camera, width, height });

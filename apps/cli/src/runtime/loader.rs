@@ -14,6 +14,8 @@ use std::sync::{Arc, Mutex};
 pub const LIOSVIDEO_IIFE: &str = include_str!("liosvideo.iife.js");
 pub const THREE_BUNDLE: &str = include_str!("three.bundle.js");
 pub const THREE_CORE: &str = include_str!("three.core.js");
+/// three.js WebGPURenderer build (shares three.core.js with the bundle), used by three_gpu.js.
+pub const THREE_WEBGPU: &str = include_str!("three.webgpu.js");
 
 /// The `liosvideo` ES module: re-exports every name the bundled runtime exports, read from the
 /// bundle itself so a new runtime export can never be missing here.
@@ -34,7 +36,10 @@ fn runtime_export_names(iife: &str) -> Vec<&str> {
         .lines()
         .filter_map(|line| line.trim_start().strip_prefix("exports."))
         .filter_map(|rest| rest.split_once(" = ").map(|(name, _)| name))
-        .filter(|name| name.chars().all(|c| c.is_ascii_alphanumeric() || c == '_' || c == '$'))
+        .filter(|name| {
+            name.chars()
+                .all(|c| c.is_ascii_alphanumeric() || c == '_' || c == '$')
+        })
         .collect();
     names.sort_unstable();
     names.dedup();
@@ -186,7 +191,8 @@ impl TsModuleLoader {
 impl ModuleLoader for TsModuleLoader {
     fn get_source_map(&self, file_name: &str) -> Option<std::borrow::Cow<'_, [u8]>> {
         let maps = self.source_maps.lock().unwrap();
-        maps.get(file_name).map(|m| std::borrow::Cow::Owned(m.clone()))
+        maps.get(file_name)
+            .map(|m| std::borrow::Cow::Owned(m.clone()))
     }
 
     fn resolve(
@@ -197,6 +203,9 @@ impl ModuleLoader for TsModuleLoader {
     ) -> Result<ModuleSpecifier, ModuleLoaderError> {
         if specifier == "liosvideo" || specifier == "liosvideo/gpu" {
             return Ok(ModuleSpecifier::parse("liosvideo://runtime").unwrap());
+        }
+        if specifier == "three/webgpu" && referrer.starts_with("liosvideo://three-gpu-host") {
+            return Ok(ModuleSpecifier::parse("liosvideo://three/webgpu").unwrap());
         }
         if specifier == "three" || specifier.starts_with("three/") {
             return Ok(ModuleSpecifier::parse("liosvideo://three").unwrap());
@@ -284,6 +293,8 @@ impl ModuleLoader for TsModuleLoader {
                         || module_specifier.path().ends_with("three.core.js")
                     {
                         THREE_CORE
+                    } else if module_specifier.path().ends_with("/webgpu") {
+                        THREE_WEBGPU
                     } else {
                         THREE_BUNDLE
                     }
@@ -350,8 +361,19 @@ mod tests {
     #[test]
     fn re_exports_everything_the_runtime_bundle_exports() {
         let esm = liosvideo_esm();
-        for name in ["captions", "composition", "layout", "stack", "vo", "measureLoudness", "TextNode"] {
-            assert!(esm.contains(&format!(" {name},")) || esm.contains(&format!(" {name} }}")), "{name} missing");
+        for name in [
+            "captions",
+            "composition",
+            "layout",
+            "stack",
+            "vo",
+            "measureLoudness",
+            "TextNode",
+        ] {
+            assert!(
+                esm.contains(&format!(" {name},")) || esm.contains(&format!(" {name} }}")),
+                "{name} missing"
+            );
         }
         assert!(runtime_export_names(LIOSVIDEO_IIFE).len() > 60);
     }

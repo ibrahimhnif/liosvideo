@@ -56,7 +56,7 @@ pub async fn render_png(
             let mut host = RuntimeHost::new(project_root.clone())?;
             let info = host.load_composition(&entry).await?;
             let render_list = host.evaluate_frame(frame)?;
-            let three_frames = host.render_three_nodes(frame, info.fps)?;
+            let three_frames = host.render_three_nodes(frame, info.fps).await?;
             let (_, time, progress) = crate::runtime::scene_clock(&info, frame, info.fps);
 
             let gpu = GpuContext::new_headless().await?;
