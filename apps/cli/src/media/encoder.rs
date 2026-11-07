@@ -316,7 +316,10 @@ impl Mp4Encoder {
             .max_frame_rate(fps as f32)
             .rate_control_mode(RateControlMode::Bitrate)
             .set_bitrate_bps(video_bitrate.max(100_000))
-            .enable_skip_frame(true)
+            // Never skip: a skipped frame leaves a hole the MP4 can only fill by re-sending the
+            // previous P-frame, which duplicates its frame_num and corrupts every frame after it.
+            // Rate control raises QP instead.
+            .enable_skip_frame(false)
             .debug(false);
         let h264_encoder = H264Encoder::with_api_config(api, config)
             .map_err(|e| anyhow!("Failed to initialize OpenH264 encoder: {:?}", e))?;
@@ -751,6 +754,48 @@ mod tests {
         // Clean up temp file
         let _ = std::fs::remove_file(&out_file);
 
+        Ok(())
+    }
+
+    #[test]
+    fn never_repeats_a_previous_frame_when_the_bitrate_is_too_low() -> Result<()> {
+        // Noise at a starved bitrate is what makes OpenH264 want to skip frames. A skipped frame
+        // must not be filled by re-sending the previous P-frame's bytes: that duplicates its
+        // frame_num and decoders show garbage ("reference picture missing").
+        let (width, height) = (320u32, 240u32);
+        let mut encoder = Mp4Encoder::with_output(
+            Mp4Output::Cursor(Cursor::new(Vec::new())),
+            width,
+            height,
+            30.0,
+            48_000,
+            100_000,
+            192_000,
+        )?;
+        let mut seed = 0x1234_5678u32;
+        for _ in 0..30 {
+            let mut rgba = vec![255u8; (width * height * 4) as usize];
+            for px in rgba.chunks_exact_mut(4) {
+                seed ^= seed << 13;
+                seed ^= seed >> 17;
+                seed ^= seed << 5;
+                px[0] = seed as u8;
+                px[1] = (seed >> 8) as u8;
+                px[2] = (seed >> 16) as u8;
+            }
+            encoder.push_frame(&rgba)?;
+        }
+        let bytes = encoder.finish_to_buffer()?;
+        let size = bytes.len() as u64;
+        let mut reader = mp4::Mp4Reader::read_header(Cursor::new(bytes), size)?;
+        let count = reader.sample_count(1)?;
+        assert_eq!(count, 30, "one sample per frame");
+        let mut previous: Option<Vec<u8>> = None;
+        for i in 1..=count {
+            let sample = reader.read_sample(1, i)?.expect("sample").bytes.to_vec();
+            assert_ne!(previous.as_ref(), Some(&sample), "sample {i} repeats the previous frame's bytes");
+            previous = Some(sample);
+        }
         Ok(())
     }
 }
