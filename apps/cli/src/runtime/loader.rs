@@ -15,33 +15,31 @@ pub const LIOSVIDEO_IIFE: &str = include_str!("liosvideo.iife.js");
 pub const THREE_BUNDLE: &str = include_str!("three.bundle.js");
 pub const THREE_CORE: &str = include_str!("three.core.js");
 
-pub const LIOSVIDEO_ESM: &str = r#"
-export const {
-  BASE_DEFAULTS,    ChromeNode,        ChromeOmnibox,
-  CircleNode,       CursorNode,        DesktopNode,
-  EditorNode,       GroupNode,         IDENTITY,
-  ImageNode,        Node,              PathNode,
-  PhoneNode,        RectNode,          ShaderNode,
-  TerminalNode,     TextNode,          ThreeNode,
-  Track,            VideoNode,         VoHelper,
-  WindowNode,       apply,             applyTransition,
-  buildManifest,    chrome,            circle,
-  clampFrame,       collectAssets,     composition,
-  cursor,           desktop,           ease,
-  editor,           evaluateFrame,     focus,
-  formatColor,      group,             image,
-  instantiateScene, layout,            layoutComposition,
-  lerpColor,        stack,
-  logoMark,         multiply,          parseColor,
-  path,             phone,             rect,
-  registerVoTiming, registerVoTimings, scene,
-  seededRandom,     setTextMeasurer,   shader,
-  terminal,         text,              three,
-  tokyoNightColors, transition,        video,
-  vo,               windowNode
-} = globalThis.__liosvideo;
-export default globalThis.__liosvideo;
-"#;
+/// The `liosvideo` ES module: re-exports every name the bundled runtime exports, read from the
+/// bundle itself so a new runtime export can never be missing here.
+pub fn liosvideo_esm() -> &'static str {
+    static ESM: std::sync::OnceLock<String> = std::sync::OnceLock::new();
+    ESM.get_or_init(|| {
+        let names = runtime_export_names(LIOSVIDEO_IIFE);
+        format!(
+            "export const {{ {} }} = globalThis.__liosvideo;\nexport default globalThis.__liosvideo;\n",
+            names.join(", ")
+        )
+    })
+}
+
+/// Names assigned as `exports.<name> = …` in the IIFE bundle.
+fn runtime_export_names(iife: &str) -> Vec<&str> {
+    let mut names: Vec<&str> = iife
+        .lines()
+        .filter_map(|line| line.trim_start().strip_prefix("exports."))
+        .filter_map(|rest| rest.split_once(" = ").map(|(name, _)| name))
+        .filter(|name| name.chars().all(|c| c.is_ascii_alphanumeric() || c == '_' || c == '$'))
+        .collect();
+    names.sort_unstable();
+    names.dedup();
+    names
+}
 
 #[derive(Clone)]
 pub struct TsModuleLoader {
@@ -262,7 +260,7 @@ impl ModuleLoader for TsModuleLoader {
     ) -> ModuleLoadResponse {
         if module_specifier.scheme() == "liosvideo" {
             let code = match module_specifier.host_str() {
-                Some("runtime") | Some("gpu") => LIOSVIDEO_ESM,
+                Some("runtime") | Some("gpu") => liosvideo_esm(),
                 Some("three") => {
                     if module_specifier.path().ends_with("/core")
                         || module_specifier.path().ends_with("three.core.js")
@@ -324,5 +322,19 @@ impl ModuleLoader for TsModuleLoader {
         }
 
         ModuleLoadResponse::Sync(Err(ModuleLoaderError::NotFound))
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn re_exports_everything_the_runtime_bundle_exports() {
+        let esm = liosvideo_esm();
+        for name in ["captions", "composition", "layout", "stack", "vo", "measureLoudness", "TextNode"] {
+            assert!(esm.contains(&format!(" {name},")) || esm.contains(&format!(" {name} }}")), "{name} missing");
+        }
+        assert!(runtime_export_names(LIOSVIDEO_IIFE).len() > 60);
     }
 }

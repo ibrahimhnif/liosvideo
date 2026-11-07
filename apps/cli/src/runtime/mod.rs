@@ -502,6 +502,51 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn reads_mix_settings_roles_and_draws_captions() -> Result<()> {
+        let dir = tempfile::tempdir()?;
+        let vo_dir = dir.path().join("assets").join("audio").join("vo");
+        std::fs::create_dir_all(&vo_dir)?;
+        std::fs::write(
+            vo_dir.join("h1.timing.json"),
+            r#"{"lineId":"h1","duration":1.2,"words":[{"word":"Halo","start":0,"end":0.5},{"word":"semua.","start":0.6,"end":1.1}]}"#,
+        )?;
+        let composition_code = r##"
+            import { captions, composition, scene } from "liosvideo";
+
+            const hook = scene("hook", { duration: 2 }, ({ root }) => {
+                captions(root, { lines: ["h1"] });
+            });
+
+            export default composition({
+                width: 1080,
+                height: 1920,
+                fps: 30,
+                scenes: [hook],
+                mix: { loudness: -16, duck: false },
+                audio: [{ id: "bgm", src: "assets/audio/music/bed.mp3", role: "music" }],
+            });
+        "##;
+        std::fs::write(dir.path().join("short.ts"), composition_code)?;
+
+        let mut host = RuntimeHost::new(dir.path().to_path_buf())?;
+        let info = host.load_composition("short.ts").await?;
+        let mix = crate::media::loudness::MixSettings::from_json(info.mix.as_ref().expect("mix"));
+        assert_eq!(mix.loudness, Some(-16.0));
+        assert!(mix.duck.is_none());
+        assert_eq!(info.audio[0].clips[0].role.as_deref(), Some("music"));
+
+        let rl = host.evaluate_frame(9)?; // 0.3 s: "Halo" is being spoken
+        let texts: Vec<&str> = rl["items"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .filter_map(|i| i["text"].as_str())
+            .collect();
+        assert_eq!(texts, vec!["Halo", "semua."]);
+        Ok(())
+    }
+
+    #[tokio::test]
     async fn sizes_scenes_from_vo_timings_at_module_scope() -> Result<()> {
         let dir =
             std::env::temp_dir().join(format!("liosvideo_vo_duration_test_{}", std::process::id()));

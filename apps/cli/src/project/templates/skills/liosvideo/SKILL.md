@@ -125,6 +125,24 @@ export default composition({
 });
 ```
 
+### Karaoke Captions (`captions`)
+
+Use the built-in component; don't hand-roll caption helpers:
+
+```ts
+import { captions, scene, vo } from "liosvideo";
+
+export default scene("hook", { duration: vo("h1").duration + vo("h2").duration + 1 }, ({ root }) => {
+  captions(root, { lines: ["h1", "h2"] });            // VO line ids, spoken back to back (gap 0.3 s)
+  // captions(root, { lines: [{ id: "h3", at: 4.2 }] }); // or at explicit scene times
+});
+```
+
+- Reads word timings from `vo(id)` and throws if a line has none yet (generate the VO first).
+- Sits in `layout().slot("caption")` (above the bottom 12% in 9:16). It splits text into chunks at sentence punctuation and at the measured line width, max 2 lines, and shrinks the type if a single word would leave the frame.
+- The spoken word changes colour and grows slightly. Options: `preset` (`"short"` / `"long"`, chosen from the orientation by default), `fontFamily`, `fontSize`, `fontWeight`, `color`, `activeColor` (default `#ffd60a`), `background` (pill fill, e.g. `"#000000aa"`), `maxWords`, `hold`, `start`, `gap`, `name`.
+- Keep other content out of the caption slot when captions are on.
+
 ### Mix: Loudness & Ducking (automatic)
 
 Every render (CLI and desktop export) runs the mix through a master bus:

@@ -50,6 +50,11 @@ export class VoHelper {
     return this.end;
   }
 
+  /** Word timings (seconds from the start of the line); empty until the line has been generated. */
+  get words(): WordTiming[] {
+    return this.timing?.words ?? [];
+  }
+
   wordTime(text: string): number | undefined {
     if (!this.timing || !this.timing.words?.length) {
       return undefined;

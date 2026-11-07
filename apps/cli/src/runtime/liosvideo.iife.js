@@ -670,6 +670,28 @@ var __liosvideo = (function(exports) {
 		measurer = m;
 		wrapCache.clear();
 	}
+	/**
+	* Size of a text run with the installed measurer; without one (tests, static checks) an estimate of
+	* 0.6 em per character, so layout code works the same everywhere.
+	*/
+	function measureText(p) {
+		const full = {
+			...BASE_DEFAULTS,
+			fontFamily: "SF Pro Text",
+			fontWeight: 400,
+			color: "#ffffff",
+			lineHeight: 1.2,
+			align: "left",
+			maxWidth: 0,
+			...p
+		};
+		if (measurer) return measurer(full);
+		const lines = full.text.split("\n");
+		return {
+			width: Math.max(...lines.map((l) => l.length)) * full.fontSize * .6,
+			height: lines.length * full.fontSize * full.lineHeight
+		};
+	}
 	/** Greedy word wrap: each `\n` line is broken at spaces so no line is wider than `maxWidth`; a lone long word keeps its own line. */
 	function wrapText(p, m) {
 		const key = JSON.stringify([
@@ -1466,7 +1488,8 @@ var __liosvideo = (function(exports) {
 				duration: track.duration,
 				startOffset: track.startOffset,
 				volume: track.volume,
-				ducking: track.ducking
+				ducking: track.ducking,
+				role: track.role
 			}] : [];
 			return {
 				id: track.id,
@@ -1481,7 +1504,8 @@ var __liosvideo = (function(exports) {
 						duration: clip.duration,
 						startOffset: clip.startOffset,
 						volume: clip.volume,
-						ducking: clip.ducking
+						ducking: clip.ducking,
+						role: clip.role ?? track.role
 					};
 				})
 			};
@@ -1496,7 +1520,8 @@ var __liosvideo = (function(exports) {
 				tree: describe(instantiateScene(c, c.scenes[i]), span, c.fps),
 				site: c.scenes[i].site
 			})),
-			...audioTracks ? { audioTracks } : {}
+			...audioTracks ? { audioTracks } : {},
+			...c.mix ? { mix: c.mix } : {}
 		};
 	}
 	// packages/runtime/src/audio/timing.ts
@@ -1528,6 +1553,10 @@ var __liosvideo = (function(exports) {
 		get duration() {
 			return this.end;
 		}
+		/** Word timings (seconds from the start of the line); empty until the line has been generated. */
+		get words() {
+			return this.timing?.words ?? [];
+		}
 		wordTime(text) {
 			if (!this.timing || !this.timing.words?.length) return;
 			const target = text.trim().toLowerCase();
@@ -1554,6 +1583,402 @@ var __liosvideo = (function(exports) {
 	const vo = (lineId, timing) => {
 		return new VoHelper(lineId, timing ?? VO_REGISTRY.get(lineId) ?? globalThis.__liosVoTimings?.[lineId]);
 	};
+	// packages/runtime/src/audio/mix.ts
+	const DEFAULT_MIX = Object.freeze({
+		loudness: -14,
+		ceiling: -1,
+		duck: Object.freeze({
+			amount: 12,
+			attack: .15,
+			release: .4
+		})
+	});
+	/** Clips at least this long count as a music bed and duck by default. */
+	const BED_MIN_SECONDS = 8;
+	function resolveMix(mix) {
+		const duck = mix?.duck === false ? false : {
+			...DEFAULT_MIX.duck,
+			...mix?.duck ?? {}
+		};
+		return {
+			loudness: mix?.loudness === void 0 ? DEFAULT_MIX.loudness : mix.loudness,
+			ceiling: mix?.ceiling ?? DEFAULT_MIX.ceiling,
+			duck
+		};
+	}
+	function isVoice(clip) {
+		return clip.role === "vo" || /(^|\/)vo\//.test(clip.src);
+	}
+	/** A file named `sfx` (or in an `sfx/` folder) is an effects track. */
+	function isSfxName(src) {
+		return /(^|[\/._-])sfx([\/._-]|$)/i.test(src);
+	}
+	/** Whether a clip that plays for `playedSeconds` should dip under voice-over. */
+	function shouldDuck(clip, playedSeconds) {
+		if (isVoice(clip)) return false;
+		if (clip.ducking === true || clip.role === "music") return true;
+		if (clip.ducking === false || clip.role === "sfx" || !clip.role && isSfxName(clip.src)) return false;
+		return playedSeconds >= 8;
+	}
+	/** Turns voice-over spans `[start, end]` (seconds) into a gain envelope. */
+	function duckPlan(spans, duck) {
+		if (!duck || !spans.length) return [];
+		const low = 10 ** (-Math.abs(duck.amount) / 20);
+		const sorted = spans.filter(([s, e]) => e > s).sort((a, b) => a[0] - b[0]);
+		const merged = [];
+		for (const [s, e] of sorted) {
+			const last = merged[merged.length - 1];
+			if (last && s - last[1] < duck.attack + duck.release) last[1] = Math.max(last[1], e);
+			else merged.push([s, e]);
+		}
+		const plan = [];
+		for (const [s, e] of merged) plan.push([s - duck.attack, 1], [s, low], [e, low], [e + duck.release, 1]);
+		return plan;
+	}
+	function duckGainAt(plan, t) {
+		if (!plan.length || t <= plan[0][0] || t >= plan[plan.length - 1][0]) return 1;
+		let lo = 0;
+		let hi = plan.length - 1;
+		while (hi - lo > 1) {
+			const mid = lo + hi >> 1;
+			if (plan[mid][0] <= t) lo = mid;
+			else hi = mid;
+		}
+		const [t0, g0] = plan[lo];
+		const [t1, g1] = plan[hi];
+		return t1 === t0 ? g1 : g0 + (g1 - g0) * (t - t0) / (t1 - t0);
+	}
+	/**
+	* The duck envelope for a set of clips and which clips follow it. No voice-over
+	* means no ducking at all, so beds stay at their written volume.
+	*/
+	function duckSchedule(clips, duck) {
+		const plan = duckPlan(clips.filter(isVoice).map((c) => [c.start, c.start + c.played]), duck);
+		return {
+			plan,
+			ducked: clips.map((c) => plan.length > 0 && shouldDuck(c, c.played))
+		};
+	}
+	function kWeighting(sampleRate) {
+		let f0 = 1681.974450955533;
+		const G = 3.999843853973347;
+		let Q = .7071752369554196;
+		let K = Math.tan(Math.PI * f0 / sampleRate);
+		const Vh = 10 ** (G / 20);
+		const Vb = Vh ** .4996667741545416;
+		let a0 = 1 + K / Q + K * K;
+		const shelf = [
+			(Vh + Vb * K / Q + K * K) / a0,
+			2 * (K * K - Vh) / a0,
+			(Vh - Vb * K / Q + K * K) / a0,
+			2 * (K * K - 1) / a0,
+			(1 - K / Q + K * K) / a0
+		];
+		f0 = 38.13547087602444;
+		Q = .5003270373238773;
+		K = Math.tan(Math.PI * f0 / sampleRate);
+		a0 = 1 + K / Q + K * K;
+		return [shelf, [
+			1,
+			-2,
+			1,
+			2 * (K * K - 1) / a0,
+			(1 - K / Q + K * K) / a0
+		]];
+	}
+	const ABSOLUTE_GATE = -70;
+	const RELATIVE_GATE = -10;
+	/** Integrated loudness (LUFS) of planar channels; -Infinity for silence. */
+	function measureLoudness(channels, sampleRate) {
+		const length = channels[0]?.length ?? 0;
+		const step = Math.round(sampleRate * .1);
+		const segments = Math.floor(length / step);
+		if (segments < 4) return -Infinity;
+		const energy = new Float64Array(segments);
+		const [s, h] = kWeighting(sampleRate);
+		for (const x of channels) {
+			let x1 = 0, x2 = 0, y1 = 0, y2 = 0, z1 = 0, z2 = 0;
+			for (let seg = 0; seg < segments; seg++) {
+				let acc = 0;
+				const end = (seg + 1) * step;
+				for (let i = seg * step; i < end; i++) {
+					const xi = x[i];
+					const y = s[0] * xi + s[1] * x1 + s[2] * x2 - s[3] * y1 - s[4] * y2;
+					x2 = x1;
+					x1 = xi;
+					const z = h[0] * y + h[1] * y1 + h[2] * y2 - h[3] * z1 - h[4] * z2;
+					y2 = y1;
+					y1 = y;
+					z2 = z1;
+					z1 = z;
+					acc += z * z;
+				}
+				energy[seg] += acc;
+			}
+		}
+		return gatedLoudness(energy, step);
+	}
+	function gatedLoudness(energy, step) {
+		const blocks = [];
+		for (let j = 0; j + 4 <= energy.length; j++) blocks.push((energy[j] + energy[j + 1] + energy[j + 2] + energy[j + 3]) / (4 * step));
+		const lufs = (z) => -.691 + 10 * Math.log10(z);
+		const mean = (xs) => xs.reduce((a, b) => a + b, 0) / xs.length;
+		const abs = blocks.filter((z) => z > 0 && lufs(z) > ABSOLUTE_GATE);
+		if (!abs.length) return -Infinity;
+		const relative = lufs(mean(abs)) + RELATIVE_GATE;
+		return lufs(mean(abs.filter((z) => lufs(z) > relative)));
+	}
+	const LIMITER_LOOKAHEAD = .005;
+	const LIMITER_RELEASE = .08;
+	function peak(channels) {
+		let p = 0;
+		for (const c of channels) for (let i = 0; i < c.length; i++) p = Math.max(p, Math.abs(c[i]));
+		return p;
+	}
+	/**
+	* Look-ahead peak limiter, in place. The gain needed at each sample is held
+	* over the look-ahead window and averaged over it, so it eases down before a
+	* peak; it then recovers linearly over the release time. No output sample
+	* exceeds the ceiling.
+	*/
+	function limit(channels, sampleRate, ceilingDb) {
+		const ceiling = 10 ** (ceilingDb / 20);
+		if (peak(channels) <= ceiling) return;
+		const n = channels[0].length;
+		const L = Math.max(1, Math.round(sampleRate * LIMITER_LOOKAHEAD));
+		const req = new Float32Array(n);
+		for (let i = 0; i < n; i++) {
+			let m = 0;
+			for (const c of channels) m = Math.max(m, Math.abs(c[i]));
+			req[i] = m > ceiling ? ceiling / m : 1;
+		}
+		const held = new Float32Array(n);
+		const dq = new Int32Array(n);
+		let head = 0, tail = 0;
+		for (let i = n - 1; i >= 0; i--) {
+			while (tail > head && req[dq[tail - 1]] >= req[i]) tail--;
+			dq[tail++] = i;
+			while (dq[head] > i + L - 1) head++;
+			held[i] = req[dq[head]];
+		}
+		const inc = 1 / Math.max(1, Math.round(sampleRate * LIMITER_RELEASE));
+		let sum = 0;
+		let g = 1;
+		for (let i = 0; i < n; i++) {
+			sum += held[i] - (i >= L ? held[i - L] : 1);
+			const avg = (sum + L) / L;
+			g = Math.min(avg, g + inc, req[i]);
+			for (const c of channels) c[i] *= g;
+		}
+	}
+	/** Normalises to the target loudness and limits, in place. */
+	function master(channels, sampleRate, mix) {
+		const measured = measureLoudness(channels, sampleRate);
+		let gain = 0;
+		if (mix.loudness !== false && Number.isFinite(measured)) {
+			gain = mix.loudness - measured;
+			const k = 10 ** (gain / 20);
+			for (const c of channels) for (let i = 0; i < c.length; i++) c[i] *= k;
+		}
+		limit(channels, sampleRate, mix.ceiling);
+		const p = peak(channels);
+		return {
+			measured,
+			gain,
+			final: measureLoudness(channels, sampleRate),
+			peak: p > 0 ? 20 * Math.log10(p) : -Infinity
+		};
+	}
+	// packages/runtime/src/components/captions.ts
+	const PRESETS = {
+		short: {
+			fontWeight: 800,
+			maxWords: 6
+		},
+		long: {
+			fontWeight: 700,
+			maxWords: 9
+		}
+	};
+	const ACTIVE_SCALE = 1.06;
+	/**
+	* Karaoke captions from VO word timings, placed in `layout().slot("caption")` (above the platform UI
+	* in 9:16). Chunks break at sentence punctuation, at the measured line width and after two lines; the
+	* spoken word lights up. Returns the caption layer (one child group per chunk).
+	*/
+	function captions(root, opts) {
+		const { width, height } = root.propsAt(0);
+		if (!(width > 0 && height > 0)) throw new Error("captions(): add them to the scene root (it needs a width and height)");
+		const L = layout({
+			width,
+			height
+		});
+		const preset = PRESETS[opts.preset ?? (L.orientation === "portrait" ? "short" : "long")];
+		const slot = L.slot("caption");
+		const pad = opts.background ? L.gap(2) : 0;
+		const lineHeight = 1.25;
+		const fontFamily = opts.fontFamily ?? "SF Pro Text";
+		const fontWeight = opts.fontWeight ?? preset.fontWeight;
+		const color = opts.color ?? "#ffffff";
+		const activeColor = opts.activeColor ?? "#ffd60a";
+		const maxWords = opts.maxWords ?? preset.maxWords;
+		const hold = opts.hold ?? .35;
+		const maxLine = (slot.width - pad * 2) / ACTIVE_SCALE;
+		const timed = resolveLines(opts);
+		let fontSize = opts.fontSize ?? L.type.h2.fontSize;
+		const measure = (text, size = fontSize) => measureText({
+			text,
+			fontSize: size,
+			fontFamily,
+			fontWeight,
+			lineHeight
+		}).width;
+		const widest = Math.max(0, ...timed.flatMap((l) => l.words.map((w) => measure(w.word.trim()))));
+		if (widest > maxLine) fontSize *= maxLine / widest;
+		const space = Math.max(measure("a a") - measure("aa"), fontSize * .25);
+		const chunks = [];
+		for (const line of timed) {
+			let chunk = null;
+			let count = 0;
+			const flush = () => {
+				if (chunk && count) chunks.push(chunk);
+				chunk = null;
+				count = 0;
+			};
+			for (const w of line.words) {
+				const text = w.word.trim();
+				if (!text) continue;
+				const word = {
+					text,
+					start: line.at + w.start,
+					end: line.at + w.end,
+					width: measure(text)
+				};
+				if (!chunk) chunk = {
+					lines: [[]],
+					start: word.start,
+					end: word.end
+				};
+				const c = chunk;
+				const row = c.lines[c.lines.length - 1];
+				const rowWidth = row.reduce((s, x) => s + x.width, 0) + space * row.length;
+				if (row.length && rowWidth + word.width > maxLine) {
+					if (c.lines.length === 2) {
+						flush();
+						chunk = {
+							lines: [[word]],
+							start: word.start,
+							end: word.end
+						};
+						count = 1;
+						continue;
+					}
+					c.lines.push([word]);
+				} else row.push(word);
+				c.end = word.end;
+				count++;
+				if (/[.?!…]["')\]]?$/.test(text) || /[,;:]$/.test(text) && count >= 3 || count >= maxWords) flush();
+			}
+			flush();
+		}
+		chunks.sort((a, b) => a.start - b.start);
+		const name = (opts.name ?? "captions").replaceAll("/", "-");
+		const layer = root.add(new GroupNode({ name }));
+		const rowH = fontSize * lineHeight;
+		chunks.forEach((chunk, i) => {
+			const show = Math.max(0, chunk.start - .04);
+			const next = chunks[i + 1];
+			const hide = Math.min(chunk.end + hold, next ? next.start - .04 : Infinity);
+			const g = layer.add(new GroupNode({
+				name: `chunk${i}`,
+				opacity: 0
+			}));
+			g.set({ opacity: 1 }, show).set({ opacity: 0 }, hide);
+			const blockH = chunk.lines.length * rowH;
+			const top = slot.y + slot.height - blockH - pad / 2;
+			const cx = slot.x + slot.width / 2;
+			const rowWidths = chunk.lines.map((r) => r.reduce((s, x) => s + x.width, 0) + space * (r.length - 1));
+			if (opts.background) {
+				const w = Math.max(...rowWidths) * ACTIVE_SCALE + pad * 2;
+				g.add(new RectNode({
+					name: "pill",
+					x: cx - w / 2,
+					y: top - pad / 2,
+					width: w,
+					height: blockH + pad,
+					radius: pad,
+					fill: opts.background
+				}));
+			}
+			chunk.lines.forEach((row, r) => {
+				let x = cx - rowWidths[r] / 2;
+				for (const word of row) {
+					const t = g.add(new TextNode({
+						name: `w${g.children.length}`,
+						text: word.text,
+						fontFamily,
+						fontSize,
+						fontWeight,
+						lineHeight,
+						color,
+						x: x + word.width / 2,
+						y: top + r * rowH + rowH / 2,
+						width: word.width,
+						height: rowH,
+						anchorX: .5,
+						anchorY: .5
+					}));
+					const grow = Math.min(ACTIVE_SCALE, 1 + space * .9 / Math.max(word.width, 1));
+					t.set({ color: activeColor }, word.start).set({ color }, word.end);
+					t.to({
+						scaleX: grow,
+						scaleY: grow
+					}, {
+						at: word.start,
+						duration: .08,
+						ease: "outCubic"
+					});
+					t.to({
+						scaleX: 1,
+						scaleY: 1
+					}, {
+						at: word.end,
+						duration: .12,
+						ease: "outCubic"
+					});
+					x += word.width + space;
+				}
+			});
+		});
+		return layer;
+	}
+	function resolveLines(opts) {
+		let cursor = opts.start ?? 0;
+		const gap = opts.gap ?? .3;
+		return opts.lines.map((line) => {
+			let words;
+			let duration;
+			let at;
+			if (typeof line !== "string" && "words" in line) {
+				words = line.words;
+				duration = Math.max(0, ...words.map((w) => w.end));
+				at = line.at;
+			} else {
+				const id = typeof line === "string" ? line : line.id;
+				at = typeof line === "string" ? void 0 : line.at;
+				const v = vo(id);
+				if (!v.words.length) throw new Error(`captions(): no word timing for VO line "${id}". Generate it with tts_generate (or record it in the app) first.`);
+				words = v.words;
+				duration = v.duration || Math.max(...words.map((w) => w.end));
+			}
+			const start = at ?? cursor;
+			cursor = start + duration + gap;
+			return {
+				at: start,
+				words
+			};
+		});
+	}
 	// packages/runtime/src/mockups/window.ts
 	var WindowNode = class extends GroupNode {
 		frame;
@@ -2284,15 +2709,19 @@ var __liosvideo = (function(exports) {
 		return mark;
 	}
 	exports.BASE_DEFAULTS = BASE_DEFAULTS;
+	exports.BED_MIN_SECONDS = BED_MIN_SECONDS;
 	exports.ChromeNode = ChromeNode;
 	exports.ChromeOmnibox = ChromeOmnibox;
 	exports.CircleNode = CircleNode;
 	exports.CursorNode = CursorNode;
+	exports.DEFAULT_MIX = DEFAULT_MIX;
 	exports.DesktopNode = DesktopNode;
 	exports.EditorNode = EditorNode;
 	exports.GroupNode = GroupNode;
 	exports.IDENTITY = IDENTITY;
 	exports.ImageNode = ImageNode;
+	exports.LIMITER_LOOKAHEAD = LIMITER_LOOKAHEAD;
+	exports.LIMITER_RELEASE = LIMITER_RELEASE;
 	exports.Node = Node;
 	exports.PathNode = PathNode;
 	exports.PhoneNode = PhoneNode;
@@ -2308,6 +2737,7 @@ var __liosvideo = (function(exports) {
 	exports.apply = apply;
 	exports.applyTransition = applyTransition;
 	exports.buildManifest = buildManifest;
+	exports.captions = captions;
 	exports.chrome = chrome;
 	exports.circle = circle;
 	exports.clampFrame = clampFrame;
@@ -2315,6 +2745,9 @@ var __liosvideo = (function(exports) {
 	exports.composition = composition;
 	exports.cursor = cursor;
 	exports.desktop = desktop;
+	exports.duckGainAt = duckGainAt;
+	exports.duckPlan = duckPlan;
+	exports.duckSchedule = duckSchedule;
 	exports.ease = ease;
 	exports.editor = editor;
 	exports.evaluateFrame = evaluateFrame;
@@ -2323,21 +2756,30 @@ var __liosvideo = (function(exports) {
 	exports.group = group;
 	exports.image = image;
 	exports.instantiateScene = instantiateScene;
+	exports.isSfxName = isSfxName;
+	exports.isVoice = isVoice;
 	exports.layout = layout;
 	exports.layoutComposition = layoutComposition;
 	exports.lerpColor = lerpColor;
+	exports.limit = limit;
 	exports.logoMark = logoMark;
+	exports.master = master;
+	exports.measureLoudness = measureLoudness;
+	exports.measureText = measureText;
 	exports.multiply = multiply;
 	exports.parseColor = parseColor;
 	exports.path = path;
+	exports.peak = peak;
 	exports.phone = phone;
 	exports.rect = rect;
 	exports.registerVoTiming = registerVoTiming;
 	exports.registerVoTimings = registerVoTimings;
+	exports.resolveMix = resolveMix;
 	exports.scene = scene;
 	exports.seededRandom = seededRandom;
 	exports.setTextMeasurer = setTextMeasurer;
 	exports.shader = shader;
+	exports.shouldDuck = shouldDuck;
 	exports.stack = stack;
 	exports.terminal = terminal;
 	exports.text = text;

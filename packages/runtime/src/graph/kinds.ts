@@ -61,6 +61,20 @@ export function setTextMeasurer(m: TextMeasurer | undefined): void {
   wrapCache.clear();
 }
 
+/**
+ * Size of a text run with the installed measurer; without one (tests, static checks) an estimate of
+ * 0.6 em per character, so layout code works the same everywhere.
+ */
+export function measureText(p: Pick<TextProps, "text" | "fontSize"> & Partial<TextProps>): { width: number; height: number } {
+  const full = { ...BASE_DEFAULTS, fontFamily: "SF Pro Text", fontWeight: 400, color: "#ffffff", lineHeight: 1.2, align: "left", maxWidth: 0, ...p } as TextProps;
+  if (measurer) return measurer(full);
+  const lines = full.text.split("\n");
+  return {
+    width: Math.max(...lines.map((l) => l.length)) * full.fontSize * 0.6,
+    height: lines.length * full.fontSize * full.lineHeight,
+  };
+}
+
 /** Greedy word wrap: each `\n` line is broken at spaces so no line is wider than `maxWidth`; a lone long word keeps its own line. */
 function wrapText(p: TextProps, m: TextMeasurer): string {
   const key = JSON.stringify([p.text, p.fontFamily, p.fontSize, p.fontWeight, p.lineHeight, p.maxWidth]);
