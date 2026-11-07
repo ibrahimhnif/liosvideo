@@ -11,12 +11,13 @@ A product on a seamless studio sweep with soft three-point lighting and real sha
 Backdrop `#d9dde3`, sweep `#e7eaee`, ink `#111418`, muted `#5b6472`, one accent `#2563eb` (callout dots, a single trim part).
 
 ## Motion
-- Move the camera, never the product: `orbitCamera(camera, { angle, radius, height, target })` with `smooth(progress / 0.55)` for a quarter turn that settles about halfway through the scene.
-- Callouts come in after the camera stops: the dot pops, the leader draws out, the label fades in (`callout({ target, label, detail, side, length, size, at })`).
+- Move the camera, never the product: pass `orbit({ target, radius, height: [from, to], from, to, start, end, ease: smooth })` as `productStage`'s camera path, a quarter turn that settles about halfway through the scene. (`orbitCamera` is still there for moves written in `update`.)
+- Callouts come in after the camera stops: the dot pops, the leader draws out, the label fades in (`callout({ target, label, detail, side, length, size, at })`). Aim them at 3D points, `target: { stage, point: [x, y, z] }`, so the dots stay on the parts even if the camera moves again.
 
 ## Helpers (`styles/product-studio.ts`)
 - `productStage`, `studioRig(scene)`, `sweep(scene)`, `metal`, `matte`, `castShadows`, `orbitCamera`, `smooth`
-- `callout({ target: { x, y }, label, detail?, side, length, size, at })`
+- `productStage(width, height, build, update?, cameraPath?)`
+- `callout({ target: { stage, point } | { x, y }, label, detail?, side, length, size, at })`
 
 ## Do / Don't
 - Do swap the stand-in for your model: `const m = await gltf("assets/models/<model>.glb")` in an `async setup`, `castShadows(m.scene)`.

@@ -304,6 +304,21 @@ three({
 - The path moves the camera before your `update` runs; `update` gets the camera as `state.camera` when setup did not return one. Outside the keys the camera holds the first / last pose.
 - `path.sample(t)` gives `{ position, target, fov }`; `path.apply(camera, t)` sets it by hand (e.g. two paths cut together in `update`).
 
+Labels that point at parts of the model follow it with `callout` (the stage needs a `cameraPath`):
+
+```ts
+import { callout } from "liosvideo";
+
+const stage = root.add(three({ name: "stage", width, height, fov: 35, cameraPath: orbit({ /* … */ }), setup }));
+callout(stage, { target: [0.3, 2.4, 0.2], label: "Mesh grill", at: 3.4 });       // a world-space point on the part
+callout(stage, { target: (t) => [Math.sin(t), 1, 0], label: "Rotor", offset: [-120, -60] }); // a part that moves
+const p = stage.project([0, 1, 0], t);   // { x, y, depth, visible } in the stage's parent space, for your own overlays
+```
+
+- The dot, leader and label are added next to the stage and hide while the point is behind the camera. Options: `offset` (label position from the dot, px), `at` / `until`, `color`, `accent`, `fontFamily`, `fontSize`, `name`.
+- Points are world coordinates (read them from your model in setup, or measure once); a part animated in `update` needs the same motion as `(t) => [x, y, z]`.
+- `node.drive((t) => ({ x, y }))` sets any node's props from scene time, after its keyframes, for other things that follow a projected point.
+
 Cutaways (section cuts) use three.js clipping planes on the material, in world space; move the plane in `update`:
 
 ```ts

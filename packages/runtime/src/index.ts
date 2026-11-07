@@ -18,6 +18,7 @@ export * from "./three/camera_path";
 export * from "./audio/mix";
 export * from "./components/captions";
 export * from "./components/credit";
+export * from "./components/callout";
 export * from "./assets/attributions";
 export * from "./mockups/window";
 export * from "./mockups/desktop";

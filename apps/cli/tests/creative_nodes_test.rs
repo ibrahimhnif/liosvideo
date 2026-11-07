@@ -249,3 +249,68 @@ async fn clips_a_cutaway_with_an_animated_plane() -> Result<()> {
     let _ = std::fs::remove_dir_all(&dir);
     Ok(())
 }
+
+fn centroid(image: &image::DynamicImage, pick: impl Fn(image::Rgba<u8>) -> bool) -> Option<(f32, f32)> {
+    let (mut sx, mut sy, mut n) = (0.0, 0.0, 0.0);
+    for (x, y, pixel) in image.pixels() {
+        if pick(pixel) {
+            sx += x as f32;
+            sy += y as f32;
+            n += 1.0;
+        }
+    }
+    (n > 0.0).then(|| (sx / n, sy / n))
+}
+
+#[tokio::test]
+async fn keeps_a_callout_on_its_part_during_an_orbit() -> Result<()> {
+    let dir = write_project(
+        "callout",
+        r##"
+        import { callout, composition, orbit, scene, three } from "liosvideo";
+        import * as THREE from "three";
+
+        const shot = scene("shot", { duration: 1 }, ({ root, width, height }) => {
+            const stage = root.add(three({
+                name: "stage",
+                width,
+                height,
+                fov: 40,
+                cameraPath: orbit({ target: [0, 0, 0], radius: 6, height: 1, from: -0.5, to: 1.2, start: 0, end: 1, ease: "linear" }),
+                setup({ scene: s }) {
+                    const part = new THREE.Mesh(new THREE.SphereGeometry(0.25, 24, 16), new THREE.MeshBasicMaterial({ color: "#ff0000" }));
+                    part.position.set(0.9, 0.4, 0.2);
+                    s.add(part);
+                },
+            }));
+            // only the dot is measured: no leader line, and a label in the background colour
+            callout(stage, { target: [0.9, 0.4, 0.2], label: "Grill", offset: [0, 0], color: "#000000", accent: "#00ff00" });
+        });
+
+        export default composition({ width: 160, height: 160, fps: 30, background: "#000000", scenes: [shot] });
+    "##,
+    )?;
+
+    let mut parts = Vec::new();
+    // One process per frame: a second three.js GPU session in the same process is not supported.
+    for frame in [0, 15, 29] {
+        let out = dir.join(format!("callout-{frame}.png"));
+        let status = std::process::Command::new(env!("CARGO_BIN_EXE_liosvideo"))
+            .args(["snapshot", "main.ts", "--frame", &frame.to_string(), "-o"])
+            .arg(&out)
+            .current_dir(&dir)
+            .status()?;
+        assert!(status.success(), "snapshot of frame {frame} failed");
+        let image = image::open(&out)?;
+        let part = centroid(&image, |p| p[0] > 150 && p[1] < 90 && p[2] < 90).expect("the red part is drawn");
+        let dot = centroid(&image, |p| p[1] > 150 && p[0] < 90 && p[2] < 90).expect("the callout dot is drawn");
+        let gap = ((part.0 - dot.0).powi(2) + (part.1 - dot.1).powi(2)).sqrt();
+        assert!(gap < 2.0, "frame {frame}: callout dot {dot:?} is {gap:.1}px from the part {part:?}");
+        parts.push(part);
+    }
+    // the part really moves across the frame during the orbit
+    assert!((parts[0].0 - parts[2].0).abs() > 10.0, "the orbit should move the part: {parts:?}");
+
+    let _ = std::fs::remove_dir_all(&dir);
+    Ok(())
+}

@@ -86,6 +86,13 @@ describe("presets", () => {
     close(path.sample(2).target, [0, 1, 0]);
   });
 
+  it("orbit can rise or sink with height: [from, to] and takes a custom ease", () => {
+    const path = orbit({ target: [0, 0, 0], radius: 4, height: [3, 1], from: 0, to: 1, start: 0, end: 2, ease: (t) => t });
+    expect(path.sample(0).position[1]).toBeCloseTo(3);
+    expect(path.sample(1).position[1]).toBeCloseTo(2);
+    expect(path.sample(2).position[1]).toBeCloseTo(1);
+  });
+
   it("dolly moves in a straight line and keeps looking at the target", () => {
     const path = dolly({ from: [-4, 1, 6], to: [4, 1, 6], target: [0, 0, 0], start: 0, end: 2, ease: "linear" });
     close(path.sample(1).position, [0, 1, 6]);

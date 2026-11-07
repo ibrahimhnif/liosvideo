@@ -136,13 +136,17 @@ function spanProgress({ start, end, ease: e = "inOutCubic" }: Span): (time: numb
   return (time) => ease(e, end > start ? (time - start) / (end - start) : time >= end ? 1 : 0);
 }
 
-/** Circles `target` at `radius`, from angle `from` to `to` (radians, 0 = +z, π/2 = +x), at camera height `height`. */
-export function orbit(o: Span & { target: Vec3; radius: number; height?: number; from: number; to: number }): CameraPath {
+/**
+ * Circles `target` at `radius`, from angle `from` to `to` (radians, 0 = +z, π/2 = +x), at camera
+ * height `height` (world y), or rising / sinking with `height: [from, to]`.
+ */
+export function orbit(o: Span & { target: Vec3; radius: number; height?: number | [number, number]; from: number; to: number }): CameraPath {
   const progress = spanProgress(o);
-  const y = o.height ?? o.target[1];
+  const height = o.height ?? o.target[1];
   return fromSampler((time) => {
     const u = progress(time);
     const a = lerp(o.from, o.to, u);
+    const y = Array.isArray(height) ? lerp(height[0], height[1], u) : height;
     return {
       position: [o.target[0] + o.radius * Math.sin(a), y, o.target[2] + o.radius * Math.cos(a)],
       target: [...o.target],

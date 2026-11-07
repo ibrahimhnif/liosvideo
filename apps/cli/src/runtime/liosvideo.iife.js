@@ -304,6 +304,7 @@ var __liosvideo = (function(exports) {
 		requestedName;
 		base;
 		tracks = /* @__PURE__ */ new Map();
+		drivers = [];
 		constructor(kind, defaults, init = {}) {
 			this.kind = kind;
 			const { name, ...props } = init;
@@ -365,6 +366,14 @@ var __liosvideo = (function(exports) {
 			});
 			return this;
 		}
+		/**
+		* Sets props from a pure function of scene time, applied after keyframes (later drivers win).
+		* For values that follow something else, e.g. a callout pinned to a projected 3D point.
+		*/
+		drive(fn) {
+			this.drivers.push(fn);
+			return this;
+		}
 		/** Time ranges (seconds) in which any property animates; overlapping or touching ranges are merged. */
 		spans() {
 			const all = [...this.tracks.values()].flatMap((tr) => tr.segments().map((s) => ({
@@ -383,6 +392,7 @@ var __liosvideo = (function(exports) {
 		propsAt(t) {
 			const p = { ...this.base };
 			for (const [key, tr] of this.tracks) p[key] = tr.valueAt(t);
+			for (const fn of this.drivers) Object.assign(p, fn(t));
 			return p;
 		}
 		localMatrix(t) {
@@ -740,6 +750,68 @@ var __liosvideo = (function(exports) {
 		}
 		get fov() {
 			return this.propsAt(0).fov;
+		}
+		/**
+		* Where a world-space point is drawn at scene time `time`, in the coordinates of this node's parent
+		* (the same space as its x / y). Exact for the camera that `cameraPath` drives. `depth` is the
+		* distance in front of the camera; `visible` is false behind it or outside the node's frame.
+		*/
+		project(point, time) {
+			const props = this.propsAt(time);
+			if (!props.cameraPath) throw new Error(`project() on "${this.name}" needs the camera at build time: give three() a cameraPath (a still camera is cameraPath([{ at: 0, position: [x, y, z], target: [0, 0, 0] }]))`);
+			const [px, py, pz] = typeof point === "function" ? point(time) : point;
+			const pose = props.cameraPath.sample(time);
+			const [ex, ey, ez] = pose.position;
+			let zx = ex - pose.target[0], zy = ey - pose.target[1], zz = ez - pose.target[2];
+			let len = Math.hypot(zx, zy, zz);
+			if (len === 0) [zx, zy, zz, len] = [
+				0,
+				0,
+				1,
+				1
+			];
+			zx /= len;
+			zy /= len;
+			zz /= len;
+			let xx = zz, xy = 0, xz = -zx;
+			len = Math.hypot(xx, xy, xz);
+			if (len === 0) {
+				zz += 1e-4;
+				len = Math.hypot(zx, zy, zz);
+				zx /= len;
+				zy /= len;
+				zz /= len;
+				xx = zz;
+				xy = 0;
+				xz = -zx;
+				len = Math.hypot(xx, xy, xz);
+			}
+			xx /= len;
+			xy /= len;
+			xz /= len;
+			const yx = zy * xz - zz * xy, yy = zz * xx - zx * xz, yz = zx * xy - zy * xx;
+			const dx = px - ex, dy = py - ey, dz = pz - ez;
+			const vx = dx * xx + dy * xy + dz * xz;
+			const vy = dx * yx + dy * yy + dz * yz;
+			const depth = -(dx * zx + dy * zy + dz * zz);
+			const { width, height } = this;
+			let nx;
+			let ny;
+			if (props.camera === "orthographic") {
+				nx = vx / (width / 2);
+				ny = vy / (height / 2);
+			} else {
+				const f = Math.tan((pose.fov ?? props.fov) * Math.PI / 180 / 2);
+				nx = vx / (depth * f * (width / height));
+				ny = vy / (depth * f);
+			}
+			const [x, y] = apply(this.localMatrix(time), (nx + 1) / 2 * width, (1 - ny) / 2 * height);
+			return {
+				x,
+				y,
+				depth,
+				visible: depth > .1 && Math.abs(nx) <= 1 && Math.abs(ny) <= 1
+			};
 		}
 		get renderOptions() {
 			const p = this.propsAt(0);
@@ -1920,13 +1992,17 @@ var __liosvideo = (function(exports) {
 		ease(e, .5);
 		return (time) => ease(e, end > start ? (time - start) / (end - start) : time >= end ? 1 : 0);
 	}
-	/** Circles `target` at `radius`, from angle `from` to `to` (radians, 0 = +z, π/2 = +x), at camera height `height`. */
+	/**
+	* Circles `target` at `radius`, from angle `from` to `to` (radians, 0 = +z, π/2 = +x), at camera
+	* height `height` (world y), or rising / sinking with `height: [from, to]`.
+	*/
 	function orbit(o) {
 		const progress = spanProgress(o);
-		const y = o.height ?? o.target[1];
+		const height = o.height ?? o.target[1];
 		return fromSampler((time) => {
 			const u = progress(time);
 			const a = lerp(o.from, o.to, u);
+			const y = Array.isArray(height) ? lerp(height[0], height[1], u) : height;
 			return {
 				position: [
 					o.target[0] + o.radius * Math.sin(a),
@@ -2536,6 +2612,74 @@ var __liosvideo = (function(exports) {
 			ease: "inOutCubic"
 		});
 		return root.add(group);
+	}
+	// packages/runtime/src/components/callout.ts
+	/**
+	* A dot, leader line and label pinned to a 3D point of a `three()` node; it follows the point as the
+	* camera moves (the node needs a `cameraPath`). Added next to the three node, on top of it.
+	*/
+	function callout(stage, o) {
+		const parent = stage.parent;
+		if (!parent) throw new Error(`callout("${o.label}"): add the three() node to the scene before its callouts`);
+		const u = Math.min(stage.width, stage.height) / 100;
+		const [dx, dy] = o.offset ?? [u * 10, -u * 8];
+		const color = o.color ?? "#ffffff";
+		const accent = o.accent ?? color;
+		const fontSize = o.fontSize ?? Math.max(12, u * 3.4);
+		const box = new GroupNode({
+			name: o.name ?? "callout",
+			opacity: o.at === void 0 ? 1 : 0
+		});
+		box.add(new CircleNode({
+			name: "dot",
+			radius: u * .9,
+			anchorX: .5,
+			anchorY: .5,
+			fill: accent
+		}));
+		box.add(new RectNode({
+			name: "leader",
+			width: Math.hypot(dx, dy),
+			height: Math.max(1, u * .25),
+			anchorY: .5,
+			rotation: Math.atan2(dy, dx) * 180 / Math.PI,
+			fill: accent
+		}));
+		box.add(new TextNode({
+			name: "label",
+			text: o.label,
+			x: dx + Math.sign(dx || 1) * u * 1.5,
+			y: dy,
+			anchorX: dx < 0 ? 1 : 0,
+			anchorY: .5,
+			fontSize,
+			fontWeight: o.fontWeight ?? 600,
+			...o.fontFamily ? { fontFamily: o.fontFamily } : {},
+			color
+		}));
+		parent.add(box);
+		if (o.at !== void 0) box.to({ opacity: 1 }, {
+			at: o.at,
+			duration: .3,
+			ease: "outCubic"
+		});
+		if (o.until !== void 0) box.to({ opacity: 0 }, {
+			at: o.until,
+			duration: .3,
+			ease: "inCubic"
+		});
+		box.drive((t) => {
+			const p = stage.project(o.target, t);
+			return p.visible ? {
+				x: p.x,
+				y: p.y
+			} : {
+				x: p.x,
+				y: p.y,
+				opacity: 0
+			};
+		});
+		return box;
 	}
 	// packages/runtime/src/mockups/window.ts
 	var WindowNode = class extends GroupNode {
@@ -4217,6 +4361,7 @@ var __liosvideo = (function(exports) {
 	exports.attribution = attribution;
 	exports.browserWindow = browserWindow;
 	exports.buildManifest = buildManifest;
+	exports.callout = callout;
 	exports.cameraPath = cameraPath;
 	exports.captions = captions;
 	exports.chatThread = chatThread;

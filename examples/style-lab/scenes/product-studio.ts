@@ -1,12 +1,12 @@
-import { layout, scene, stack, text } from "liosvideo";
+import { layout, orbit, scene, stack, text } from "liosvideo";
 import * as THREE from "three";
-import { callout, castShadows, matte, metal, orbitCamera, productStage, smooth, theme } from "../styles/product-studio";
+import { callout, castShadows, matte, metal, productStage, smooth, theme } from "../styles/product-studio";
 
 export default scene("product-studio", { duration: 6, background: theme.colors.bg }, ({ root, width, height }) => {
   const L = layout({ width, height });
   const portrait = height > width;
 
-  root.add(
+  const stage = root.add(
     productStage(
       width,
       height,
@@ -29,11 +29,9 @@ export default scene("product-studio", { duration: 6, background: theme.colors.b
         scene.add(mic);
         return { mic };
       },
-      ({ camera }, progress) => {
-        // a slow quarter turn that settles, then holds for the callouts
-        const k = smooth(progress / 0.55);
-        orbitCamera(camera, { angle: -0.9 + k * 0.9, radius: portrait ? 13 : 9, height: 2.6 - k * 0.6, target: new THREE.Vector3(0, portrait ? 1.0 : 1.3, 0) });
-      },
+      undefined,
+      // a slow quarter turn that settles at 3.3 s, then holds for the callouts
+      orbit({ target: [0, portrait ? 1.0 : 1.3, 0], radius: portrait ? 14 : 9, height: [2.6, 2.0], from: -0.9, to: 0, start: 0, end: 3.3, ease: smooth }),
     ),
   );
 
@@ -43,13 +41,13 @@ export default scene("product-studio", { duration: 6, background: theme.colors.b
   heading.set({ opacity: 0 }, 0);
   heading.to({ opacity: 1 }, { at: 0.3, duration: 0.6 });
 
-  // the camera settles at 3.3 s; the targets are where the parts sit in that frame
+  // the dots sit on the parts (3D points on the stage) and stay there wherever the camera is
   const size = L.type.label.fontSize * 1.2;
   const reach = width * (portrait ? 0.14 : 0.1);
-  root.add(callout({ target: { x: width * 0.5 + height * 0.03, y: height * (portrait ? 0.3 : 0.27) }, label: "Mesh grill", detail: "Pop filter built in", side: "right", length: reach, size, at: 3.4 }));
+  root.add(callout({ target: { stage, point: [0.3, 2.42, 0.25] }, label: "Mesh grill", detail: "Pop filter built in", side: "right", length: reach, size, at: 3.4 }));
   root.add(
     portrait
-      ? callout({ target: { x: width * 0.5 + height * 0.06, y: height * 0.63 }, label: "Weighted base", detail: "1.2 kg, rubber feet", side: "right", length: reach * 0.45, size, at: 3.9 })
-      : callout({ target: { x: width * 0.5 - height * 0.05, y: height * 0.79 }, label: "Weighted base", detail: "1.2 kg, rubber feet", side: "left", length: reach, size, at: 3.9 }),
+      ? callout({ target: { stage, point: [0.75, 0.14, 0.45] }, label: "Weighted base", detail: "1.2 kg, rubber feet", side: "right", length: reach * 0.2, size, at: 3.9 })
+      : callout({ target: { stage, point: [-0.75, 0.14, 0.45] }, label: "Weighted base", detail: "1.2 kg, rubber feet", side: "left", length: reach, size, at: 3.9 }),
   );
 });

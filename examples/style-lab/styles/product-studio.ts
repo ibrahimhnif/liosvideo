@@ -10,7 +10,7 @@
  * `gltf("assets/models/<model>.glb")` inside an `async setup`.
  */
 import * as THREE from "three";
-import { circle, group, rect, text, three, type BaseProps, type Ease, type GroupNode, type ThreeSetupContext } from "liosvideo";
+import { circle, group, rect, text, three, type BaseProps, type CameraPath, type Ease, type GroupNode, type ThreeNode, type ThreeSetupContext } from "liosvideo";
 
 export const theme = {
   colors: {
@@ -132,6 +132,7 @@ export function productStage(
   height: number,
   build: (ctx: ThreeSetupContext) => Record<string, any> | void,
   update?: (state: any, progress: number, time: number) => void,
+  cameraPath?: CameraPath,
 ) {
   return three({
     name: "stage",
@@ -148,16 +149,36 @@ export function productStage(
       return { ...ctx, ...(build(ctx) ?? {}) };
     },
     update,
+    cameraPath,
   });
 }
 
 /**
- * A callout: a dot on the part (`target`, frame pixels), a thin leader line out to the label
- * (`label` at `at`), drawn on in ~0.5 s. `side` picks where the label goes.
+ * A callout: a dot on the part, a thin leader line out to the label (`label` at `at`), drawn on
+ * in ~0.5 s. `side` picks where the label goes. `target` is a 3D point on the stage
+ * (`{ stage, point: [x, y, z] }`, followed as the camera moves; the stage needs a cameraPath) or a
+ * fixed frame position `{ x, y }`.
  */
-export function callout(o: { target: { x: number; y: number }; label: string; detail?: string; side: "left" | "right"; length: number; size: number; at: number; name?: string }): GroupNode {
+export function callout(o: {
+  target: { x: number; y: number } | { stage: ThreeNode; point: [number, number, number] };
+  label: string;
+  detail?: string;
+  side: "left" | "right";
+  length: number;
+  size: number;
+  at: number;
+  name?: string;
+}): GroupNode {
   const c = theme.colors;
-  const g = group({ name: o.name ?? "callout", x: o.target.x, y: o.target.y });
+  const target = o.target;
+  const g = group({ name: o.name ?? "callout" });
+  if ("stage" in target) {
+    g.drive((t) => {
+      const { x, y } = target.stage.project(target.point, t);
+      return { x, y };
+    });
+  }
+  else g.assign({ x: target.x, y: target.y });
   const dir = o.side === "right" ? 1 : -1;
   const dot = g.add(circle({ name: "dot", radius: o.size * 0.28, anchorX: 0.5, anchorY: 0.5, fill: c.accent, stroke: "#ffffff", strokeWidth: o.size * 0.08 }));
   const line = g.add(rect({ name: "leader", width: o.length, height: Math.max(1.5, o.size * 0.06), anchorX: o.side === "right" ? 0 : 1, anchorY: 0.5, fill: c.line }));

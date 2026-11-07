@@ -56,6 +56,7 @@ export abstract class Node<P extends BaseProps = BaseProps> {
   private readonly requestedName?: string;
   private readonly base: P;
   private readonly tracks = new Map<keyof P, Track<PropValue>>();
+  private readonly drivers: ((t: number) => Partial<P>)[] = [];
 
   protected constructor(readonly kind: string, defaults: P, init: NodeInit<P> = {}) {
     const { name, ...props } = init;
@@ -124,6 +125,15 @@ export abstract class Node<P extends BaseProps = BaseProps> {
     return this;
   }
 
+  /**
+   * Sets props from a pure function of scene time, applied after keyframes (later drivers win).
+   * For values that follow something else, e.g. a callout pinned to a projected 3D point.
+   */
+  drive(fn: (t: number) => Partial<P>): this {
+    this.drivers.push(fn);
+    return this;
+  }
+
   /** Time ranges (seconds) in which any property animates; overlapping or touching ranges are merged. */
   spans(): { start: number; end: number }[] {
     const all = [...this.tracks.values()].flatMap((tr) => tr.segments().map((s) => ({ start: s.start, end: s.end })));
@@ -140,6 +150,7 @@ export abstract class Node<P extends BaseProps = BaseProps> {
   propsAt(t: number): P {
     const p = { ...this.base };
     for (const [key, tr] of this.tracks) (p as Record<keyof P, PropValue>)[key] = tr.valueAt(t);
+    for (const fn of this.drivers) Object.assign(p, fn(t));
     return p;
   }
 
