@@ -340,6 +340,11 @@ liosvideo asset download "Task Force" shot_006 --name carrier
 # writes assets/video/carrier.mp4 and appends assets/ATTRIBUTIONS.md;
 # per-clip rights are not certified — check the source record before commercial use
 
+# Photos with checked licences (Wikimedia Commons: CC0, public domain, CC BY, CC BY-SA only)
+liosvideo asset commons search "Nayib Bukele"                 # each hit shows its licence or why it is unavailable
+liosvideo asset commons download "File:Presidente Bukele (cropped).jpg" --name bukele
+# writes assets/images/bukele.jpg and its ATTRIBUTIONS.md row; prints credit + descriptionCredit
+
 # AI images (Gemini / Nano Banana; needs GEMINI_API_KEY) — generated once, saved as assets
 liosvideo asset generate-image "National Palace at dusk, cinematic, no text" --id palace --aspect 9:16
 liosvideo asset generate-image "same character waving" --id wave --ref assets/images/char.png

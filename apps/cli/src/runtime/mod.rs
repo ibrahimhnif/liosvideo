@@ -1045,6 +1045,45 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn credits_a_wikimedia_commons_download_from_its_row() -> Result<()> {
+        let dir = tempfile::tempdir()?;
+        let licence = crate::commons::Licence {
+            short: "CC BY-SA 4.0".into(),
+            url: Some("https://creativecommons.org/licenses/by-sa/4.0".into()),
+            attribution_required: true,
+        };
+        crate::commons::record_attribution(
+            dir.path(),
+            "assets/images/bukele.jpg",
+            "https://commons.wikimedia.org/wiki/File:Presidente_Bukele_(cropped).jpg",
+            "AndreX",
+            &licence,
+        )
+        .map_err(|e| anyhow!(e))?;
+        std::fs::write(
+            dir.path().join("long.ts"),
+            r##"
+            import { composition, credit, scene } from "liosvideo";
+            const s = scene("s", { duration: 1 }, ({ root }) => {
+                credit(root, { asset: "assets/images/bukele.jpg", lang: "id" });
+            });
+            export default composition({ width: 1920, height: 1080, fps: 30, scenes: [s] });
+            "##,
+        )?;
+        let mut host = RuntimeHost::new(dir.path().to_path_buf())?;
+        host.load_composition("long.ts").await?;
+        let rl = host.evaluate_frame(0)?;
+        let texts: Vec<&str> = rl["items"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .filter_map(|i| i["text"].as_str())
+            .collect();
+        assert_eq!(texts, vec!["Foto: AndreX, CC BY-SA 4.0"]);
+        Ok(())
+    }
+
+    #[tokio::test]
     async fn names_the_node_and_line_of_an_unknown_ease() -> Result<()> {
         let dir = tempfile::tempdir()?;
         std::fs::write(

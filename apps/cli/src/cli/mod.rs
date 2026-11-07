@@ -214,6 +214,33 @@ pub enum TtsCommand {
 }
 
 #[derive(Subcommand, Debug, PartialEq)]
+pub enum CommonsCommand {
+    /// Search photos and drawings; each hit says whether its licence allows reuse
+    Search {
+        query: String,
+        #[arg(long, default_value_t = 1)]
+        page: u32,
+        #[arg(long, default_value_t = 12)]
+        limit: u32,
+        #[arg(long)]
+        json: bool,
+    },
+    /// Download a file into assets/images (CC0, public domain, CC BY, CC BY-SA only) and record its attribution
+    Download {
+        /// "File:Name.jpg", "Name.jpg" or the file's commons.wikimedia.org URL
+        file: String,
+        /// Output file name without extension (default: the Commons file name)
+        #[arg(long)]
+        name: Option<String>,
+        /// Download a thumbnail this many pixels wide instead of the original
+        #[arg(long)]
+        width: Option<u32>,
+        #[arg(long)]
+        force: bool,
+    },
+}
+
+#[derive(Subcommand, Debug, PartialEq)]
 pub enum AssetCommand {
     /// Copy an external file into assets/<id>.<ext>
     Import {
@@ -253,6 +280,11 @@ pub enum AssetCommand {
         name: Option<String>,
         #[arg(long)]
         force: bool,
+    },
+    /// Photos from Wikimedia Commons with their licence checked and attribution recorded
+    Commons {
+        #[command(subcommand)]
+        command: CommonsCommand,
     },
     /// Generate an image with Google Gemini (Nano Banana) into assets/images/<id>.png
     GenerateImage {

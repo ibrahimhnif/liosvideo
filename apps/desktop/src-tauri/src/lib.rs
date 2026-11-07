@@ -1,6 +1,7 @@
 mod acp;
 mod agents;
 pub mod audio;
+mod commons;
 mod destockd;
 pub mod export;
 mod git;

@@ -519,6 +519,21 @@ search — describe what should be on screen, not keywords.
 - Disturbing material (war/atrocity footage) is excluded by default; pass `include_disturbing: true` only
   when the brief needs it.
 
+### Wikimedia Commons (photos with licences checked)
+
+`commons_search` and `commons_download` (CLI: `liosvideo asset commons search "<query>"` /
+`asset commons download "File:<name>"`) find photos and drawings of real people, places, products and
+events, with each file's licence read from Commons.
+
+- Hits carry `title`, `pageUrl`, `thumbUrl`, size, `author`, `licence` and `reusable`. Only CC0, public
+  domain, CC BY and CC BY-SA are reusable; NC, ND, GFDL-only, fair use and unknown licences come back with
+  `reusable: false` and a `refused` reason, and `commons_download` refuses them.
+- `commons_download` saves into `assets/images/` (originals over 4096 px wide, and TIFFs, as a 3840 px
+  thumbnail; `width` for a smaller one), writes the `assets/ATTRIBUTIONS.md` row (author and licence in
+  plain text) and returns `relPath`, `credit` ("Photo: AndreX, CC BY-SA 4.0") and `descriptionCredit`
+  (with the licence and file links, for the video description).
+- Put `credit(root, { asset: relPath })` on screen while the photo shows; CC BY and CC BY-SA require it.
+
 ### AI Image Generation (Gemini / Nano Banana)
 
 `image_generate` and `image_edit` (CLI: `liosvideo asset generate-image "<prompt>" --id <id>` / `asset edit-image <id> "<change>"`; desktop: **Images** tab) create images with Google Gemini. Needs `GEMINI_API_KEY` (`liosvideo key set GEMINI_API_KEY …` or desktop Settings).

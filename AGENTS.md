@@ -400,6 +400,7 @@ Every render (CLI and desktop export) runs the mix through a master bus:
 - When a video scene requires real-world footage, b-roll, photos, icons, custom fonts, sound effects, or brand logos that cannot be cleanly synthesized via vector shapes (`rect`, `circle`, `path`) or 3D meshes.
 - Source high-quality, royalty-free, or permissively licensed media (Unsplash, Pexels, Wikimedia Commons, FreeSound, Google Fonts, GitHub raw assets).
 - For archival/historical B-roll use Destockd first: `destockd_search` then `destockd_download` (CLI: `liosvideo asset search …` / `asset download …`). It downloads FedFlix/government footage into `assets/video/` and appends the attribution row. Rights are not certified per clip — check the source record before commercial use, and keep the row in `assets/ATTRIBUTIONS.md`.
+- For photos of real people, places, products and events use Wikimedia Commons: `commons_search` then `commons_download` (CLI: `liosvideo asset commons search …` / `asset commons download "File:…"`). Only CC0, public domain, CC BY and CC BY-SA files download (NC, ND, GFDL-only and fair use are refused with the reason). It saves into `assets/images/`, writes the attribution row, and returns `credit` — show it with `credit(root, { asset: relPath })` — plus `descriptionCredit` for the video description.
 - Store deterministic assets in standard directories:
   - Images / logos: `assets/images/<filename>`
   - Video clips / b-roll: `assets/video/<filename>`

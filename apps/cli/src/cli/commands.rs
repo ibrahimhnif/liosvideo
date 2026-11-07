@@ -7,7 +7,7 @@ use serde_json::{json, Value};
 use crate::acp::session::{Session, SessionEvents};
 use crate::agents;
 use crate::cli::{
-    AgentCommand, AssetCommand, ConversationCommand, HistoryCommand, KeyCommand, McpCommand,
+    AgentCommand, AssetCommand, CommonsCommand, ConversationCommand, HistoryCommand, KeyCommand, McpCommand,
     ProjectCommand, TtsCommand,
 };
 use crate::mcp::headless_tools::{self, EditorSession};
@@ -379,6 +379,7 @@ pub async fn run_asset(project: &Path, command: AssetCommand) -> Result<()> {
                 .map_err(|e| anyhow!(e))?;
             println!("{}", serde_json::to_string_pretty(&saved)?);
         }
+        AssetCommand::Commons { command } => commons_command(&root, command).await?,
         AssetCommand::GenerateImage {
             prompt,
             id,
@@ -439,6 +440,49 @@ fn print_image(entry: &crate::imagegen::ImageEntry) {
     println!("{}  (v{} of {})", entry.src, entry.active, entry.versions.len());
     println!("Use it: image({{ src: \"{}\", fit: \"cover\" }})", entry.src);
     println!("Revise: liosvideo asset edit-image {} \"<what to change>\"", entry.id);
+}
+
+async fn commons_command(root: &Path, command: CommonsCommand) -> Result<()> {
+    match command {
+        CommonsCommand::Search { query, page, limit, json } => {
+            let found = crate::commons::search(&query, page, limit).await.map_err(|e| anyhow!(e))?;
+            if json {
+                println!("{}", serde_json::to_string_pretty(&found)?);
+                return Ok(());
+            }
+            if found.hits.is_empty() {
+                println!("No Commons files for \"{query}\" (page {}).", found.page);
+                return Ok(());
+            }
+            println!("{} file(s) for \"{}\" (page {}):\n", found.hits.len(), found.query, found.page);
+            for hit in &found.hits {
+                let licence = if hit.reusable {
+                    hit.licence.clone()
+                } else {
+                    format!("UNAVAILABLE: {}", hit.refused.as_deref().unwrap_or("licence"))
+                };
+                println!(
+                    "{:<52} {:>5}x{:<5} {:<24} {}",
+                    truncate(&hit.title, 52),
+                    hit.width,
+                    hit.height,
+                    truncate(&hit.author, 24),
+                    licence
+                );
+            }
+            if found.has_more {
+                println!("\nMore results: --page {}", found.page + 1);
+            }
+            println!("\nDownload: liosvideo asset commons download \"<File:…>\"");
+        }
+        CommonsCommand::Download { file, name, width, force } => {
+            let saved = crate::commons::download(root, &file, name.as_deref(), width, force)
+                .await
+                .map_err(|e| anyhow!(e))?;
+            println!("{}", serde_json::to_string_pretty(&saved)?);
+        }
+    }
+    Ok(())
 }
 
 fn truncate(text: &str, max: usize) -> String {

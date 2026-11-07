@@ -1,5 +1,6 @@
 pub mod asset_tools;
 pub mod audio_tools;
+pub mod commons_tools;
 pub mod destockd_tools;
 pub mod image_tools;
 pub mod bridge;
