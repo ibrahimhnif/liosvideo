@@ -69,13 +69,47 @@ async fn main() -> anyhow::Result<()> {
             entry,
             out,
             frame,
+            time,
             preset,
         } => {
             let preset = Preset::parse(&preset)?;
             on_js_thread(move || async move {
-                pipeline::render_snapshot(&entry, frame, &out, preset).await
+                let at = match time {
+                    Some(seconds) => pipeline::snapshot::At::Time(seconds),
+                    None => pipeline::snapshot::At::Frame(frame),
+                };
+                pipeline::snapshot::render_snapshot_at(&entry, at, &out, preset).await
             })
             .await?;
+        }
+        cli::Commands::ContactSheet {
+            entry,
+            out,
+            per_scene: _,
+            every,
+            cols,
+            width,
+        } => {
+            let pick = match every.as_deref() {
+                Some(interval) => pipeline::contact_sheet::Pick::Every(
+                    pipeline::contact_sheet::parse_seconds(interval)?,
+                ),
+                None => pipeline::contact_sheet::Pick::PerScene,
+            };
+            let started = std::time::Instant::now();
+            let out_path = out.clone();
+            let summary = on_js_thread(move || async move {
+                pipeline::contact_sheet::render_contact_sheet(&entry, pick, cols, width, &out).await
+            })
+            .await?;
+            println!(
+                "Wrote {} ({} frames, {}x{}) in {:.1} s",
+                out_path.display(),
+                summary.cells,
+                summary.width,
+                summary.height,
+                started.elapsed().as_secs_f64()
+            );
         }
         cli::Commands::Verify { file } => {
             let report = liosvideo_cli::media::integrity::check_file(&file, None)

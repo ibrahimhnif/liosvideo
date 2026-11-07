@@ -4,9 +4,35 @@ use std::path::Path;
 use crate::gpu::{GpuContext, RenderTarget, Renderer};
 use crate::runtime::RuntimeHost;
 
+/// Which frame a snapshot shows.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub enum At {
+    Frame(usize),
+    /// Seconds from the start, rounded to the nearest frame
+    Time(f64),
+}
+
+/// The frame for `at`, clamped to the composition.
+pub fn frame_for(at: At, fps: f64, total_frames: usize) -> usize {
+    let frame = match at {
+        At::Frame(frame) => frame,
+        At::Time(seconds) => (seconds.max(0.0) * fps).round() as usize,
+    };
+    frame.min(total_frames.saturating_sub(1))
+}
+
 pub async fn render_snapshot(
     entry: &Path,
     frame: usize,
+    out_png: &Path,
+    preset: super::preset::Preset,
+) -> Result<()> {
+    render_snapshot_at(entry, At::Frame(frame), out_png, preset).await
+}
+
+pub async fn render_snapshot_at(
+    entry: &Path,
+    at: At,
     out_png: &Path,
     preset: super::preset::Preset,
 ) -> Result<()> {
@@ -32,6 +58,7 @@ pub async fn render_snapshot(
 
     let mut host = RuntimeHost::new(project_root.clone())?;
     let comp_info = host.load_composition(&entry_file).await?;
+    let frame = frame_for(at, comp_info.fps, comp_info.total_frames);
 
     let render_list = host.evaluate_frame(frame)?;
     let three_frames = host.render_three_nodes(frame, comp_info.fps).await?;
@@ -71,4 +98,17 @@ pub async fn render_snapshot(
     .with_context(|| format!("Failed to save snapshot PNG to '{}'", out_png.display()))?;
 
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn picks_the_frame_for_a_time() {
+        assert_eq!(frame_for(At::Time(3.2), 30.0, 900), 96);
+        assert_eq!(frame_for(At::Time(3.21), 30.0, 900), 96);
+        assert_eq!(frame_for(At::Time(99.0), 30.0, 900), 899);
+        assert_eq!(frame_for(At::Frame(42), 30.0, 900), 42);
+    }
 }

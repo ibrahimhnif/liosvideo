@@ -1,4 +1,5 @@
 pub mod capture;
+pub mod contact_sheet;
 pub mod preset;
 pub mod render_job;
 pub mod snapshot;

@@ -61,7 +61,8 @@ backend feature set as the desktop app, with no Node.js, Chromium, or FFmpeg dep
 | Desktop action | CLI |
 | :--- | :--- |
 | Export video | `liosvideo render <entry> [-o out.mp4] [--preset …]` |
-| Capture frame | `liosvideo snapshot <entry> --frame N` |
+| Capture frame | `liosvideo snapshot <entry> --frame N` or `--time S` |
+| Contact sheet | `liosvideo contact-sheet <entry> [--per-scene \| --every 2s] [--cols 4] [--width 480] -o sheet.png` (MCP: `render_contact_sheet`) |
 | Inspector / timeline | `liosvideo info <entry> --json` |
 | Scene validation | `liosvideo validate [path] [--json]` |
 | History | `liosvideo history status|enable|log|diff|checkpoint|restore|revert-files` |

@@ -62,9 +62,29 @@ pub enum Commands {
         out: PathBuf,
         #[arg(long, default_value_t = 0)]
         frame: usize,
+        /// Time in seconds instead of a frame number (e.g. --time 3.2)
+        #[arg(long, conflicts_with = "frame")]
+        time: Option<f64>,
         /// Output resolution preset (native, 1080p, 4k, shorts)
         #[arg(long, default_value = "native")]
         preset: String,
+    },
+    /// One image of labelled frames: one per scene (default) or every N seconds
+    ContactSheet {
+        entry: PathBuf,
+        #[arg(short, long, default_value = "out/contact-sheet.png")]
+        out: PathBuf,
+        /// One frame per scene (the default)
+        #[arg(long, conflicts_with = "every")]
+        per_scene: bool,
+        /// A frame every interval instead, e.g. 2s, 1.5 or 500ms
+        #[arg(long)]
+        every: Option<String>,
+        #[arg(long, default_value_t = 4)]
+        cols: u32,
+        /// Width of each frame in pixels
+        #[arg(long, default_value_t = 480)]
+        width: u32,
     },
     Info {
         entry: PathBuf,
@@ -505,6 +525,7 @@ mod tests {
                 entry: PathBuf::from("short.ts"),
                 out: PathBuf::from("out/snapshot.png"),
                 frame: 42,
+                time: None,
                 preset: "native".into(),
             })
         );

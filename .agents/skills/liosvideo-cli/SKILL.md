@@ -114,6 +114,7 @@ liosvideo snapshot <ENTRY> [OPTIONS]
 | `<ENTRY>` | Path to composition entry TypeScript file | *Required* | `long.ts` |
 | `-o, --out <PATH>` | Output destination PNG path | `out/snapshot.png` | `-o out/frame-0.png` |
 | `--frame <N>` | Target frame number to capture (0-indexed) | `0` | `--frame 45` |
+| `--time <S>` | Time in seconds instead of a frame (nearest frame) | — | `--time 3.2` |
 | `--preset <NAME>` | Output resolution: `native`, `1080p`, `4k`, `shorts` | `native` | `--preset 1080p` |
 
 #### Visual Verification Workflow:
@@ -122,9 +123,18 @@ Use `snapshot` to verify visual layout, text wrapping, and colors before launchi
 # Capture first frame
 liosvideo snapshot long.ts --frame 0 -o out/thumb-start.png
 
-# Capture mid-scene transition (e.g. at 2 seconds @ 30fps = frame 60)
-liosvideo snapshot long.ts --frame 60 -o out/thumb-scene2.png
+# Capture the frame at 2 seconds
+liosvideo snapshot long.ts --time 2 -o out/thumb-scene2.png
 ```
+
+#### Contact sheet (one image to review the whole video)
+```bash
+liosvideo contact-sheet short.ts -o out/sheet.png              # middle frame of every scene
+liosvideo contact-sheet long.ts --every 10s --cols 6 --width 320
+```
+Each frame is labelled `<n> · <scene id> · <time> s · f<frame>`. One composition load and one GPU
+context render all of them (a 6-scene short takes well under a second), so check the sheet after every
+edit and before any full render.
 
 ---
 
