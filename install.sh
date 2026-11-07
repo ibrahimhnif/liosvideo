@@ -21,7 +21,7 @@ Usage:
   curl -fsSL https://raw.githubusercontent.com/${REPO}/main/install.sh | sh -s -- [OPTIONS]
 
 Options:
-  -v, --version <VERSION>      Release tag to install (default: latest, e.g. v0.1.6)
+  -v, --version <VERSION>      Release tag to install (default: latest, e.g. v0.1.7)
   -d, --install-dir <DIR>      Directory to install the binary into
   -h, --help                   Show this help message
 
