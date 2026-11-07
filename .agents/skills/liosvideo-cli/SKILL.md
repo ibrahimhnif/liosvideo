@@ -323,6 +323,8 @@ liosvideo history revert-files <commit> scenes/intro.ts --project ~/Labs/promo
 # Narration (writes assets/audio/vo/<id>.mp3 + .timing.json)
 liosvideo tts voices
 liosvideo tts generate --line-id intro-1 --text "Halo dunia" --voice mock-id-male
+liosvideo tts sync                       # only lines of script.md whose text/voice changed (cached ones are free)
+liosvideo tts sync --force               # regenerate every line
 liosvideo tts timings
 
 # Assets

@@ -235,22 +235,12 @@ pub async fn run_tts(project: &Path, command: TtsCommand) -> Result<()> {
             line_id,
             text,
             voice,
+            force,
         } => {
-            let provider = UnifiedTtsProvider::new();
-            let result = provider
-                .generate(&line_id, &text, voice.as_deref(), &root)
+            let outcome = headless_tools::generate_line(&root, &line_id, &text, voice.as_deref(), force)
                 .await
                 .map_err(|e| anyhow!(e))?;
-            let label = headless_tools::provider_label(voice.as_deref());
-            let stats = project::record_tts_usage_in(
-                &root,
-                &line_id,
-                label,
-                voice.as_deref().unwrap_or(""),
-                &text,
-            )
-            .ok()
-            .and_then(|s| serde_json::to_value(s).ok());
+            let result = outcome.result;
             println!(
                 "{}",
                 serde_json::to_string_pretty(&json!({
@@ -259,8 +249,37 @@ pub async fn run_tts(project: &Path, command: TtsCommand) -> Result<()> {
                     "timing_path": result.timing_rel_path,
                     "duration": result.duration,
                     "words": result.words,
-                    "stats": stats,
+                    "cached": outcome.cached,
+                    "cost_usd": outcome.cost_usd,
+                    "stats": outcome.stats,
                 }))?
+            );
+        }
+        TtsCommand::Sync { script, voice, force } => {
+            let path = if script.is_absolute() { script } else { root.join(script) };
+            let markdown = std::fs::read_to_string(&path)
+                .with_context(|| format!("Could not read {}", path.display()))?;
+            let lines = crate::tts::cache::script_lines(&markdown);
+            if lines.is_empty() {
+                return Err(anyhow!("No `<!-- vo:<id> -->` lines found in {}", path.display()));
+            }
+            let (mut generated, mut cached, mut spent, mut saved) = (0, 0, 0.0, 0.0);
+            for (id, text) in &lines {
+                let outcome = headless_tools::generate_line(&root, id, text, voice.as_deref(), force)
+                    .await
+                    .map_err(|e| anyhow!("{id}: {e}"))?;
+                let state = if outcome.cached { "cached   " } else { "generated" };
+                println!("{state}  {id}  ({:.1}s)", outcome.result.duration);
+                if outcome.cached {
+                    cached += 1;
+                    saved += outcome.cost_usd;
+                } else {
+                    generated += 1;
+                    spent += outcome.cost_usd;
+                }
+            }
+            println!(
+                "{generated} generated (~${spent:.4}), {cached} cached (~${saved:.4} saved)"
             );
         }
         TtsCommand::Timings => {

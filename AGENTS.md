@@ -293,6 +293,7 @@ An unknown name throws where it is written, with the node, the property and `fil
 2. **Generating Audio**:
    - Use MCP tool `tts_generate` or live ElevenLabs voice synthesis.
    - Audio is saved to `assets/audio/vo/<id>.mp3` with word-level alignments in `.liosvideo/project.json`.
+   - Unchanged lines are free: a line whose text, voice and provider match the last run reuses its files (`cached: true`, no provider call). `liosvideo tts sync` generates only the changed lines of `script.md`; pass `force: true` / `--force` to regenerate anyway.
 3. **In-App Voice Recording**:
    - Voice lines recorded directly in the app are automatically saved and transcribed with timestamps.
 4. **Timing Sync with `vo(id)`**:

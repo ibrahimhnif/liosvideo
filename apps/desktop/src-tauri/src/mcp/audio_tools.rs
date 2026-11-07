@@ -22,7 +22,7 @@ impl Tool for TtsGenerateTool {
     }
 
     fn description(&self) -> &'static str {
-        "Generates spoken audio and word-level timestamp metadata (.timing.json) for a voiceover line."
+        "Generates spoken audio and word-level timestamp metadata (.timing.json) for a voiceover line. A line whose text, voice and provider are unchanged reuses its existing files (cached: true) without calling the provider; pass force to regenerate."
     }
 
     fn input_schema(&self) -> Value {
@@ -40,6 +40,10 @@ impl Tool for TtsGenerateTool {
                 "voice": {
                     "type": "string",
                     "description": "Optional voice ID (e.g. 'mock-neutral', 'mock-narrator')"
+                },
+                "force": {
+                    "type": "boolean",
+                    "description": "Regenerate even when the text, voice and provider are unchanged (default false: an unchanged line reuses its files and costs nothing)"
                 }
             },
             "required": ["line_id", "text"]
@@ -69,28 +73,48 @@ impl Tool for TtsGenerateTool {
 
             let root = context.project_state.root().map_err(|e| e.to_string())?;
 
-            let result = provider
-                .generate(&line_id, &text, voice.as_deref(), &root)
-                .await?;
-
-            let provider_name = if voice.as_deref().unwrap_or("").starts_with("id-ID-")
-                || voice.as_deref().unwrap_or("").starts_with("en-US-")
-                || voice.as_deref().unwrap_or("").starts_with("en-GB-")
-            {
+            let force = args.get("force").and_then(|v| v.as_bool()).unwrap_or(false);
+            let v = voice.as_deref().unwrap_or("");
+            let provider_name = if v.starts_with("id-ID-") || v.starts_with("en-US-") || v.starts_with("en-GB-") {
                 "google_cloud"
-            } else if voice.as_deref().unwrap_or("").starts_with("mock-") {
+            } else if v.starts_with("mock-") {
                 "mock"
             } else {
                 "elevenlabs"
             };
+            let secret = crate::keychain::Keychain::get_secret;
+            let spoken = voice
+                .clone()
+                .or_else(|| secret("DEFAULT_TTS_VOICE"))
+                .or_else(|| (provider_name == "elevenlabs").then(|| secret("ELEVENLABS_VOICE_ID")).flatten())
+                .filter(|v| !v.trim().is_empty())
+                .unwrap_or_else(|| "default".to_string());
 
-            let stats = crate::project::record_tts_usage_in(
+            let outcome = crate::audio::cache::generate_cached(
+                &*provider,
                 &root,
                 &line_id,
-                provider_name,
-                voice.as_deref().unwrap_or("default"),
                 &text,
-            ).ok();
+                voice.as_deref(),
+                &spoken,
+                provider_name,
+                force,
+            )
+            .await?;
+            let result = outcome.result;
+
+            let stats = if outcome.cached {
+                None
+            } else {
+                crate::project::record_tts_usage_in(
+                    &root,
+                    &line_id,
+                    provider_name,
+                    voice.as_deref().unwrap_or("default"),
+                    &text,
+                )
+                .ok()
+            };
             if let Some(s) = &stats {
                 context.emitter.emit("project://stats_updated", json!(s));
             }
@@ -101,6 +125,8 @@ impl Tool for TtsGenerateTool {
                 "timing_path": result.timing_rel_path,
                 "duration": result.duration,
                 "words": result.words,
+                "cached": outcome.cached,
+                "cost_usd": outcome.cost_usd,
                 "stats": stats
             }))
         })

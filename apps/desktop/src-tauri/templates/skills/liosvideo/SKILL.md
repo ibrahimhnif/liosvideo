@@ -436,6 +436,7 @@ A 30-minute video is ~54,000 frames at 30 fps. It is built as chapters, never as
    *Note: In the Liosvideo desktop workspace, switch to the **[ 📝 Script ]** tab to view your parsed voice lines, word count, and estimated duration.*
 2. Generate narration audio:
    - Call `tts_generate` via MCP tool with `{ id: "intro-line-1", text: "..." }`.
+   - Re-running is safe: unchanged lines (same text, voice, provider) reuse their files at no cost. After editing `script.md`, `liosvideo tts sync` regenerates only what changed (`--force` for everything).
    - The engine automatically saves `assets/audio/vo/intro-line-1.mp3` and records word-level timestamp alignments in `.liosvideo/project.json`.
 3. In code:
    - Call `const line = vo("intro-line-1");`

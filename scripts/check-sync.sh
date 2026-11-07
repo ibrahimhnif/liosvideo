@@ -16,6 +16,7 @@ pairs=(
   "apps/desktop/src-tauri/src/audio/tts.rs|apps/cli/src/tts/tts.rs"
   "apps/desktop/src-tauri/src/audio/elevenlabs.rs|apps/cli/src/tts/elevenlabs.rs"
   "apps/desktop/src-tauri/src/audio/google_tts.rs|apps/cli/src/tts/google_tts.rs"
+  "apps/desktop/src-tauri/src/audio/cache.rs|apps/cli/src/tts/cache.rs"
   "apps/desktop/src-tauri/src/agents/mod.rs|apps/cli/src/agents/mod.rs"
   "apps/desktop/src-tauri/src/agents/install.rs|apps/cli/src/agents/install.rs"
   "apps/desktop/src-tauri/src/agents/settings.rs|apps/cli/src/agents/settings.rs"

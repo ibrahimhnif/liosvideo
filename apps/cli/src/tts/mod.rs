@@ -1,4 +1,5 @@
 pub mod elevenlabs;
+pub mod cache;
 pub mod google_tts;
 #[allow(clippy::module_inception)]
 pub mod tts;

@@ -189,6 +189,7 @@ pub enum ConversationCommand {
 #[derive(Subcommand, Debug, PartialEq)]
 pub enum TtsCommand {
     Voices,
+    /// Generate one line (reuses the existing audio when text, voice and provider are unchanged)
     Generate {
         #[arg(long)]
         line_id: String,
@@ -196,6 +197,18 @@ pub enum TtsCommand {
         text: String,
         #[arg(long)]
         voice: Option<String>,
+        /// Regenerate even if the cached audio matches
+        #[arg(long)]
+        force: bool,
+    },
+    /// Generate every `<!-- vo:id -->` line of script.md; unchanged lines are reused, not re-billed
+    Sync {
+        #[arg(long, default_value = "script.md")]
+        script: PathBuf,
+        #[arg(long)]
+        voice: Option<String>,
+        #[arg(long)]
+        force: bool,
     },
     Timings,
 }
@@ -382,6 +395,24 @@ mod tests {
     }
 
     #[test]
+    fn parses_tts_cache_options() {
+        let cli = Cli::parse_from(["liosvideo", "tts", "generate", "--line-id", "h1", "--text", "Halo", "--force"]);
+        assert!(matches!(
+            cli.command,
+            Some(Commands::Tts { command: TtsCommand::Generate { force: true, .. }, .. })
+        ));
+        let cli = Cli::parse_from(["liosvideo", "tts", "sync", "--voice", "v1"]);
+        match cli.command {
+            Some(Commands::Tts { command: TtsCommand::Sync { script, voice, force }, .. }) => {
+                assert_eq!(script, PathBuf::from("script.md"));
+                assert_eq!(voice.as_deref(), Some("v1"));
+                assert!(!force);
+            }
+            other => panic!("expected tts sync, got {other:?}"),
+        }
+    }
+
+    #[test]
     fn parses_render_loudness_options() {
         let cli = Cli::parse_from(["liosvideo", "render", "long.ts", "--loudness", "-16"]);
         match cli.command {
@@ -550,8 +581,10 @@ mod tests {
                         line_id,
                         text,
                         voice,
+                        force,
                     },
             }) => {
+                assert!(!force);
                 assert_eq!(line_id, "l1");
                 assert_eq!(text, "hi");
                 assert_eq!(voice, None);

@@ -566,7 +566,8 @@ impl Tool for TtsGenerate {
             "properties": {
                 "line_id": { "type": "string", "description": "Identifier for this voiceover line (e.g. 'intro-1', 'step-compile')" },
                 "text": { "type": "string", "description": "The exact script text to synthesize" },
-                "voice": { "type": "string", "description": "Optional voice ID (e.g. 'mock-neutral', 'mock-narrator')" }
+                "voice": { "type": "string", "description": "Optional voice ID (e.g. 'mock-neutral', 'mock-narrator')" },
+                "force": { "type": "boolean", "description": "Regenerate even when the existing audio has the same text, voice and provider (default false: such lines are reused, not re-billed)" }
             },
             "required": ["line_id", "text"]
         })
@@ -591,22 +592,9 @@ impl Tool for TtsGenerate {
                 .and_then(|v| v.as_str())
                 .map(str::to_string);
 
-            let provider = UnifiedTtsProvider::new();
-            let result = provider
-                .generate(&line_id, &text, voice.as_deref(), &root)
-                .await
-                .map_err(|e| e.to_string())?;
-
-            let provider_label = provider_label(voice.as_deref());
-            let stats = project::record_tts_usage_in(
-                &root,
-                &line_id,
-                provider_label,
-                voice.as_deref().unwrap_or(""),
-                &text,
-            )
-            .ok()
-            .and_then(|s| serde_json::to_value(s).ok());
+            let force = args.get("force").and_then(|v| v.as_bool()).unwrap_or(false);
+            let outcome = generate_line(&root, &line_id, &text, voice.as_deref(), force).await?;
+            let result = outcome.result;
 
             Ok(json!({
                 "line_id": result.line_id,
@@ -614,10 +602,53 @@ impl Tool for TtsGenerate {
                 "timing_path": result.timing_rel_path,
                 "duration": result.duration,
                 "words": result.words,
-                "stats": stats,
+                "cached": outcome.cached,
+                "cost_usd": outcome.cost_usd,
+                "stats": outcome.stats,
             }))
         })
     }
+}
+
+pub struct LineOutcome {
+    pub result: crate::tts::TtsResult,
+    pub cached: bool,
+    pub cost_usd: f64,
+    pub stats: Option<Value>,
+}
+
+/// The voice a line is actually spoken with: the requested one or the configured default.
+pub fn resolved_voice(voice: Option<&str>, provider: &str) -> String {
+    let secret = crate::project::keychain::Keychain::get_secret;
+    voice
+        .map(str::to_string)
+        .or_else(|| secret("DEFAULT_TTS_VOICE"))
+        .or_else(|| provider.contains("eleven").then(|| secret("ELEVENLABS_VOICE_ID")).flatten())
+        .filter(|v| !v.trim().is_empty())
+        .unwrap_or_else(|| "default".to_string())
+}
+
+/// Generates one VO line through the cache; usage is only recorded when the provider was called.
+pub async fn generate_line(
+    root: &std::path::Path,
+    line_id: &str,
+    text: &str,
+    voice: Option<&str>,
+    force: bool,
+) -> Result<LineOutcome, String> {
+    let label = provider_label(voice);
+    let spoken = resolved_voice(voice, label);
+    let provider = UnifiedTtsProvider::new();
+    let outcome =
+        crate::tts::cache::generate_cached(&provider, root, line_id, text, voice, &spoken, label, force).await?;
+    let stats = if outcome.cached {
+        None
+    } else {
+        project::record_tts_usage_in(root, line_id, label, voice.unwrap_or(""), text)
+            .ok()
+            .and_then(|s| serde_json::to_value(s).ok())
+    };
+    Ok(LineOutcome { result: outcome.result, cached: outcome.cached, cost_usd: outcome.cost_usd, stats })
 }
 
 pub fn provider_label(voice: Option<&str>) -> &'static str {
