@@ -66,6 +66,7 @@ pub fn register_all(registry: &mut ToolRegistry, session: SharedSession) {
     }));
     registry.register(Arc::new(TtsListVoices));
     registry.register(Arc::new(RequestAsset { session: Arc::clone(&session) }));
+    crate::mcp::image_tools::register_image_tools(registry, Arc::clone(&session));
     crate::mcp::destockd_tools::register_destockd_tools(registry, session);
 }
 

@@ -336,6 +336,13 @@ liosvideo asset download "Task Force" shot_006 --name carrier
 # writes assets/video/carrier.mp4 and appends assets/ATTRIBUTIONS.md;
 # per-clip rights are not certified — check the source record before commercial use
 
+# AI images (Gemini / Nano Banana; needs GEMINI_API_KEY) — generated once, saved as assets
+liosvideo asset generate-image "National Palace at dusk, cinematic, no text" --id palace --aspect 9:16
+liosvideo asset generate-image "same character waving" --id wave --ref assets/images/char.png
+liosvideo asset edit-image palace "darker sky, fewer people"   # new version, same assets/images/palace.png
+liosvideo asset images                                         # ids, versions, prompts
+liosvideo asset use-image palace 1                             # switch back to v1
+
 # Secrets (env → macOS Keychain → ~/.config/liosvideo/credentials.json)
 liosvideo key get ELEVENLABS_API_KEY
 liosvideo key set ELEVENLABS_API_KEY sk-...

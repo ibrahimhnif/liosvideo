@@ -99,6 +99,15 @@ export class PreviewHost {
     else this.send(frame);
   }
 
+  /** Re-sends images whose files changed on disk (e.g. a revised AI image). True when any were in use. */
+  async reloadAssets(paths: string[]): Promise<boolean> {
+    const stale = paths.filter((p) => this.sentAssets.has(p));
+    if (!stale.length) return false;
+    stale.forEach((p) => this.sentAssets.delete(p));
+    await this.sendAssets(stale);
+    return true;
+  }
+
   /** Renders exactly this frame (never merged away) and resolves once it is done or failed. */
   renderFrame(frame: number): Promise<void> {
     return new Promise((resolve) => {

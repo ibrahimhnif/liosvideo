@@ -425,6 +425,17 @@ search — describe what should be on screen, not keywords.
 - Disturbing material (war/atrocity footage) is excluded by default; pass `include_disturbing: true` only
   when the brief needs it.
 
+### AI Image Generation (Gemini / Nano Banana)
+
+`image_generate` and `image_edit` (CLI: `liosvideo asset generate-image "<prompt>" --id <id>` / `asset edit-image <id> "<change>"`; desktop: **Images** tab) create images with Google Gemini. Needs `GEMINI_API_KEY` (`liosvideo key set GEMINI_API_KEY …` or desktop Settings).
+
+- Images are generated **once** and saved as assets: `assets/images/<id>.png` is the active version, `assets/images/generated/<id>/v<n>.png` keeps every version. Scenes use `image({ src: "assets/images/<id>.png" })`; never call an API from scene code.
+- Revise instead of re-prompting: `image_edit` with a short instruction ("darker sky", "remove the text", "fewer people") keeps the composition and adds a new active version at the same path, so no scene code changes. `liosvideo asset use-image <id> <n>` (or the Images tab) switches back to an earlier version.
+- Pass `refs` (project image paths) to keep a character, product or style consistent across scenes. The aspect defaults to the project's (9:16 for short-only projects, else 16:9).
+- Prompts: subject, setting, lighting, style, framing, and "no text" unless text is wanted; describe the look of the video (e.g. muted documentary colours, film grain).
+- **Use it for** illustrations, backgrounds, concepts, diagrams-as-art and clearly labelled reconstructions. **Prefer real photos / archive footage** (Wikimedia, Destockd) for real people and events. Never generate a real person's face or a news event and present it as a real photo; label reconstructions on screen ("Ilustrasi" / "Illustration").
+- Every image gets an `assets/ATTRIBUTIONS.md` row marked AI-generated with its prompt.
+
 ### Mandatory Asset Attribution (`assets/ATTRIBUTIONS.md`)
 - Whenever you download or incorporate external assets, maintain an attribution record in `assets/ATTRIBUTIONS.md`:
   ```markdown
@@ -470,6 +481,7 @@ When operating as an AI agent connected via ACP:
 - `tts_list_voices`: Query available local and cloud TTS voices.
 - `tts_generate`: Synthesize speech clips with automatic word alignment data.
 - `capture_frame`: Capture a PNG snapshot at any timestamp for visual inspection.
+- `image_generate` / `image_edit`: Generate an image with Gemini into `assets/images/<id>.png`, or revise it with a plain instruction (new version, same path).
 - `validate_scene`: Validate scene TypeScript code against deterministic rendering rules, illegal imports, node naming constraints, and asset existence.
 
 ---

@@ -5,6 +5,7 @@ pub mod cli;
 pub mod color;
 pub mod destockd;
 pub mod gpu;
+pub mod imagegen;
 pub mod mcp;
 pub mod media;
 pub mod pipeline;

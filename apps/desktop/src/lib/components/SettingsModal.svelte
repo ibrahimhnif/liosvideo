@@ -25,6 +25,10 @@
   let elevenVoiceId = $state("");
   let defaultTtsVoice = $state("id-ID-Neural2-A");
   let googleKey = $state("");
+  let geminiKey = $state("");
+  let geminiConfigured = $state(false);
+  let showGemini = $state(false);
+  let savingGemini = $state(false);
   let anthropicKey = $state("");
   let elevenConfigured = $state(false);
   let elevenVoiceIdConfigured = $state(false);
@@ -80,6 +84,10 @@
       if (defVoice) {
         defaultTtsVoice = defVoice;
       }
+
+      const imgKey = await invoke<string | null>("get_api_key", { service: "GEMINI_API_KEY" });
+      geminiKey = imgKey ?? "";
+      geminiConfigured = !!imgKey;
 
       const gKey = await invoke<string | null>("get_api_key", { service: "GOOGLE_TTS_API_KEY" });
       if (gKey) {
@@ -197,6 +205,32 @@
       message = { text: `Failed to save: ${err}`, type: "error" };
     } finally {
       savingGoogle = false;
+    }
+  }
+
+  async function saveGemini() {
+    if (!geminiKey.trim()) return;
+    savingGemini = true;
+    message = null;
+    try {
+      await invoke("set_api_key", { service: "GEMINI_API_KEY", key: geminiKey.trim() });
+      geminiConfigured = true;
+      message = { text: "Gemini API key saved — image generation is ready.", type: "success" };
+    } catch (err) {
+      message = { text: `Failed to save: ${err}`, type: "error" };
+    } finally {
+      savingGemini = false;
+    }
+  }
+
+  async function clearGemini() {
+    try {
+      await invoke("delete_api_key", { service: "GEMINI_API_KEY" });
+      geminiKey = "";
+      geminiConfigured = false;
+      message = { text: "Gemini API key removed.", type: "success" };
+    } catch (err) {
+      message = { text: `Failed to remove: ${err}`, type: "error" };
     }
   }
 
@@ -465,6 +499,58 @@
               {/if}
             </div>
             <p class="field-hint">Used for Journey and Neural2 voices from Google Cloud Text-to-Speech.</p>
+          </div>
+
+          <!-- Gemini (image generation) -->
+          <div class="field-group">
+            <div class="label-row">
+              <label for="gemini-key">Gemini API Key (image generation)</label>
+              <span class="badge" class:configured={geminiConfigured}>
+                {#if geminiConfigured}
+                  <Check size={11} />
+                  <span>Configured</span>
+                {:else}
+                  <span>Not Set</span>
+                {/if}
+              </span>
+            </div>
+            <div class="input-row">
+              <input
+                id="gemini-key"
+                data-testid="input-gemini"
+                type={showGemini ? "text" : "password"}
+                placeholder="AIza..."
+                bind:value={geminiKey}
+              />
+              <button
+                type="button"
+                class="icon-btn"
+                onclick={() => (showGemini = !showGemini)}
+                title={showGemini ? "Hide key" : "Show key"}
+                aria-label={showGemini ? "Hide key" : "Show key"}
+              >
+                {#if showGemini}
+                  <EyeOff size={14} />
+                {:else}
+                  <Eye size={14} />
+                {/if}
+              </button>
+              <button
+                type="button"
+                class="save-btn"
+                disabled={savingGemini || !geminiKey.trim()}
+                onclick={saveGemini}
+              >
+                {savingGemini ? "Saving..." : "Save"}
+              </button>
+              {#if geminiConfigured}
+                <button type="button" class="clear-btn" onclick={clearGemini} title="Remove key">
+                  <Trash2 size={12} />
+                  <span>Clear</span>
+                </button>
+              {/if}
+            </div>
+            <p class="field-hint">Google AI Studio key for Nano Banana image generation in the Images tab and the agent's image_generate tool.</p>
           </div>
 
           <!-- Default Voice & Language -->

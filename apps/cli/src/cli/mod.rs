@@ -233,6 +233,42 @@ pub enum AssetCommand {
         #[arg(long)]
         force: bool,
     },
+    /// Generate an image with Google Gemini (Nano Banana) into assets/images/<id>.png
+    GenerateImage {
+        /// What the image should show
+        prompt: String,
+        /// Asset id: the image is saved as assets/images/<id>.png
+        #[arg(long)]
+        id: String,
+        /// Aspect ratio (default: 9:16 for short-only projects, else 16:9)
+        #[arg(long)]
+        aspect: Option<String>,
+        /// Output size: 1K, 2K or 4K
+        #[arg(long)]
+        size: Option<String>,
+        /// Gemini image model
+        #[arg(long)]
+        model: Option<String>,
+        /// Reference image inside the project (repeatable): style, character or product to keep
+        #[arg(long = "ref")]
+        refs: Vec<String>,
+    },
+    /// Revise a generated image ("darker sky", "less people") into a new version
+    EditImage {
+        id: String,
+        /// What to change
+        instruction: String,
+        #[arg(long)]
+        size: Option<String>,
+    },
+    /// List generated images and their versions
+    Images {
+        id: Option<String>,
+        #[arg(long)]
+        json: bool,
+    },
+    /// Make an earlier version of a generated image the active one
+    UseImage { id: String, version: u32 },
 }
 
 #[derive(Subcommand, Debug, PartialEq)]
@@ -371,6 +407,43 @@ mod tests {
                 frame: 42,
                 preset: "native".into(),
             })
+        );
+    }
+
+    #[test]
+    fn parses_image_generation_commands() {
+        let cli = Cli::parse_from([
+            "liosvideo", "asset", "generate-image", "a palace at night", "--id", "palace",
+            "--aspect", "9:16", "--ref", "assets/images/a.jpg", "--ref", "assets/images/b.png",
+        ]);
+        assert_eq!(
+            cli.command,
+            Some(Commands::Asset {
+                command: AssetCommand::GenerateImage {
+                    prompt: "a palace at night".into(),
+                    id: "palace".into(),
+                    aspect: Some("9:16".into()),
+                    size: None,
+                    model: None,
+                    refs: vec!["assets/images/a.jpg".into(), "assets/images/b.png".into()],
+                }
+            })
+        );
+        let cli = Cli::parse_from(["liosvideo", "asset", "edit-image", "palace", "darker sky"]);
+        assert_eq!(
+            cli.command,
+            Some(Commands::Asset {
+                command: AssetCommand::EditImage {
+                    id: "palace".into(),
+                    instruction: "darker sky".into(),
+                    size: None,
+                }
+            })
+        );
+        let cli = Cli::parse_from(["liosvideo", "asset", "use-image", "palace", "1"]);
+        assert_eq!(
+            cli.command,
+            Some(Commands::Asset { command: AssetCommand::UseImage { id: "palace".into(), version: 1 } })
         );
     }
 

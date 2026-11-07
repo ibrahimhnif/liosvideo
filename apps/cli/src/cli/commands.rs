@@ -360,8 +360,66 @@ pub async fn run_asset(project: &Path, command: AssetCommand) -> Result<()> {
                 .map_err(|e| anyhow!(e))?;
             println!("{}", serde_json::to_string_pretty(&saved)?);
         }
+        AssetCommand::GenerateImage {
+            prompt,
+            id,
+            aspect,
+            size,
+            model,
+            refs,
+        } => {
+            let opts = crate::imagegen::GenerateOptions { aspect, size, model, refs };
+            let entry = crate::imagegen::generate(&root, &gemini_key(), &id, &prompt, opts)
+                .await
+                .map_err(|e| anyhow!(e))?;
+            print_image(&entry);
+        }
+        AssetCommand::EditImage { id, instruction, size } => {
+            let entry = crate::imagegen::edit(&root, &gemini_key(), &id, &instruction, size)
+                .await
+                .map_err(|e| anyhow!(e))?;
+            print_image(&entry);
+        }
+        AssetCommand::Images { id, json } => {
+            let images: Vec<_> = crate::imagegen::load_manifest(&root)
+                .images
+                .into_iter()
+                .filter(|e| id.as_deref().is_none_or(|id| e.id == id))
+                .collect();
+            if json {
+                println!("{}", serde_json::to_string_pretty(&images)?);
+            } else if images.is_empty() {
+                println!("No generated images yet. Try: liosvideo asset generate-image \"…\" --id hero");
+            } else {
+                for entry in &images {
+                    println!("{}  →  {}  (v{} of {})", entry.id, entry.src, entry.active, entry.versions.len());
+                    for v in &entry.versions {
+                        let mark = if v.n == entry.active { "*" } else { " " };
+                        let kind = if v.from.is_some() { "revise" } else { "prompt" };
+                        println!("  {mark} v{:<3} {kind}: {}", v.n, truncate(&v.prompt, 90));
+                    }
+                }
+            }
+        }
+        AssetCommand::UseImage { id, version } => {
+            let entry = crate::imagegen::use_version(&root, &id, version).map_err(|e| anyhow!(e))?;
+            print_image(&entry);
+        }
     }
     Ok(())
+}
+
+fn gemini_key() -> String {
+    crate::imagegen::KEY_NAMES
+        .iter()
+        .find_map(|name| Keychain::get_secret(name))
+        .unwrap_or_default()
+}
+
+fn print_image(entry: &crate::imagegen::ImageEntry) {
+    println!("{}  (v{} of {})", entry.src, entry.active, entry.versions.len());
+    println!("Use it: image({{ src: \"{}\", fit: \"cover\" }})", entry.src);
+    println!("Revise: liosvideo asset edit-image {} \"<what to change>\"", entry.id);
 }
 
 fn truncate(text: &str, max: usize) -> String {

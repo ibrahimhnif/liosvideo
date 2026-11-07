@@ -4,6 +4,8 @@ pub mod audio;
 mod destockd;
 pub mod export;
 mod git;
+mod imagegen;
+mod images;
 pub mod keychain;
 pub mod mcp;
 mod project;
@@ -153,6 +155,10 @@ pub fn run() {
             export::save_exported_video,
             export::save_exported_video_chunk,
             export::save_voice_recording,
+            images::image_list,
+            images::image_generate,
+            images::image_edit,
+            images::image_use_version,
             keychain::get_api_key,
             keychain::set_api_key,
             keychain::delete_api_key,

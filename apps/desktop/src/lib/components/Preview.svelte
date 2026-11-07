@@ -271,6 +271,8 @@
 
     const unlisten = listen<{ paths: string[] }>("project://changed", ({ payload }) => {
       if (touchesRootFiles(payload.paths)) onRootFilesChanged();
+      // a revised image keeps its path, so swap the bitmap and redraw the current frame
+      host.reloadAssets(payload.paths).then((hit) => hit && host.requestFrame(playhead.frame)).catch(() => {});
       const audioChanged = touchesAudio(payload.paths);
       if (audioChanged) {
         for (const p of payload.paths) {

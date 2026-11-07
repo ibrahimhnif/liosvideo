@@ -20,6 +20,7 @@
   import ValidationModal from "$lib/components/ValidationModal.svelte";
   import ScriptViewer from "$lib/components/ScriptViewer.svelte";
   import CodeViewer from "$lib/components/CodeViewer.svelte";
+  import ImageStudio from "$lib/components/ImageStudio.svelte";
   import Logo from "$lib/components/Logo.svelte";
   import { revealItemInDir } from "@tauri-apps/plugin-opener";
   import {
@@ -31,13 +32,14 @@
     Film,
     FileText,
     Code,
+    Image as ImageIcon,
     History,
     X,
   } from "@lucide/svelte";
 
   let project = $state<ProjectInfo | null>(null);
   let entry = $state("");
-  let activeTab = $state<"preview" | "script" | "code">("preview");
+  let activeTab = $state<"preview" | "script" | "code" | "images">("preview");
   let showAgents = $state(false);
   let showSettings = $state(false);
   let showValidation = $state(false);
@@ -253,6 +255,15 @@
             <Code size={13} />
             <span>Code</span>
           </button>
+          <button
+            class="tab-btn"
+            class:active={activeTab === "images"}
+            onclick={() => (activeTab = "images")}
+            title="Generate and revise AI images (Gemini)"
+          >
+            <ImageIcon size={13} />
+            <span>Images</span>
+          </button>
         </div>
         <div class="project-actions">
           <button class="nav-btn" onclick={openProjectDialog} title="Open another project folder">
@@ -299,6 +310,11 @@
           {#if activeTab === "code"}
             <div class="stage-pane active-pane">
               <CodeViewer projectRoot={project.root} activeComposition={entry} />
+            </div>
+          {/if}
+          {#if activeTab === "images"}
+            <div class="stage-pane active-pane">
+              <ImageStudio projectRoot={project.root} />
             </div>
           {/if}
         </div>

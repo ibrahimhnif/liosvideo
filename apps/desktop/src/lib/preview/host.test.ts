@@ -70,6 +70,29 @@ describe("PreviewHost", () => {
     expect(w.renders().map((r) => r.frame)).toEqual([1, 5]);
   });
 
+  it("re-sends an image whose file changed on disk, and only images in use", async () => {
+    const workers: FakeWorker[] = [];
+    let version = 0;
+    const resolve = vi.fn(async (src: string) => ({ src, version: ++version }) as unknown as ImageBitmap);
+    const host = new PreviewHost(fakeCanvas(), resolve, () => {
+      const w = new FakeWorker();
+      workers.push(w);
+      return w as unknown as Worker;
+    });
+    const w = workers[0];
+    const p = host.load("code");
+    const msg = w.posted.find((m) => m.type === "load") as Extract<ToWorker, { type: "load" }>;
+    w.reply({ ...loaded(msg.generation), assets: ["assets/images/hero.png"] } as FromWorker);
+    await p;
+    expect(resolve).toHaveBeenCalledTimes(1);
+
+    expect(await host.reloadAssets(["assets/images/other.png", "scenes/intro.ts"])).toBe(false);
+    expect(await host.reloadAssets(["assets/images/hero.png"])).toBe(true);
+    const sent = w.posted.filter((m) => m.type === "assets") as Extract<ToWorker, { type: "assets" }>[];
+    expect(sent).toHaveLength(2);
+    expect((sent[1].bitmaps[0][1] as any).version).toBe(2);
+  });
+
   it("reports load errors and rejects the load", async () => {
     const { host, workers } = setup();
     const errors: string[] = [];
