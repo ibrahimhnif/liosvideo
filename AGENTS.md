@@ -223,6 +223,31 @@ three({
 - Each `gltf()` call returns its own copy of the scene, so two uses animate separately. `model.animations` holds the clips.
 - Not supported yet: Draco / meshopt compressed meshes and KTX2 textures. Export plain `.glb` (gltf-transform `--compress false`).
 
+### UI Mockups (browser, file explorer, chat, notification)
+
+Built-in components for software demos. Give each a box from `layout()`; text, rows and bubbles scale with the box, and long text wraps or ends in "…" so nothing leaves it. `theme: "dark" | "light"`.
+
+```ts
+import { browserWindow, chatThread, fileExplorer, notification } from "liosvideo";
+
+const b = root.add(browserWindow({ ...L.slot("center"), url: "about:blank", tabs: ["Home", "Docs"], content: [/* nodes on the page */] }));
+b.typeUrl("https://example.com/pricing", { at: 0.6, duration: 1.2 });   // types into the address bar
+b.switchTab(1, { at: 2.4 });
+
+const files = root.add(fileExplorer({ ...box, title: "MY-APP", selected: "index.ts",
+  items: [{ name: "src", children: ["index.ts", "app.ts"] }, { name: "assets", open: false, children: [] }, "package.json"] }));
+files.select("app.ts", { at: 1.5 });                                     // moves the selection bar; a typo throws with the row names
+
+const chat = root.add(chatThread({ ...box, title: "Assistant", reveal: { start: 0.4, gap: 1.2 }, typing: 0.8,
+  messages: [{ from: "user", text: "Summarise this PR" }, { from: "assistant", text: "It adds…" }] }));
+// chat.times[i] is when message i appears; typing dots show before each reply and the thread scrolls to the newest bubble
+
+const card = phoneNode.contentArea.add(notification({ x: 12, y: 80, width: 360, app: "Mail", title: "New message", body: "…", time: "now" }));
+card.show({ at: 0.5, hold: 2.5 });                                       // slides in, holds, fades out; variant: "desktop" slides from the right
+```
+
+See `examples/ui-mockups` in the liosvideo repository for all four in 16:9 and 9:16.
+
 ### Custom Mockups & Components
 Agents can create domain-specific mockups (smartwatches, tablet frames, notification bubbles, custom app UIs) by authoring composite functions or classes extending `GroupNode` using `group()`, `rect()`, `circle()`, `path()`, and `text()`.
 

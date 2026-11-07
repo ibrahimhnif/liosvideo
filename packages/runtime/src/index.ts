@@ -27,3 +27,8 @@ export * from "./mockups/cursor";
 export * from "./mockups/focus";
 export * from "./mockups/phone";
 export * from "./mockups/logo";
+export * from "./mockups/browser";
+export * from "./mockups/explorer";
+export * from "./mockups/chat";
+export * from "./mockups/notification";
+export type { UiTheme } from "./mockups/ui_kit";

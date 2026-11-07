@@ -777,7 +777,7 @@ var __liosvideo = (function(exports) {
 		};
 	}
 	/** Greedy word wrap: each `\n` line is broken at spaces so no line is wider than `maxWidth`; a lone long word keeps its own line. */
-	function wrapText(p, m) {
+	function wrapText$1(p, m) {
 		const key = JSON.stringify([
 			p.text,
 			p.fontFamily,
@@ -826,7 +826,7 @@ var __liosvideo = (function(exports) {
 		propsAt(t) {
 			const p = super.propsAt(t);
 			if (!measurer) return p;
-			if (p.maxWidth > 0) p.text = wrapText(p, measurer);
+			if (p.maxWidth > 0) p.text = wrapText$1(p, measurer);
 			if (p.width === 0 && p.height === 0) {
 				const size = measurer(p);
 				p.width = p.maxWidth > 0 ? p.maxWidth : size.width;
@@ -3105,8 +3105,923 @@ var __liosvideo = (function(exports) {
 		}));
 		return mark;
 	}
+	// packages/runtime/src/mockups/ui_kit.ts
+	const UI_FONT = "SF Pro Text";
+	function palette(theme = "dark") {
+		return theme === "light" ? {
+			window: "#ffffff",
+			chrome: "#eef0f3",
+			chromeBorder: "#d5d8de",
+			tab: "#e2e5ea",
+			tabActive: "#ffffff",
+			field: "#ffffff",
+			text: "#1d2129",
+			muted: "#6b7280",
+			accent: "#2563eb",
+			selection: "#dbe7ff",
+			bubbleUser: "#2563eb",
+			bubbleUserText: "#ffffff",
+			bubbleOther: "#eef0f3",
+			bubbleOtherText: "#1d2129",
+			card: "#ffffffee",
+			cardBorder: "#d5d8de",
+			shadow: "#0000001f"
+		} : {
+			window: "#16181d",
+			chrome: "#22252b",
+			chromeBorder: "#30343c",
+			tab: "#1b1e23",
+			tabActive: "#2c3038",
+			field: "#121418",
+			text: "#e8eaed",
+			muted: "#9aa0a6",
+			accent: "#60a5fa",
+			selection: "#2a3b57",
+			bubbleUser: "#2563eb",
+			bubbleUserText: "#ffffff",
+			bubbleOther: "#2a2d34",
+			bubbleOtherText: "#e8eaed",
+			card: "#2a2d34f2",
+			cardBorder: "#3a3e46",
+			shadow: "#00000066"
+		};
+	}
+	/** Size unit for a component box: 1 at about 1000 px wide, so its parts scale with the box. */
+	function unit(width, height) {
+		return Math.max(.45, Math.min(width / 1e3, height / 640, 2.4));
+	}
+	/**
+	* Word-wraps `text` to `maxWidth` with the installed text measurer (an estimate in tests), so the
+	* node can be given its final size. Long words are cut into pieces that fit.
+	*/
+	function wrapText(text, opts) {
+		const style = {
+			fontSize: opts.fontSize,
+			fontWeight: opts.fontWeight ?? 400,
+			lineHeight: opts.lineHeight ?? 1.3,
+			fontFamily: opts.fontFamily ?? "SF Pro Text"
+		};
+		const widthOf = (s) => measureText({
+			...style,
+			text: s
+		}).width;
+		const maxWidth = Math.max(opts.fontSize, opts.maxWidth);
+		const out = [];
+		for (const hard of text.split("\n")) {
+			let line = "";
+			for (let word of hard.split(" ").filter((w) => w !== "")) {
+				while (widthOf(word) > maxWidth && word.length > 1) {
+					let n = word.length - 1;
+					while (n > 1 && widthOf(word.slice(0, n)) > maxWidth) n--;
+					if (line) {
+						out.push(line);
+						line = "";
+					}
+					out.push(word.slice(0, n));
+					word = word.slice(n);
+				}
+				const next = line ? `${line} ${word}` : word;
+				if (line && widthOf(next) > maxWidth) {
+					out.push(line);
+					line = word;
+				} else line = next;
+			}
+			out.push(line);
+		}
+		return {
+			text: out.join("\n"),
+			width: Math.min(maxWidth, Math.max(0, ...out.map(widthOf))),
+			height: out.length * opts.fontSize * style.lineHeight,
+			lines: out.length
+		};
+	}
+	/** Cuts `text` to fit `maxWidth` on one line, with an ellipsis. */
+	function ellipsize(text, opts) {
+		const style = {
+			fontSize: opts.fontSize,
+			fontWeight: opts.fontWeight ?? 400,
+			fontFamily: opts.fontFamily ?? "SF Pro Text"
+		};
+		const fits = (s) => measureText({
+			...style,
+			text: s
+		}).width <= opts.maxWidth;
+		if (fits(text)) return text;
+		let n = text.length;
+		while (n > 0 && !fits(`${text.slice(0, n)}…`)) n--;
+		return n > 0 ? `${text.slice(0, n)}…` : "";
+	}
+	/** Width of one line of text. */
+	function textWidth(text, opts) {
+		return measureText({
+			fontSize: opts.fontSize,
+			fontWeight: opts.fontWeight ?? 400,
+			fontFamily: opts.fontFamily ?? "SF Pro Text",
+			text
+		}).width;
+	}
+	// packages/runtime/src/mockups/browser.ts
+	var BrowserWindowNode = class extends GroupNode {
+		frame;
+		tabs;
+		urlField;
+		urlText;
+		/** The web page: add your content here (clipped to the page) */
+		page;
+		typing = [];
+		colors;
+		constructor(init = {}) {
+			const { url = "https://example.com", tabs = ["New Tab"], activeTab = 0, theme = "dark", content, width = 1200, height = 760, name = "browser", ...rest } = init;
+			super({
+				...rest,
+				name,
+				width,
+				height
+			});
+			const c = this.colors = palette(theme);
+			const k = unit(width, height);
+			const tabBarH = 40 * k;
+			const toolbarH = 44 * k;
+			const font = 13 * k;
+			this.frame = this.add(rect({
+				name: "frame",
+				width,
+				height,
+				radius: 12 * k,
+				fill: c.window,
+				stroke: c.chromeBorder,
+				strokeWidth: Math.max(1, k)
+			}));
+			this.add(rect({
+				name: "tabStrip",
+				width,
+				height: tabBarH + 12 * k,
+				radius: 12 * k,
+				fill: c.chrome
+			}));
+			this.add(rect({
+				name: "toolbar",
+				y: tabBarH,
+				width,
+				height: toolbarH,
+				fill: c.tabActive
+			}));
+			this.add(rect({
+				name: "toolbarBorder",
+				y: tabBarH + toolbarH - Math.max(1, k),
+				width,
+				height: Math.max(1, k),
+				fill: c.chromeBorder
+			}));
+			const lights = this.add(group({
+				name: "trafficLights",
+				x: 16 * k,
+				y: tabBarH / 2 - 6 * k,
+				width: 52 * k,
+				height: 12 * k
+			}));
+			[
+				"#ff5f57",
+				"#febc2e",
+				"#28c840"
+			].forEach((fill, i) => lights.add(circle({
+				name: `light${i}`,
+				x: i * 20 * k,
+				radius: 6 * k,
+				fill
+			})));
+			const tabsX = 84 * k;
+			const tabW = Math.min(220 * k, (width - tabsX - 16 * k) / Math.max(1, tabs.length));
+			this.tabs = tabs.map((title, i) => {
+				const g = this.add(group({
+					name: `tab${i}`,
+					x: tabsX + i * tabW,
+					y: 6 * k,
+					width: tabW - 4 * k,
+					height: tabBarH - 6 * k
+				}));
+				return {
+					group: g,
+					background: g.add(rect({
+						name: "background",
+						width: tabW - 4 * k,
+						height: tabBarH - 6 * k,
+						radius: 8 * k,
+						fill: i === activeTab ? c.tabActive : c.tab
+					})),
+					label: g.add(new TextNode({
+						name: "labelText",
+						text: ellipsize(title, {
+							fontSize: font,
+							maxWidth: tabW - 28 * k
+						}),
+						x: 12 * k,
+						y: (tabBarH - 6 * k - font * 1.2) / 2,
+						width: tabW - 28 * k,
+						height: font * 1.2,
+						fontSize: font,
+						fontFamily: UI_FONT,
+						color: i === activeTab ? c.text : c.muted
+					}))
+				};
+			});
+			this.add(new TextNode({
+				name: "navText",
+				text: "‹  ›  ↻",
+				x: 16 * k,
+				y: tabBarH + (toolbarH - 16 * k * 1.2) / 2,
+				width: 80 * k,
+				height: 16 * k * 1.2,
+				fontSize: 16 * k,
+				fontFamily: UI_FONT,
+				color: c.muted
+			}));
+			const fieldX = 100 * k;
+			const fieldW = Math.max(40 * k, width - fieldX - 16 * k);
+			const fieldH = 28 * k;
+			this.urlField = this.add(rect({
+				name: "urlField",
+				x: fieldX,
+				y: tabBarH + (toolbarH - fieldH) / 2,
+				width: fieldW,
+				height: fieldH,
+				radius: fieldH / 2,
+				fill: c.field
+			}));
+			const typing = this.typing;
+			const urlFont = font;
+			const urlMax = fieldW - 28 * k;
+			class UrlText extends TextNode {
+				propsAt(t) {
+					const p = super.propsAt(t);
+					let shown = url;
+					for (const a of typing) {
+						if (a.at > t) break;
+						const progress = Math.min(1, Math.max(0, (t - a.at) / a.duration));
+						shown = a.url.slice(0, Math.floor(progress * a.url.length));
+					}
+					p.text = ellipsize(shown, {
+						fontSize: urlFont,
+						maxWidth: urlMax
+					});
+					return p;
+				}
+			}
+			this.urlText = this.add(new UrlText({
+				name: "urlText",
+				text: url,
+				x: fieldX + 14 * k,
+				y: tabBarH + (toolbarH - urlFont * 1.2) / 2,
+				width: urlMax,
+				height: urlFont * 1.2,
+				fontSize: urlFont,
+				fontFamily: UI_FONT,
+				color: c.text
+			}));
+			const pageY = tabBarH + toolbarH;
+			this.page = this.add(group({
+				name: "page",
+				y: pageY,
+				width,
+				height: Math.max(0, height - pageY),
+				clip: true,
+				radius: 12 * k
+			}));
+			this.page.add(rect({
+				name: "pageBackground",
+				width,
+				height: Math.max(0, height - pageY),
+				fill: c.window
+			}));
+			for (const node of content === void 0 ? [] : Array.isArray(content) ? content : [content]) this.page.add(node);
+		}
+		/** Types `url` into the address bar, a character at a time over `duration` seconds. */
+		typeUrl(url, opts) {
+			this.typing.push({
+				url,
+				at: opts.at,
+				duration: Math.max(.01, opts.duration ?? Math.min(1.5, url.length * .05))
+			});
+			this.typing.sort((a, b) => a.at - b.at);
+			return this;
+		}
+		/** Makes tab `index` the active one at `at`. */
+		switchTab(index, opts) {
+			if (!this.tabs[index]) throw new Error(`browserWindow: no tab ${index} (it has ${this.tabs.length})`);
+			this.tabs.forEach((tab, i) => {
+				tab.background.set({ fill: i === index ? this.colors.tabActive : this.colors.tab }, opts.at);
+				tab.label.set({ color: i === index ? this.colors.text : this.colors.muted }, opts.at);
+			});
+			return this;
+		}
+	};
+	const browserWindow = (init) => new BrowserWindowNode(init);
+	// packages/runtime/src/mockups/explorer.ts
+	const FOLDER = "#e8a33d";
+	const FILE_COLORS = {
+		ts: "#3178c6",
+		js: "#f1c232",
+		json: "#cbcb41",
+		md: "#7d8590",
+		png: "#a074c4",
+		jpg: "#a074c4",
+		mp4: "#e05d44",
+		mp3: "#3fb950",
+		rs: "#dea584",
+		css: "#563d7c",
+		html: "#e34c26"
+	};
+	function flatten(items, depth, out) {
+		for (const item of items) {
+			if (typeof item === "string") {
+				out.push({
+					name: item,
+					depth,
+					folder: false,
+					open: false
+				});
+				continue;
+			}
+			const folder = item.folder ?? item.children !== void 0;
+			const open = folder && item.open !== false;
+			out.push({
+				name: item.name,
+				depth,
+				folder,
+				open
+			});
+			if (open && item.children) flatten(item.children, depth + 1, out);
+		}
+		return out;
+	}
+	var FileExplorerNode = class extends GroupNode {
+		panel;
+		rows;
+		/** The selection bar; `select()` moves it */
+		highlight;
+		constructor(init) {
+			const { items, selected, title = "EXPLORER", theme = "dark", width = 360, height = 560, name = "explorer", ...rest } = init;
+			super({
+				...rest,
+				name,
+				width,
+				height
+			});
+			const c = palette(theme);
+			const k = unit(width * 2.2, height);
+			const font = 14 * k;
+			const rowH = 28 * k;
+			const pad = 12 * k;
+			const indent = 16 * k;
+			const headerH = 36 * k;
+			this.panel = this.add(rect({
+				name: "panel",
+				width,
+				height,
+				radius: 10 * k,
+				fill: c.chrome,
+				stroke: c.chromeBorder,
+				strokeWidth: Math.max(1, k)
+			}));
+			this.add(new TextNode({
+				name: "headerText",
+				text: ellipsize(title, {
+					fontSize: 11 * k,
+					maxWidth: width - 2 * pad,
+					fontWeight: 600
+				}),
+				x: pad,
+				y: (headerH - 11 * k * 1.2) / 2,
+				width: width - 2 * pad,
+				height: 11 * k * 1.2,
+				fontSize: 11 * k,
+				fontWeight: 600,
+				fontFamily: UI_FONT,
+				color: c.muted
+			}));
+			const list = this.add(group({
+				name: "list",
+				y: headerH,
+				width,
+				height: Math.max(0, height - headerH - 6 * k),
+				clip: true
+			}));
+			const flat = flatten(items, 0, []);
+			const first = flat.findIndex((r) => r.name === selected);
+			this.highlight = list.add(rect({
+				name: "highlight",
+				x: 4 * k,
+				y: Math.max(0, first) * rowH,
+				width: width - 8 * k,
+				height: rowH,
+				radius: 6 * k,
+				fill: c.selection,
+				opacity: first >= 0 ? 1 : 0
+			}));
+			this.rows = flat.map((r, i) => {
+				const x = pad + r.depth * indent;
+				const g = list.add(group({
+					name: `row${i}`,
+					x,
+					y: i * rowH,
+					width: Math.max(0, width - x - 4 * k),
+					height: rowH
+				}));
+				const iconW = 12 * k;
+				const ext = r.name.includes(".") ? r.name.split(".").pop().toLowerCase() : "";
+				if (r.folder) {
+					g.add(new TextNode({
+						name: "chevronText",
+						text: r.open ? "▾" : "▸",
+						y: (rowH - font * 1.2) / 2,
+						width: 10 * k,
+						height: font * 1.2,
+						fontSize: font,
+						fontFamily: UI_FONT,
+						color: c.muted
+					}));
+					g.add(rect({
+						name: "icon",
+						x: 12 * k,
+						y: (rowH - 10 * k) / 2,
+						width: iconW + 2 * k,
+						height: 10 * k,
+						radius: 2 * k,
+						fill: FOLDER
+					}));
+				} else g.add(rect({
+					name: "icon",
+					x: 12 * k,
+					y: (rowH - 13 * k) / 2,
+					width: 10 * k,
+					height: 13 * k,
+					radius: 2 * k,
+					fill: FILE_COLORS[ext] ?? c.muted
+				}));
+				const labelX = 32 * k;
+				const maxW = Math.max(0, width - x - labelX - 8 * k);
+				const label = g.add(new TextNode({
+					name: "labelText",
+					text: ellipsize(r.name, {
+						fontSize: font,
+						maxWidth: maxW
+					}),
+					x: labelX,
+					y: (rowH - font * 1.2) / 2,
+					width: maxW,
+					height: font * 1.2,
+					fontSize: font,
+					fontFamily: UI_FONT,
+					color: c.text
+				}));
+				return {
+					name: r.name,
+					depth: r.depth,
+					folder: r.folder,
+					group: g,
+					label
+				};
+			});
+		}
+		/** The row called `name` (exact, then case-insensitive). */
+		row(name) {
+			const found = this.rows.find((r) => r.name === name) ?? this.rows.find((r) => r.name.toLowerCase() === name.toLowerCase());
+			if (!found) throw new Error(`fileExplorer: no row "${name}" (rows: ${this.rows.map((r) => r.name).join(", ")})`);
+			return found;
+		}
+		/** Moves the selection to the row called `name`. */
+		select(name, opts) {
+			const y = this.row(name).group.propsAt(0).y;
+			this.highlight.set({ opacity: 1 }, opts.at);
+			this.highlight.to({ y }, {
+				at: opts.at,
+				duration: Math.max(.01, opts.duration ?? .25),
+				ease: opts.ease ?? "outCubic"
+			});
+			return this;
+		}
+	};
+	const fileExplorer = (init) => new FileExplorerNode(init);
+	// packages/runtime/src/mockups/chat.ts
+	var ChatThreadNode = class extends GroupNode {
+		panel;
+		/** The scrolling column of bubbles */
+		thread;
+		bubbles;
+		/** When each message appears (scene seconds), e.g. to time narration or a cursor */
+		times;
+		typingDots;
+		constructor(init) {
+			const { messages, title = "Assistant", theme = "dark", reveal = {}, typing = .6, placeholder = "Message…", width = 720, height = 900, name = "chat", ...rest } = init;
+			super({
+				...rest,
+				name,
+				width,
+				height
+			});
+			const c = palette(theme);
+			const k = unit(width * 1.5, height);
+			const pad = 16 * k;
+			const headerH = 52 * k;
+			const inputH = 60 * k;
+			const font = 16 * k;
+			const lineHeight = 1.35;
+			this.panel = this.add(rect({
+				name: "panel",
+				width,
+				height,
+				radius: 16 * k,
+				fill: c.window,
+				stroke: c.chromeBorder,
+				strokeWidth: Math.max(1, k)
+			}));
+			this.add(rect({
+				name: "header",
+				width,
+				height: headerH,
+				radius: 16 * k,
+				fill: c.chrome
+			}));
+			this.add(rect({
+				name: "headerBorder",
+				y: headerH - Math.max(1, k),
+				width,
+				height: Math.max(1, k),
+				fill: c.chromeBorder
+			}));
+			this.add(new TextNode({
+				name: "titleText",
+				text: ellipsize(title, {
+					fontSize: 17 * k,
+					maxWidth: width - 2 * pad,
+					fontWeight: 600
+				}),
+				x: pad,
+				y: (headerH - 17 * k * 1.2) / 2,
+				width: width - 2 * pad,
+				height: 17 * k * 1.2,
+				fontSize: 17 * k,
+				fontWeight: 600,
+				fontFamily: UI_FONT,
+				color: c.text
+			}));
+			const viewportH = Math.max(0, height - headerH - inputH);
+			const viewport = this.add(group({
+				name: "viewport",
+				y: headerH,
+				width,
+				height: viewportH,
+				clip: true
+			}));
+			this.thread = viewport.add(group({
+				name: "thread",
+				width,
+				height: viewportH
+			}));
+			const fieldH = 40 * k;
+			this.add(rect({
+				name: "inputField",
+				x: pad,
+				y: height - inputH + (inputH - fieldH) / 2,
+				width: width - 2 * pad,
+				height: fieldH,
+				radius: fieldH / 2,
+				fill: c.field,
+				stroke: c.chromeBorder,
+				strokeWidth: Math.max(1, k)
+			}));
+			this.add(new TextNode({
+				name: "placeholderText",
+				text: ellipsize(placeholder, {
+					fontSize: 15 * k,
+					maxWidth: width - 4 * pad
+				}),
+				x: pad + 16 * k,
+				y: height - inputH + (inputH - 15 * k * 1.2) / 2,
+				width: width - 4 * pad,
+				height: 15 * k * 1.2,
+				fontSize: 15 * k,
+				fontFamily: UI_FONT,
+				color: c.muted
+			}));
+			const start = reveal === false ? 0 : reveal.start ?? .3;
+			const gap = reveal === false ? 0 : reveal.gap ?? 1;
+			const isReply = (m) => m.from !== "user";
+			const times = [];
+			messages.forEach((m, i) => {
+				const lead = reveal !== false && isReply(m) ? typing : 0;
+				const auto = i === 0 ? start + lead : times[i - 1] + gap + lead;
+				times.push(m.at ?? auto);
+			});
+			this.times = times;
+			const maxBubble = width * .78;
+			const bubblePadX = 14 * k;
+			const bubblePadY = 10 * k;
+			let y = pad;
+			this.bubbles = messages.map((m, i) => {
+				const wrapped = wrapText(m.text, {
+					fontSize: font,
+					maxWidth: maxBubble - 2 * bubblePadX,
+					lineHeight
+				});
+				const w = wrapped.width + 2 * bubblePadX;
+				const h = wrapped.height + 2 * bubblePadY;
+				const mine = !isReply(m);
+				const x = mine ? width - pad - w : pad;
+				const g = this.thread.add(group({
+					name: `message${i}`,
+					x,
+					y,
+					width: w,
+					height: h,
+					opacity: reveal === false ? 1 : 0
+				}));
+				const background = g.add(rect({
+					name: "background",
+					width: w,
+					height: h,
+					radius: 18 * k,
+					fill: mine ? c.bubbleUser : c.bubbleOther
+				}));
+				const label = g.add(new TextNode({
+					name: "labelText",
+					text: wrapped.text,
+					x: bubblePadX,
+					y: bubblePadY,
+					width: wrapped.width,
+					height: wrapped.height,
+					fontSize: font,
+					lineHeight,
+					fontFamily: UI_FONT,
+					color: mine ? c.bubbleUserText : c.bubbleOtherText
+				}));
+				if (reveal !== false) {
+					g.assign({ y: y + 12 * k });
+					g.to({
+						opacity: 1,
+						y
+					}, {
+						at: times[i],
+						duration: .3,
+						ease: "outCubic"
+					});
+				}
+				y += h + 10 * k;
+				return {
+					message: m,
+					group: g,
+					background,
+					label
+				};
+			});
+			const dotsW = 64 * k;
+			const dotsH = 38 * k;
+			this.typingDots = this.thread.add(group({
+				name: "typingDots",
+				x: pad,
+				y: pad,
+				width: dotsW,
+				height: dotsH,
+				opacity: 0
+			}));
+			this.typingDots.add(rect({
+				name: "background",
+				width: dotsW,
+				height: dotsH,
+				radius: 18 * k,
+				fill: c.bubbleOther
+			}));
+			for (let d = 0; d < 3; d++) {
+				const dot = this.typingDots.add(circle({
+					name: `dot${d}`,
+					x: 14 * k + d * 13 * k,
+					y: dotsH / 2 - 4 * k,
+					radius: 4 * k,
+					fill: c.muted
+				}));
+				for (let t = 0; t < (times[times.length - 1] ?? 0) + 1; t += .6) dot.to({ opacity: .35 }, {
+					at: t + d * .15,
+					duration: .3
+				}).to({ opacity: 1 }, {
+					at: t + d * .15 + .3,
+					duration: .3
+				});
+			}
+			let scrolled = 0;
+			this.bubbles.forEach((b, i) => {
+				const p = b.group.propsAt(times[i] + 10);
+				const bottom = p.y + p.height + pad;
+				const showAt = reveal !== false && isReply(b.message) && typing > 0 ? times[i] - typing : times[i];
+				if (reveal !== false && isReply(b.message) && typing > 0) {
+					this.typingDots.set({
+						y: p.y,
+						opacity: 1
+					}, showAt);
+					this.typingDots.set({ opacity: 0 }, times[i]);
+				}
+				const need = Math.max(0, bottom - viewportH);
+				if (need > scrolled) {
+					this.thread.to({ y: -need }, {
+						at: Math.max(0, showAt - .05),
+						duration: .3,
+						ease: "outCubic"
+					});
+					scrolled = need;
+				}
+			});
+		}
+	};
+	const chatThread = (init) => new ChatThreadNode(init);
+	// packages/runtime/src/mockups/notification.ts
+	var NotificationNode = class extends GroupNode {
+		card;
+		titleText;
+		bodyText;
+		variant;
+		constructor(init) {
+			const { app, title, body = "", time = "now", color = "#2563eb", theme = "dark", variant = "phone", maxLines = 3, width = 720, name = "notification", ...rest } = init;
+			const c = palette(theme);
+			const k = unit(width * 2.8, 2e3);
+			const pad = 16 * k;
+			const icon = 40 * k;
+			const textX = pad + icon + 12 * k;
+			const textW = Math.max(20 * k, width - textX - pad);
+			const small = 13 * k;
+			const titleFont = 16 * k;
+			const bodyFont = 15 * k;
+			let lines = wrapText(body, {
+				fontSize: bodyFont,
+				maxWidth: textW,
+				lineHeight: 1.3
+			}).text.split("\n");
+			if (lines.length > maxLines) {
+				lines = lines.slice(0, maxLines);
+				lines[maxLines - 1] = ellipsize(`${lines[maxLines - 1]}…`, {
+					fontSize: bodyFont,
+					maxWidth: textW
+				});
+				if (!lines[maxLines - 1].endsWith("…")) lines[maxLines - 1] += "…";
+			}
+			const bodyH = body ? lines.length * bodyFont * 1.3 : 0;
+			const headH = small * 1.3;
+			const height = pad + headH + 4 * k + titleFont * 1.25 + (body ? 2 * k + bodyH : 0) + pad;
+			super({
+				...rest,
+				name,
+				width,
+				height,
+				opacity: 0
+			});
+			this.variant = variant;
+			this.add(rect({
+				name: "shadow",
+				x: 0,
+				y: 4 * k,
+				width,
+				height: height - 4 * k,
+				radius: (variant === "phone" ? 22 : 12) * k,
+				fill: c.shadow,
+				blur: 12 * k
+			}));
+			this.card = this.add(rect({
+				name: "card",
+				width,
+				height,
+				radius: (variant === "phone" ? 22 : 12) * k,
+				fill: c.card,
+				stroke: c.cardBorder,
+				strokeWidth: Math.max(1, k)
+			}));
+			const iconG = this.add(group({
+				name: "icon",
+				x: pad,
+				y: pad,
+				width: icon,
+				height: icon
+			}));
+			iconG.add(rect({
+				name: "background",
+				width: icon,
+				height: icon,
+				radius: 10 * k,
+				fill: color
+			}));
+			const letter = (app.trim()[0] ?? "?").toUpperCase();
+			iconG.add(new TextNode({
+				name: "letterText",
+				text: letter,
+				x: (icon - textWidth(letter, {
+					fontSize: 20 * k,
+					fontWeight: 700
+				})) / 2,
+				y: (icon - 20 * k * 1.2) / 2,
+				width: Math.min(icon, textWidth(letter, {
+					fontSize: 20 * k,
+					fontWeight: 700
+				})),
+				height: 20 * k * 1.2,
+				fontSize: 20 * k,
+				fontWeight: 700,
+				fontFamily: UI_FONT,
+				color: "#ffffff"
+			}));
+			const timeW = Math.min(textW * .4, textWidth(time, { fontSize: small }));
+			this.add(new TextNode({
+				name: "appText",
+				text: ellipsize(app.toUpperCase(), {
+					fontSize: small,
+					maxWidth: textW - timeW - 8 * k,
+					fontWeight: 600
+				}),
+				x: textX,
+				y: pad,
+				width: Math.max(0, textW - timeW - 8 * k),
+				height: headH,
+				fontSize: small,
+				fontWeight: 600,
+				fontFamily: UI_FONT,
+				color: c.muted
+			}));
+			this.add(new TextNode({
+				name: "timeText",
+				text: ellipsize(time, {
+					fontSize: small,
+					maxWidth: timeW
+				}),
+				x: textX + textW - timeW,
+				y: pad,
+				width: timeW,
+				height: headH,
+				fontSize: small,
+				fontFamily: UI_FONT,
+				color: c.muted
+			}));
+			const titleY = pad + headH + 4 * k;
+			this.titleText = this.add(new TextNode({
+				name: "titleText",
+				text: ellipsize(title, {
+					fontSize: titleFont,
+					maxWidth: textW,
+					fontWeight: 600
+				}),
+				x: textX,
+				y: titleY,
+				width: textW,
+				height: titleFont * 1.25,
+				fontSize: titleFont,
+				fontWeight: 600,
+				lineHeight: 1.25,
+				fontFamily: UI_FONT,
+				color: c.text
+			}));
+			this.bodyText = this.add(new TextNode({
+				name: "bodyText",
+				text: lines.join("\n"),
+				x: textX,
+				y: titleY + titleFont * 1.25 + 2 * k,
+				width: textW,
+				height: bodyH,
+				fontSize: bodyFont,
+				lineHeight: 1.3,
+				fontFamily: UI_FONT,
+				color: c.text,
+				opacity: body ? .85 : 0
+			}));
+		}
+		/**
+		* Slides the card in at `at` (from the top on a phone, from the right on a desktop), keeps it for
+		* `hold` seconds and fades it out. The card ends where you placed it.
+		*/
+		show(opts) {
+			const { at, hold = 3, duration = .4 } = opts;
+			const p = this.propsAt(at);
+			const from = this.variant === "phone" ? { y: p.y - p.height * .6 } : { x: p.x + p.width * .3 };
+			this.set({
+				...from,
+				opacity: 0
+			}, at);
+			this.to({
+				x: p.x,
+				y: p.y,
+				opacity: 1
+			}, {
+				at,
+				duration,
+				ease: "outCubic"
+			});
+			this.to({ opacity: 0 }, {
+				at: at + duration + hold,
+				duration: .3,
+				ease: "inCubic"
+			});
+			return this;
+		}
+	};
+	const notification = (init) => new NotificationNode(init);
 	exports.BASE_DEFAULTS = BASE_DEFAULTS;
 	exports.BED_MIN_SECONDS = BED_MIN_SECONDS;
+	exports.BrowserWindowNode = BrowserWindowNode;
+	exports.ChatThreadNode = ChatThreadNode;
 	exports.ChromeNode = ChromeNode;
 	exports.ChromeOmnibox = ChromeOmnibox;
 	exports.CircleNode = CircleNode;
@@ -3114,12 +4029,14 @@ var __liosvideo = (function(exports) {
 	exports.DEFAULT_MIX = DEFAULT_MIX;
 	exports.DesktopNode = DesktopNode;
 	exports.EditorNode = EditorNode;
+	exports.FileExplorerNode = FileExplorerNode;
 	exports.GroupNode = GroupNode;
 	exports.IDENTITY = IDENTITY;
 	exports.ImageNode = ImageNode;
 	exports.LIMITER_LOOKAHEAD = LIMITER_LOOKAHEAD;
 	exports.LIMITER_RELEASE = LIMITER_RELEASE;
 	exports.Node = Node;
+	exports.NotificationNode = NotificationNode;
 	exports.PathNode = PathNode;
 	exports.PhoneNode = PhoneNode;
 	exports.RectNode = RectNode;
@@ -3137,8 +4054,10 @@ var __liosvideo = (function(exports) {
 	exports.apply = apply;
 	exports.applyTransition = applyTransition;
 	exports.attribution = attribution;
+	exports.browserWindow = browserWindow;
 	exports.buildManifest = buildManifest;
 	exports.captions = captions;
+	exports.chatThread = chatThread;
 	exports.chrome = chrome;
 	exports.circle = circle;
 	exports.clampFrame = clampFrame;
@@ -3154,6 +4073,7 @@ var __liosvideo = (function(exports) {
 	exports.ease = ease;
 	exports.editor = editor;
 	exports.evaluateFrame = evaluateFrame;
+	exports.fileExplorer = fileExplorer;
 	exports.focus = focus;
 	exports.formatColor = formatColor;
 	exports.gltf = gltf;
@@ -3172,6 +4092,7 @@ var __liosvideo = (function(exports) {
 	exports.measureLoudness = measureLoudness;
 	exports.measureText = measureText;
 	exports.multiply = multiply;
+	exports.notification = notification;
 	exports.parseColor = parseColor;
 	exports.path = path;
 	exports.peak = peak;
