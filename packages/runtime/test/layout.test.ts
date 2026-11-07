@@ -76,6 +76,22 @@ describe("layout grid", () => {
     }
   });
 
+  it("never overlaps slots that are meant to be combined", () => {
+    const overlap = (a: { x: number; y: number; width: number; height: number }, b: typeof a) =>
+      a.x < b.x + b.width - 1e-6 && b.x < a.x + a.width - 1e-6 && a.y < b.y + b.height - 1e-6 && b.y < a.y + a.height - 1e-6;
+    const combos = [["title", "body", "caption"], ["title", "left", "right", "caption"], ["title", "center", "caption"]] as const;
+    for (const size of [{ width: 1920, height: 1080 }, { width: 1080, height: 1920 }, { width: 1080, height: 1080 }]) {
+      const L = layout(size);
+      for (const combo of combos) {
+        for (let i = 0; i < combo.length; i++) {
+          for (let j = i + 1; j < combo.length; j++) {
+            expect(overlap(L.slot(combo[i]), L.slot(combo[j])), `${L.orientation}: ${combo[i]} vs ${combo[j]}`).toBe(false);
+          }
+        }
+      }
+    }
+  });
+
   it("scales type with the rhythm unit and keeps headline/body line heights", () => {
     const L = layout({ width: 1920, height: 1080 });
     expect(L.type.h1.fontSize).toBeGreaterThan(L.type.body.fontSize);

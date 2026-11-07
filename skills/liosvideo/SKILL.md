@@ -26,7 +26,7 @@ Use this skill whenever:
 2. **Responsive Composition**:
    - Scenes should cleanly adapt between **16:9** (`1920x1080`) and **9:16** (`1080x1920`).
    - Use dynamic coordinates derived from `width` and `height`, and anchor points (`anchorX: 0.5, anchorY: 0.5` for center-aligned elements).
-   - Keep the safe area clear and every gap on the rhythm unit `u = Math.min(width, height) / 100` — see *Whitespace, Safe Areas & Spacing* in §5.
+   - Place every element with `layout({ width, height })` — named slots, `L.cell`, `stack()` and the `L.type` scale — instead of hand-computed pixels; see *Layout Grid* in §5. It keeps the safe area and the rhythm unit for you.
 
 3. **Stable Node Naming**:
    - Assign semantic `name` attributes to all actionable nodes (`card`, `headline`, `highlight`, `badge`).
@@ -307,19 +307,29 @@ export default scene(
 );
 ```
 
+### Layout Grid
+
+`layout({ width, height })` is the only way to position things. It returns a 12-column (16:9), 4-column (9:16) or 8-column (1:1) grid inside the safe area.
+
+- **Pick a slot first.** `L.slot("title" | "center" | "body" | "left" | "right" | "lowerThird" | "caption" | "full")` returns a box plus the text `align` that suits it. `left`/`right` turn into top/bottom in 9:16 automatically. Combine `title` + one of (`body` | `left` and `right` | `center`) + `caption` — those never overlap. `full` and `lowerThird` sit over a full-frame image/video.
+- **Stack inside it.** `stack(L.slot("body"), [heading, para, chip], { gap: L.gap(2) })` measures each child, wraps text to the slot width, aligns it, and returns one group to animate as a unit.
+- **Off-slot pieces go on the grid.** `L.cell(colStart, colSpan, rowStart, rowSpan)` or `L.col(...)`/`L.row(...)`. Spans outside the grid throw — read the message and pick a valid span.
+- **Type comes from the scale.** Spread `L.type.display | h1 | h2 | body | caption | label` into `text()`; never invent a `fontSize`.
+- **Gaps come from the scale.** `L.gap(1 | 2 | 3 | 4 | 6 | 8)`.
+- Non-text children of a `stack` need explicit `width`/`height`. Animate opacity/scale/blur on stacked children, and move the stack group rather than the children.
+
 ### Whitespace, Safe Areas & Spacing
 
 Whitespace is the difference between a slide and a good video: fewer elements, bigger gaps, and edges that stay clear of platform UI.
 
 ```ts
-const u = Math.min(width, height) / 100; // rhythm unit: ≈11px at 1080p
-const safe = u * 6;                      // outer margin on every edge
+const L = layout({ width, height }); // L.u = rhythm unit (≈11px at 1080p), L.safe = box inside the margins
 ```
 
 1. **One rhythm.** Every gap and padding is `u * 1, 2, 3, 4, 6 or 8` — one step inside a group, two steps between groups. Never hand-pick 13 / 37 / 55 px.
 2. **Safe area.** Nothing crosses `safe` on any edge. In 9:16 reserve `height * 0.12` at the bottom (platform UI, captions) and `height * 0.05` at the top (status bar).
 3. **Proximity before separators.** Related items sit ≤ 1 step apart; unrelated blocks ≥ 2 steps. If two blocks still feel glued, separate them with weight, colour or a divider before adding space.
-4. **Text air.** Headline `lineHeight` 1.1–1.2, body 1.4–1.5, caption 1.2. Heading → body is `u`; paragraph → paragraph is `u * 2`. Text does not wrap by width — `text` breaks only on `\n`, so keep each line ≤ 60 characters (≤ 32 in 9:16) and insert the breaks yourself.
+4. **Text air.** Headline `lineHeight` 1.1–1.2, body 1.4–1.5, caption 1.2. Heading → body is `u`; paragraph → paragraph is `u * 2`. Use `L.type.*` for sizes and let text wrap with `maxWidth` (or a `stack`) — lines stay ≤ 60 characters (≤ 32 in 9:16) without hand-inserted `\n`.
 5. **Card padding.** Inner padding ≥ `u * 1.5`, `radius` = `u * 0.5–1`; text and icons never touch an edge.
 6. **Fill 55–70%.** Content covers 55–70% of the frame; when it feels full, remove an element instead of shrinking the gaps.
 7. **Exits leave no holes.** Entrances may start outside the safe area, but the resting layout stays balanced: fade or slide the whole group instead of leaving an empty slot.

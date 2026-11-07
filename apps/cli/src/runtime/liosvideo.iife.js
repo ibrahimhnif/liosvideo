@@ -909,29 +909,29 @@ var __liosvideo = (function(exports) {
 			center: [
 				2,
 				10,
-				2,
-				4,
+				3,
+				3,
 				"center"
 			],
 			body: [
 				1,
 				12,
 				3,
-				4,
+				3,
 				"left"
 			],
 			left: [
 				1,
 				6,
-				1,
-				6,
+				3,
+				3,
 				"left"
 			],
 			right: [
 				7,
 				6,
-				1,
-				6,
+				3,
+				3,
 				"left"
 			],
 			lowerThird: [
@@ -968,28 +968,28 @@ var __liosvideo = (function(exports) {
 				1,
 				4,
 				4,
-				6,
+				8,
 				"center"
 			],
 			body: [
 				1,
 				4,
 				4,
-				9,
+				8,
 				"left"
 			],
 			left: [
 				1,
 				4,
-				1,
-				6,
+				4,
+				4,
 				"left"
 			],
 			right: [
 				1,
 				4,
-				7,
-				6,
+				8,
+				4,
 				"left"
 			],
 			lowerThird: [
@@ -1002,8 +1002,8 @@ var __liosvideo = (function(exports) {
 			caption: [
 				1,
 				4,
-				11,
-				2,
+				12,
+				1,
 				"center"
 			]
 		},
@@ -1026,28 +1026,28 @@ var __liosvideo = (function(exports) {
 				1,
 				8,
 				3,
-				4,
+				5,
 				"center"
 			],
 			body: [
 				1,
 				8,
 				3,
-				6,
+				5,
 				"left"
 			],
 			left: [
 				1,
 				4,
-				1,
-				8,
+				3,
+				5,
 				"left"
 			],
 			right: [
 				5,
 				4,
-				1,
-				8,
+				3,
+				5,
 				"left"
 			],
 			lowerThird: [

@@ -47,36 +47,40 @@ const GRID: Record<Orientation, { columns: number; rows: number }> = {
   square: { columns: 8, rows: 8 },
 };
 
-/** Slot table per orientation: [colStart, colSpan, rowStart, rowSpan, align]. */
+/**
+ * Slot table per orientation: [colStart, colSpan, rowStart, rowSpan, align].
+ * `title` + one of (`body` | `left` and `right` | `center`) + `caption` never overlap; `full` and
+ * `lowerThird` are overlays for a full-frame visual.
+ */
 type SlotDef = [number, number, number, number, TextAlign];
 const SLOTS: Record<Orientation, Record<SlotName, SlotDef>> = {
   landscape: {
     full: [1, 12, 1, 6, "center"],
     title: [1, 10, 1, 2, "left"],
-    center: [2, 10, 2, 4, "center"],
-    body: [1, 12, 3, 4, "left"],
-    left: [1, 6, 1, 6, "left"],
-    right: [7, 6, 1, 6, "left"],
+    center: [2, 10, 3, 3, "center"],
+    body: [1, 12, 3, 3, "left"],
+    left: [1, 6, 3, 3, "left"],
+    right: [7, 6, 3, 3, "left"],
     lowerThird: [1, 7, 5, 2, "left"],
     caption: [2, 10, 6, 1, "center"],
   },
   portrait: {
     full: [1, 4, 1, 12, "center"],
     title: [1, 4, 1, 3, "left"],
-    center: [1, 4, 4, 6, "center"],
-    body: [1, 4, 4, 9, "left"],
-    left: [1, 4, 1, 6, "left"],
-    right: [1, 4, 7, 6, "left"],
+    center: [1, 4, 4, 8, "center"],
+    body: [1, 4, 4, 8, "left"],
+    left: [1, 4, 4, 4, "left"],
+    right: [1, 4, 8, 4, "left"],
     lowerThird: [1, 4, 10, 3, "left"],
-    caption: [1, 4, 11, 2, "center"],
+    caption: [1, 4, 12, 1, "center"],
   },
   square: {
     full: [1, 8, 1, 8, "center"],
     title: [1, 7, 1, 2, "left"],
-    center: [1, 8, 3, 4, "center"],
-    body: [1, 8, 3, 6, "left"],
-    left: [1, 4, 1, 8, "left"],
-    right: [5, 4, 1, 8, "left"],
+    center: [1, 8, 3, 5, "center"],
+    body: [1, 8, 3, 5, "left"],
+    left: [1, 4, 3, 5, "left"],
+    right: [5, 4, 3, 5, "left"],
     lowerThird: [1, 6, 7, 2, "left"],
     caption: [1, 8, 8, 1, "center"],
   },

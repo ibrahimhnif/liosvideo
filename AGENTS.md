@@ -147,7 +147,7 @@ export default scene(
 | **Circle** | `circle(props)` | Group properties plus `radius, fill, stroke, strokeWidth` (creates perfect circles/avatars/dots) |
 | **Path** | `path(props)` | Group properties plus `d (SVG path string), fill, stroke, strokeWidth` (triangles, polygons, custom vector paths) |
 | **Shader** | `shader(props)` | Group properties plus `code (raw WGSL fragment shader), uniforms` (procedural effects, gradients, noise) |
-| **Text** | `text(props)` | Group properties plus `text, fontFamily, fontSize, fontWeight, color, lineHeight, letterSpacing` |
+| **Text** | `text(props)` | Group properties plus `text, fontFamily, fontSize, fontWeight, color, lineHeight, align ("left" \| "center" \| "right"), maxWidth` (wraps words past `maxWidth`) |
 | **Image** | `image(props)` | Group properties plus `src` (project-relative path), `fit ("fill" \| "contain" \| "cover")` |
 | **Video** | `video(props)` | Group properties plus `src` (project-relative path, e.g. `"assets/video/clip.mp4"`), `fit ("fill" \| "contain" \| "cover")`, `startOffset`, `speed`, `loop` |
 | **Three (3D)** | `three(props)` | Group properties plus `camera ("perspective" \| "orthographic"), fov, setup({ scene, camera, width, height }), update(state, progress, time)` (Three.js 3D scenes, meshes, lights, materials) |
@@ -216,6 +216,43 @@ transition((node, progress, width, height) => {
 ```
 
 ---
+
+## Layout Grid (use it for every placement)
+
+Never hand-compute pixel positions. `layout({ width, height })` gives the same, correct layout in 16:9, 9:16 and 1:1:
+
+```ts
+import { layout, rect, scene, stack, text } from "liosvideo";
+
+export default scene("point", { duration: 5 }, ({ root, width, height }) => {
+  const L = layout({ width, height });
+
+  // Named slot + stack: positions, gaps, wrapping and alignment are decided for you
+  const title = text({ name: "title", text: "Ship faster with fewer meetings", ...L.type.h1, color: "#fff" });
+  const body = text({ name: "body", text: "Async updates replace the daily stand-up.", ...L.type.body, color: "#9aa4b2" });
+  root.add(stack(L.slot("title"), [title, body], { name: "heading", gap: L.gap(2) }));
+
+  // Grid cells for anything else (columns are 1-based: 12 in 16:9, 4 in 9:16, 8 in 1:1)
+  const card = L.cell(7, 6, 3, 4);
+  root.add(rect({ name: "card", ...card, radius: L.u, fill: "#161b22" }));
+
+  title.to({ opacity: 1 }, { at: 0.2, duration: 0.4 });
+});
+```
+
+| API | Gives |
+| :--- | :--- |
+| `L.u`, `L.safe`, `L.gutter` | Rhythm unit, content box inside the safe area, column/row gutter |
+| `L.col(start, span)` / `L.row(start, span)` / `L.cell(c, cs, r, rs)` | `{x, width}` / `{y, height}` / a box on the grid; out-of-grid spans throw |
+| `L.gap(n)` | `u * n`, only for n = 1, 2, 3, 4, 6, 8 |
+| `L.slot(name)` | Box + `align` for `full`, `title`, `center`, `body`, `left`, `right`, `lowerThird`, `caption`; `left`/`right` become top/bottom in 9:16. `title` + one of (`body` \| `left`+`right` \| `center`) + `caption` never overlap; `full` and `lowerThird` overlay a full-frame visual |
+| `L.type.display / h1 / h2 / body / caption / label` | `{ fontSize, lineHeight, fontWeight }` — spread into `text()` |
+| `stack(box, children, { gap, direction?, align?, justify?, name? })` | A group at the box holding the children laid out in a column (default) or row; text in a column wraps to the box width and takes its alignment |
+
+- `text` wraps by width with `maxWidth` and aligns lines with `align: "left" | "center" | "right"`; inside `stack` both are set for you.
+- Sizes are read when the scene is built, so give non-text children (rects, images, groups) an explicit `width`/`height`.
+- Animate `opacity`, `scaleX/Y`, `blur` on stacked children freely. Animating their `x`/`y` replaces the stacked position — slide the whole stack group instead.
+- Style kits keep their colours and fonts; take positions and sizes from `layout()`.
 
 ## Keyframing & Animation
 
@@ -356,7 +393,8 @@ Before declaring an edit complete:
 6. **Whitespace & Safe Areas**:
    - Rhythm unit `u = Math.min(width, height) / 100`; every gap and padding is `u * [1, 2, 3, 4, 6, 8]`.
    - Keep content at least `u * 6` from every edge; in 9:16 keep `height * 0.12` clear at the bottom (platform UI) and `height * 0.05` at the top.
-   - Headline `lineHeight` 1.1–1.2, body 1.4–1.5; text breaks only on `\n`, so keep each line ≤ 60 characters (≤ 32 in 9:16). See the director skill's *Whitespace, Safe Areas & Spacing*.
+   - Place everything with `layout()` (slots, `L.cell`, `stack`) and size text with `L.type.*` — see *Layout Grid*. Give long text `maxWidth` (or put it in a `stack`) instead of hand-inserting `\n`.
+   - Headline `lineHeight` 1.1–1.2, body 1.4–1.5. See the director skill's *Whitespace, Safe Areas & Spacing*.
 7. **Length & Pacing**:
    - Total duration is `Σ scene.duration`; plan it first: 9:16 shorts 20–45 s (5–9 scenes), 16:9 explainers 2–5 min, tutorials 5–15 min, documentation/courses **15–60 min** (40–150 scenes).
    - Long-form is built in chapters: one module per chapter, 5–12 beats each, rendered in ranges (`--frames`) and concatenated.
