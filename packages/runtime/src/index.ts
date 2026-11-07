@@ -12,6 +12,7 @@ export { collectAssets, evaluateFrame } from "./evaluate";
 export type * from "./renderlist";
 export * from "./manifest";
 export * from "./audio/timing";
+export * from "./audio/narration";
 export * from "./audio/mix";
 export * from "./components/captions";
 export * from "./components/credit";

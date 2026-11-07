@@ -292,9 +292,12 @@
         for (const p of payload.paths) {
           audioPlayer.invalidate(p);
         }
-        refreshVoTimings().catch(() => {});
-      }
-      if (audioChanged || shouldRebuild(payload.paths, lastFiles, lastBuildOk)) {
+        // scene({ vo }) durations come from the timings, so rebuild once they have reached the worker
+        devLog(`changed ${payload.paths.join(",")}`);
+        refreshVoTimings()
+          .catch(() => {})
+          .finally(() => builds.trigger());
+      } else if (shouldRebuild(payload.paths, lastFiles, lastBuildOk)) {
         devLog(`changed ${payload.paths.join(",")}`);
         builds.trigger();
       }

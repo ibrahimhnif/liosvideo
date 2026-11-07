@@ -187,9 +187,19 @@ pub fn validate_scene_content(
         });
     }
 
-    // Extract scene ID and duration if present
+    // Extract scene ID and duration if present. The duration is only read from the scene's own
+    // options (from `scene(` up to the builder's `=>`), never from a keyframe: a `scene({ vo })`
+    // has no fixed duration.
+    let mut in_scene_opts = false;
+    let mut scene_opts_done = false;
     for (idx, line) in lines.iter().enumerate() {
         let line_num = idx + 1;
+        let mut opts_from = 0;
+        let opens = if scene_opts_done || in_scene_opts { None } else { line.find("scene(") };
+        if let Some(pos) = opens {
+            in_scene_opts = true;
+            opts_from = pos;
+        }
 
         // Try extracting scene ID: scene("id", ...
         if scene_id.is_none() {
@@ -222,8 +232,14 @@ pub fn validate_scene_content(
         }
 
         // Try extracting duration: duration: 4.5
+        let opts_part = if in_scene_opts { line[opts_from..].split("=>").next().unwrap_or("") } else { "" };
+        if in_scene_opts && line[opts_from..].contains("=>") {
+            in_scene_opts = false;
+            scene_opts_done = true;
+        }
         if scene_duration.is_none() {
-            if let Some(pos) = line.find("duration:") {
+            if let Some(pos) = opts_part.find("duration:") {
+                let line = opts_part;
                 let rest = line[pos + 9..].trim();
                 let num_str: String = rest
                     .chars()
@@ -579,6 +595,28 @@ export default scene("intro", { duration: 5.0 }, () => {
         let res = validate_scene_content(code, "scenes/intro.ts", None);
         assert!(!res.valid);
         assert!(res.issues.iter().any(|i| i.message.contains("Math.random")));
+    }
+
+    #[test]
+    fn vo_scene_takes_no_duration_from_its_keyframes() {
+        let code = r##"
+import { scene, text } from "liosvideo";
+export default scene("hook", { vo: ["h1", "h2"], pad: 0.4 }, ({ root, word }) => {
+  const t = root.add(text({ name: "title", text: "hi" }));
+  t.to({ opacity: 1 }, { at: word("h1", "halo"), duration: 0.4 });
+  t.to({ opacity: 0 }, { at: 6, duration: 0.4 });
+});
+"##;
+        let res = validate_scene_content(code, "scenes/hook.ts", None);
+        assert!(res.valid, "{:?}", res.issues);
+        assert!(res.issues.iter().all(|i| !i.message.contains("after scene duration")), "{:?}", res.issues);
+    }
+
+    #[test]
+    fn reads_the_duration_of_a_scene_made_inside_an_arrow_function() {
+        let code = "import { scene } from \"liosvideo\";\nconst make = (id: string) => scene(id, { duration: 2 }, ({ root }) => {\n  root.to({ opacity: 1 }, { at: 5, duration: 0.4 });\n});\nexport default make(\"a\");\n";
+        let res = validate_scene_content(code, "scenes/a.ts", None);
+        assert!(res.issues.iter().any(|i| i.message.contains("after scene duration (2s)")), "{:?}", res.issues);
     }
 
     #[test]

@@ -300,6 +300,26 @@ An unknown name throws where it is written, with the node, the property and `fil
    - `vo(id).duration`: Exact audio duration in seconds.
    - `vo(id).wordTime(word)`: Second offset when a specific word is spoken.
 
+### Scene Timing from Narration (`scene({ vo })`)
+
+Let the narration set the scene length and the cue times; don't keep a hand-made timeline script:
+
+```ts
+import { scene, text } from "liosvideo";
+
+export default scene("hook", { vo: ["h1", "h2"], pad: 0.4 }, ({ root, cue, word }) => {
+  const title = root.add(text({ name: "title", text: "DIKTATOR PALING KEREN", opacity: 0 }));
+  title.to({ opacity: 1 }, { at: word("h1", "diktator") - 0.2, duration: 0.3 }); // scene-local seconds
+  title.to({ opacity: 0 }, { at: cue("h2") - 0.2, duration: 0.3 });
+});
+```
+
+- The lines are spoken back to back: `lead` before the first, `gap` between lines (default 0.3 s), `tail` after the last; `pad` sets `lead` and `tail` together (default 0.35 s). The duration is `lead + lines + gaps + tail`, so a regenerated VO line resizes the scene with no code change. An explicit `duration` still wins.
+- `cue(id)` is when the line starts in this scene; `word(id, "word")` when a word starts (first exact match, then first word starting with the text; case and punctuation ignored); `word(id, 3)` takes the 4th word. A typo throws and lists the line's words.
+- The composition places each line's audio (`assets/audio/vo/<id>.mp3`, role `vo`) at its scene start + cue. Don't list those clips yourself; set their level with `composition({ narration: { volume: 0.9 } })`, or turn it off with `narration: false`. A clip you already list for the same file is left alone.
+- A line with no audio yet counts as 2.5 s so the scene still previews; generate it and the timing follows.
+- Captions on the same timing: `captions(root, { lines: ["h1", "h2"].map((id) => ({ id, at: cue(id) })) })`.
+
 ### Karaoke Captions (`captions`)
 
 Use the built-in component; don't hand-roll caption helpers:
@@ -455,5 +475,5 @@ Before declaring an edit complete:
 7. **Length & Pacing**:
    - Total duration is `Σ scene.duration`; plan it first: 9:16 shorts 20–45 s (5–9 scenes), 16:9 explainers 2–5 min, tutorials 5–15 min, documentation/courses **15–60 min** (40–150 scenes).
    - Long-form is built in chapters: one module per chapter, 5–12 beats each, rendered in ranges (`--frames`) and concatenated.
-   - Script ≈ 2.4 words/s (30 s ≈ 75 words, 30 min ≈ 4,300 words); scene duration = `vo(id).duration + 0.6` s, minimum 2.5 s.
+   - Script ≈ 2.4 words/s (30 s ≈ 75 words, 30 min ≈ 4,300 words); narrated scenes take their duration from `scene(id, { vo: [...] })`, minimum 2.5 s.
    - The scaffold's 3 s `intro.ts` and 3-line `script.md` are placeholders — expand to the target and verify with `liosvideo info`.

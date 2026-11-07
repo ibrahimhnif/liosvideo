@@ -92,13 +92,46 @@ export function buildManifest(c: Composition): TimelineManifest {
     };
   });
 
+  const narration = narrationTracks(c, scenes, audioTracks ?? []);
+  const tracks = audioTracks || narration.length ? [...(audioTracks ?? []), ...narration] : undefined;
+
   return {
     width: c.width,
     height: c.height,
     fps: c.fps,
     totalFrames,
     scenes: scenes.map((span, i) => ({ ...span, tree: describe(instantiateScene(c, c.scenes[i]), span, c.fps), site: c.scenes[i].site })),
-    ...(audioTracks ? { audioTracks } : {}),
+    ...(tracks ? { audioTracks: tracks } : {}),
     ...(c.mix ? { mix: c.mix } : {}),
   };
+}
+
+/** Audio for the VO lines of `scene({ vo })` scenes that the composition does not already list. */
+function narrationTracks(c: Composition, scenes: SceneSpan[], listed: ManifestAudioTrack[]): ManifestAudioTrack[] {
+  if (c.narration === false) return [];
+  const volume = c.narration?.volume;
+  const have = new Set(listed.flatMap((t) => t.clips.map((clip) => clip.src.replace(/^\.\//, ""))));
+  const out: ManifestAudioTrack[] = [];
+  c.scenes.forEach((def, i) => {
+    for (const line of def.vo ?? []) {
+      const src = `assets/audio/vo/${line.id}.mp3`;
+      if (!line.ready || have.has(src)) continue;
+      const startFrame = scenes[i].startFrame + Math.round(line.at * c.fps);
+      out.push({
+        id: `vo-${line.id}`,
+        name: `VO ${line.id}`,
+        clips: [
+          {
+            src,
+            startFrame,
+            endFrame: startFrame + Math.round(line.duration * c.fps),
+            duration: line.duration,
+            role: "vo",
+            ...(volume !== undefined ? { volume } : {}),
+          },
+        ],
+      });
+    }
+  });
+  return out;
 }

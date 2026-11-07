@@ -892,15 +892,149 @@ var __liosvideo = (function(exports) {
 	const text = (init) => new TextNode(init);
 	const image = (init) => new ImageNode(init);
 	const video = (init) => new VideoNode(init);
-	// packages/runtime/src/composition.ts
-	function scene(id, opts, build) {
+	// packages/runtime/src/audio/timing.ts
+	const VO_REGISTRY = /* @__PURE__ */ new Map();
+	function registerVoTiming(timing) {
+		const key = timing.lineId || timing.line_id;
+		if (key) VO_REGISTRY.set(key, timing);
+	}
+	function registerVoTimings(timings) {
+		if (Array.isArray(timings)) timings.forEach(registerVoTiming);
+		else if (timings && typeof timings === "object") Object.entries(timings).forEach(([k, v]) => registerVoTiming({
+			...v,
+			lineId: v.lineId || k
+		}));
+	}
+	var VoHelper = class {
+		lineId;
+		timing;
+		start = 0;
+		end;
+		constructor(lineId, timing) {
+			this.lineId = lineId;
+			this.timing = timing;
+			this.end = timing?.duration ?? 0;
+		}
+		get isReady() {
+			return !!(this.timing && (this.timing.duration > 0 || this.timing.words && this.timing.words.length > 0));
+		}
+		get duration() {
+			return this.end;
+		}
+		/** Word timings (seconds from the start of the line); empty until the line has been generated. */
+		get words() {
+			return this.timing?.words ?? [];
+		}
+		wordTime(text) {
+			if (!this.timing || !this.timing.words?.length) return;
+			const target = text.trim().toLowerCase();
+			const found = this.timing.words.find((w) => w.word.trim().toLowerCase() === target || w.word.toLowerCase().includes(target));
+			return found ? found.start : void 0;
+		}
+		word(text) {
+			if (!this.timing || !this.timing.words?.length) return {
+				start: 0,
+				end: 0
+			};
+			const target = text.trim().toLowerCase();
+			const found = this.timing.words.find((w) => w.word.trim().toLowerCase() === target || w.word.toLowerCase().includes(target));
+			if (found) return {
+				start: found.start,
+				end: found.end
+			};
+			return {
+				start: 0,
+				end: 0
+			};
+		}
+	};
+	const vo = (lineId, timing) => {
+		return new VoHelper(lineId, timing ?? VO_REGISTRY.get(lineId) ?? globalThis.__liosVoTimings?.[lineId]);
+	};
+	// packages/runtime/src/audio/narration.ts
+	const VO_PAD = .35;
+	const VO_GAP = .3;
+	/** Stand-in length of a line that has no audio yet, so the scene can be previewed. */
+	const VO_PLACEHOLDER = 2.5;
+	/** Where each line of a scene starts, and how long the scene runs to hold them all. */
+	function planVo(opts) {
+		const lead = opts.lead ?? opts.pad ?? .35;
+		const tail = opts.tail ?? opts.pad ?? .35;
+		const gap = opts.gap ?? .3;
+		let t = lead;
 		return {
+			cues: (opts.vo ?? []).map((id, i) => {
+				const line = vo(id);
+				const ready = line.isReady && line.duration > 0;
+				if (i > 0) t += gap;
+				const cue = {
+					id,
+					at: t,
+					duration: ready ? line.duration : VO_PLACEHOLDER,
+					ready
+				};
+				t += cue.duration;
+				return cue;
+			}),
+			duration: t + tail
+		};
+	}
+	const norm = (s) => s.normalize("NFKD").toLowerCase().replace(/[^\p{L}\p{N}]/gu, "");
+	/** The `cue(line)` and `word(line, wordOrIndex)` helpers of a scene's builder: scene-local seconds. */
+	function sceneCues(sceneId, cues) {
+		const find = (id) => {
+			const cue = cues.find((c) => c.id === id);
+			if (!cue) {
+				const list = cues.length ? cues.map((c) => c.id).join(", ") : "none; add scene(id, { vo: [...] })";
+				throw new Error(`cue(): VO line "${id}" is not narrated in scene "${sceneId}" (its lines: ${list})`);
+			}
+			return cue;
+		};
+		const cue = (id) => find(id).at;
+		const word = (id, which) => {
+			const c = find(id);
+			const words = vo(id).words;
+			if (!c.ready || !words.length) return c.at;
+			if (typeof which === "number") {
+				const w = words[which];
+				if (!w) throw new Error(`word(): VO line "${id}" has no word ${which} (it has ${words.length})`);
+				return c.at + w.start;
+			}
+			const target = norm(which);
+			const w = words.find((x) => norm(x.word) === target) ?? words.find((x) => norm(x.word).startsWith(target));
+			if (!w) throw new Error(`word(): no word "${which}" in VO line "${id}" (words: ${words.map((x) => x.word).join(", ")})`);
+			return c.at + w.start;
+		};
+		return {
+			cue,
+			word
+		};
+	}
+	// packages/runtime/src/composition.ts
+	/**
+	* A scene. With `vo: [lineIds]` the lines are spoken back to back (`lead`/`gap`/`tail`, or `pad`) and
+	* the duration follows the generated audio unless `duration` is given; the builder's `cue()` and
+	* `word()` give scene-local times and the composition places the audio.
+	*/
+	function scene(id, opts, build) {
+		const site = (/* @__PURE__ */ new Error()).stack;
+		if (!opts.vo) return {
 			id,
 			duration: opts.duration,
 			background: opts.background,
 			transition: opts.transition,
 			build,
-			site: (/* @__PURE__ */ new Error()).stack
+			site
+		};
+		const plan = planVo(opts);
+		return {
+			id,
+			duration: opts.duration ?? plan.duration,
+			background: opts.background,
+			transition: opts.transition,
+			build,
+			vo: plan.cues,
+			site
 		};
 	}
 	function composition(c) {
@@ -945,12 +1079,15 @@ var __liosvideo = (function(exports) {
 				width: c.width,
 				height: c.height
 			});
+			const { cue, word } = sceneCues(def.id, def.vo ?? []);
 			def.build({
 				root,
 				width: c.width,
 				height: c.height,
 				duration: def.duration,
-				random: seededRandom(def.id)
+				random: seededRandom(def.id),
+				cue,
+				word
 			});
 			byDef.set(def, root);
 		}
@@ -1577,6 +1714,8 @@ var __liosvideo = (function(exports) {
 				})
 			};
 		});
+		const narration = narrationTracks(c, scenes, audioTracks ?? []);
+		const tracks = audioTracks || narration.length ? [...audioTracks ?? [], ...narration] : void 0;
 		return {
 			width: c.width,
 			height: c.height,
@@ -1587,69 +1726,37 @@ var __liosvideo = (function(exports) {
 				tree: describe(instantiateScene(c, c.scenes[i]), span, c.fps),
 				site: c.scenes[i].site
 			})),
-			...audioTracks ? { audioTracks } : {},
+			...tracks ? { audioTracks: tracks } : {},
 			...c.mix ? { mix: c.mix } : {}
 		};
 	}
-	// packages/runtime/src/audio/timing.ts
-	const VO_REGISTRY = /* @__PURE__ */ new Map();
-	function registerVoTiming(timing) {
-		const key = timing.lineId || timing.line_id;
-		if (key) VO_REGISTRY.set(key, timing);
+	/** Audio for the VO lines of `scene({ vo })` scenes that the composition does not already list. */
+	function narrationTracks(c, scenes, listed) {
+		if (c.narration === false) return [];
+		const volume = c.narration?.volume;
+		const have = new Set(listed.flatMap((t) => t.clips.map((clip) => clip.src.replace(/^\.\//, ""))));
+		const out = [];
+		c.scenes.forEach((def, i) => {
+			for (const line of def.vo ?? []) {
+				const src = `assets/audio/vo/${line.id}.mp3`;
+				if (!line.ready || have.has(src)) continue;
+				const startFrame = scenes[i].startFrame + Math.round(line.at * c.fps);
+				out.push({
+					id: `vo-${line.id}`,
+					name: `VO ${line.id}`,
+					clips: [{
+						src,
+						startFrame,
+						endFrame: startFrame + Math.round(line.duration * c.fps),
+						duration: line.duration,
+						role: "vo",
+						...volume !== void 0 ? { volume } : {}
+					}]
+				});
+			}
+		});
+		return out;
 	}
-	function registerVoTimings(timings) {
-		if (Array.isArray(timings)) timings.forEach(registerVoTiming);
-		else if (timings && typeof timings === "object") Object.entries(timings).forEach(([k, v]) => registerVoTiming({
-			...v,
-			lineId: v.lineId || k
-		}));
-	}
-	var VoHelper = class {
-		lineId;
-		timing;
-		start = 0;
-		end;
-		constructor(lineId, timing) {
-			this.lineId = lineId;
-			this.timing = timing;
-			this.end = timing?.duration ?? 0;
-		}
-		get isReady() {
-			return !!(this.timing && (this.timing.duration > 0 || this.timing.words && this.timing.words.length > 0));
-		}
-		get duration() {
-			return this.end;
-		}
-		/** Word timings (seconds from the start of the line); empty until the line has been generated. */
-		get words() {
-			return this.timing?.words ?? [];
-		}
-		wordTime(text) {
-			if (!this.timing || !this.timing.words?.length) return;
-			const target = text.trim().toLowerCase();
-			const found = this.timing.words.find((w) => w.word.trim().toLowerCase() === target || w.word.toLowerCase().includes(target));
-			return found ? found.start : void 0;
-		}
-		word(text) {
-			if (!this.timing || !this.timing.words?.length) return {
-				start: 0,
-				end: 0
-			};
-			const target = text.trim().toLowerCase();
-			const found = this.timing.words.find((w) => w.word.trim().toLowerCase() === target || w.word.toLowerCase().includes(target));
-			if (found) return {
-				start: found.start,
-				end: found.end
-			};
-			return {
-				start: 0,
-				end: 0
-			};
-		}
-	};
-	const vo = (lineId, timing) => {
-		return new VoHelper(lineId, timing ?? VO_REGISTRY.get(lineId) ?? globalThis.__liosVoTimings?.[lineId]);
-	};
 	// packages/runtime/src/audio/mix.ts
 	const DEFAULT_MIX = Object.freeze({
 		loudness: -14,
@@ -2982,6 +3089,9 @@ var __liosvideo = (function(exports) {
 	exports.TextNode = TextNode;
 	exports.ThreeNode = ThreeNode;
 	exports.Track = Track;
+	exports.VO_GAP = VO_GAP;
+	exports.VO_PAD = VO_PAD;
+	exports.VO_PLACEHOLDER = VO_PLACEHOLDER;
 	exports.VideoNode = VideoNode;
 	exports.VoHelper = VoHelper;
 	exports.WindowNode = WindowNode;
@@ -3025,12 +3135,14 @@ var __liosvideo = (function(exports) {
 	exports.path = path;
 	exports.peak = peak;
 	exports.phone = phone;
+	exports.planVo = planVo;
 	exports.rect = rect;
 	exports.registerAttributions = registerAttributions;
 	exports.registerVoTiming = registerVoTiming;
 	exports.registerVoTimings = registerVoTimings;
 	exports.resolveMix = resolveMix;
 	exports.scene = scene;
+	exports.sceneCues = sceneCues;
 	exports.seededRandom = seededRandom;
 	exports.setTextMeasurer = setTextMeasurer;
 	exports.shader = shader;
