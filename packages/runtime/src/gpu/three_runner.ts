@@ -13,9 +13,16 @@ const TONE_MAPPING: Record<string, THREE.ToneMapping> = {
 
 /** Applies a three() node's renderer settings (shared by the desktop runner and the CLI GPU host). */
 export function applyRenderOptions(
-  renderer: { shadowMap: { enabled: boolean; type: THREE.ShadowMapType }; toneMapping: THREE.ToneMapping; toneMappingExposure: number },
+  renderer: {
+    shadowMap: { enabled: boolean; type: THREE.ShadowMapType };
+    toneMapping: THREE.ToneMapping;
+    toneMappingExposure: number;
+    localClippingEnabled: boolean;
+  },
   opts: Required<ThreeRenderOptions>,
 ): void {
+  // material.clippingPlanes cut meshes (cutaways); the CLI GPU host maps them to ClippingGroups.
+  renderer.localClippingEnabled = true;
   renderer.shadowMap.enabled = opts.shadows;
   renderer.shadowMap.type = THREE.PCFShadowMap;
   renderer.toneMapping = TONE_MAPPING[opts.toneMapping] ?? THREE.NoToneMapping;

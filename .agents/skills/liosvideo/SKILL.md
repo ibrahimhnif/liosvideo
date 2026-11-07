@@ -304,6 +304,20 @@ three({
 - The path moves the camera before your `update` runs; `update` gets the camera as `state.camera` when setup did not return one. Outside the keys the camera holds the first / last pose.
 - `path.sample(t)` gives `{ position, target, fov }`; `path.apply(camera, t)` sets it by hand (e.g. two paths cut together in `update`).
 
+Cutaways (section cuts) use three.js clipping planes on the material, in world space; move the plane in `update`:
+
+```ts
+setup({ scene }) {
+  const cut = new THREE.Plane(new THREE.Vector3(-1, 0, 0), 2);   // keeps x < 2 (normal · p + constant ≥ 0)
+  const body = new THREE.MeshStandardMaterial({ color: "#c0c4cc", side: THREE.DoubleSide, clippingPlanes: [cut] });
+  scene.add(new THREE.Mesh(new THREE.CylinderGeometry(1, 1, 3, 48, 1, true), body));
+  return { cut };
+},
+update({ cut }, progress) { cut.constant = 2 - 2 * progress; },  // slices to the middle
+```
+
+- `clipIntersection: true` cuts only where every plane cuts. `DoubleSide` shows the inner walls through the cut. Clip meshes: the software fallback does not clip lines or points.
+
 ```ts
 const globe = root.add(
   three({

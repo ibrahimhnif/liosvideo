@@ -7,7 +7,7 @@
 // the software rasteriser in three_host.js.
 
 import * as THREE from "three";
-import { WebGPURenderer } from "three/webgpu";
+import { ClippingGroup, WebGPURenderer } from "three/webgpu";
 
 const TONE_MAPPING = {
   none: THREE.NoToneMapping,
@@ -31,6 +31,50 @@ const sessions = new Map();
 const warned = new Set();
 let device = null;
 let unavailable = false;
+
+// WebGPURenderer ignores material.clippingPlanes (WebGL's local clipping) and clips by ClippingGroup
+// instead. For the render only, each object whose material has planes sits inside an identity
+// ClippingGroup holding those planes, so the same scene cuts the same way as the desktop preview.
+// The group is kept per object so its clipping context (and compiled pipeline) survives frames.
+const clipGroups = new WeakMap();
+
+function clippingMaterial(object) {
+  const materials = Array.isArray(object.material) ? object.material : [object.material];
+  return materials.find((m) => m && m.clippingPlanes && m.clippingPlanes.length);
+}
+
+function wrapClipped(scene) {
+  const wrapped = [];
+  scene.traverse((object) => {
+    if (object.isClippingGroup || !object.parent || !object.material) return;
+    const material = clippingMaterial(object);
+    if (material) wrapped.push([object, material]);
+  });
+  for (const [object, material] of wrapped) {
+    let group = clipGroups.get(object);
+    if (!group) {
+      group = new ClippingGroup();
+      clipGroups.set(object, group);
+    }
+    group.clippingPlanes = material.clippingPlanes;
+    group.clipIntersection = !!material.clipIntersection;
+    const parent = object.parent;
+    parent.children[parent.children.indexOf(object)] = group;
+    group.parent = parent;
+    group.children = [object];
+    object.parent = group;
+  }
+  return () => {
+    for (const [object] of wrapped) {
+      const group = object.parent;
+      const parent = group.parent;
+      parent.children[parent.children.indexOf(group)] = object;
+      object.parent = parent;
+      group.parent = null;
+      group.children = [];
+    }
+  };
+}
 
 function warnOnce(message) {
   if (warned.has(message)) return;
@@ -258,9 +302,11 @@ export async function renderThreeSceneGpu(comp, sceneIndex, time, progress) {
       const sceneBackground = session.scene.background;
       const background = backgroundBytes(sceneBackground);
       if (background) session.scene.background = null;
+      const unwrapClipped = wrapClipped(session.scene);
       try {
         session.renderer.render(session.scene, session.camera);
       } finally {
+        unwrapClipped();
         session.scene.background = sceneBackground;
       }
       const pixels = await readPixels(session, background);

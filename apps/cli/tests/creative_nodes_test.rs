@@ -193,3 +193,59 @@ async fn follows_a_three_key_camera_path() -> Result<()> {
     let _ = std::fs::remove_dir_all(&dir);
     Ok(())
 }
+
+// Same cutaway as "cuts meshes with material.clippingPlanes animated in update" in
+// packages/runtime/test/three_soft.test.ts.
+#[tokio::test]
+async fn clips_a_cutaway_with_an_animated_plane() -> Result<()> {
+    let dir = write_project(
+        "cutaway",
+        r##"
+        import { composition, scene, three } from "liosvideo";
+        import * as THREE from "three";
+
+        const shot = scene("shot", { duration: 1 }, ({ root, width, height }) => {
+            root.add(three({
+                name: "cutaway",
+                width,
+                height,
+                fov: 40,
+                setup({ scene: s, camera }) {
+                    camera.position.set(0, 0, 5);
+                    const plane = new THREE.Plane(new THREE.Vector3(-1, 0, 0), 5);
+                    const cube = new THREE.Mesh(
+                        new THREE.BoxGeometry(2, 2, 2),
+                        new THREE.MeshBasicMaterial({ color: "#ff0000", clippingPlanes: [plane] }),
+                    );
+                    s.add(cube);
+                    return { plane };
+                },
+                update({ plane }, progress) {
+                    plane.constant = 5 - 5 * progress;
+                },
+            }));
+        });
+
+        export default composition({ width: 64, height: 64, fps: 30, background: "#000000", scenes: [shot] });
+    "##,
+    )?;
+
+    // One process per frame: a second three.js GPU session in the same process is not supported.
+    for (time, right_red) in [("0", true), ("0.99", false)] {
+        let out = dir.join(format!("cut-{time}.png"));
+        let status = std::process::Command::new(env!("CARGO_BIN_EXE_liosvideo"))
+            .args(["snapshot", "main.ts", "--time", time, "-o"])
+            .arg(&out)
+            .current_dir(&dir)
+            .status()?;
+        assert!(status.success(), "snapshot at {time}s failed");
+        let image = image::open(&out)?;
+        let left = image.get_pixel(22, 32);
+        let right = image.get_pixel(42, 32);
+        assert!(left[0] > 200, "t={time}: the left half should stay, got {left:?}");
+        assert_eq!(right[0] > 200, right_red, "t={time}: right half {right:?}");
+    }
+
+    let _ = std::fs::remove_dir_all(&dir);
+    Ok(())
+}

@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import * as THREE from "three";
 import { three } from "../src/graph/three";
-import { ThreeRunner } from "../src/gpu/three_runner";
+import { applyRenderOptions, ThreeRunner } from "../src/gpu/three_runner";
 
 describe("ThreeRunner", () => {
   it("initializes scene and invokes update at timestamp t", () => {
@@ -47,5 +47,11 @@ describe("ThreeRunner", () => {
     runner.step(pNode, 0, 1);
     runner.step(oNode, 0, 1);
     runner.dispose();
+  });
+
+  it("turns on local clipping so material.clippingPlanes cut meshes", () => {
+    const renderer: any = { shadowMap: { enabled: false, type: 0 }, toneMapping: 0, toneMappingExposure: 1, localClippingEnabled: false };
+    applyRenderOptions(renderer, { shadows: false, toneMapping: "none", exposure: 1 });
+    expect(renderer.localClippingEnabled).toBe(true);
   });
 });

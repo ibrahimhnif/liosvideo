@@ -8,7 +8,7 @@
 // Supported: Mesh (BufferGeometry, indexed or not, groups/multi-material), Line,
 // LineSegments, LineLoop, Points, MeshBasic/Lambert/Phong/Standard/Toon/Normal,
 // Ambient/Hemisphere/Directional/Point/Spot lights, vertex colors, flat shading,
-// FrontSide/BackSide/DoubleSide, transparent materials, orthographic + perspective cameras.
+// FrontSide/BackSide/DoubleSide, transparent materials, material.clippingPlanes (meshes), orthographic + perspective cameras.
 // Not supported: textures, shadows, skinning, morph targets, instancing, post-processing.
 
 import * as THREE from "three";
@@ -402,6 +402,15 @@ function buildTriangle(
   };
 }
 
+// material.clippingPlanes (world space), as three.js does: a fragment is cut when it is behind any plane,
+// or behind every plane with clipIntersection.
+function clippedOut(material, x, y, z) {
+  const planes = material.clippingPlanes;
+  if (!planes || !planes.length) return false;
+  const behind = (plane) => plane.normal.x * x + plane.normal.y * y + plane.normal.z * z + plane.constant < 0;
+  return material.clipIntersection ? planes.every(behind) : planes.some(behind);
+}
+
 function edge(ax, ay, bx, by, px, py) {
   return (px - ax) * (by - ay) - (py - ay) * (bx - ax);
 }
@@ -481,6 +490,7 @@ function drawTriangle(triangle, color, alpha, depth, width, height, blend) {
       const wx = p0 * triangle.world[0] + p1 * triangle.world[3] + p2 * triangle.world[6];
       const wy = p0 * triangle.world[1] + p1 * triangle.world[4] + p2 * triangle.world[7];
       const wz = p0 * triangle.world[2] + p1 * triangle.world[5] + p2 * triangle.world[8];
+      if (clippedOut(material, wx, wy, wz)) continue;
 
       let nx = triangle.faceNormal.x;
       let ny = triangle.faceNormal.y;

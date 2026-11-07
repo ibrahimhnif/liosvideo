@@ -79,4 +79,54 @@ describe("software three renderer", () => {
       expect(Math.max(...px.filter((_, c) => c !== channel)), `t=${time}: ${px}`).toBeLessThan(60);
     }
   });
+
+  // Same cutaway as clips_a_cutaway_with_an_animated_plane in apps/cli/tests/creative_nodes_test.rs.
+  it("cuts meshes with material.clippingPlanes animated in update", () => {
+    const node = three({
+      name: "cutaway",
+      width: 64,
+      height: 64,
+      fov: 40,
+      setup({ scene, camera }) {
+        camera.position.set(0, 0, 5);
+        const plane = new THREE.Plane(new THREE.Vector3(-1, 0, 0), 5); // keeps x < 5: nothing cut yet
+        const cube = new THREE.Mesh(
+          new THREE.BoxGeometry(2, 2, 2),
+          new THREE.MeshBasicMaterial({ color: "#ff0000", clippingPlanes: [plane] }),
+        );
+        scene.add(cube);
+        return { plane };
+      },
+      update({ plane }, progress) {
+        plane.constant = 5 - 5 * progress; // at the end only x < 0 is left
+      },
+    });
+    const alphaAt = (pixels: Uint8Array, width: number, x: number) => pixels[(32 * width + x) * 4 + 3];
+    const start = renderThreeNode(node, 0, 1)!;
+    expect(alphaAt(start.pixels, start.width, 22)).toBeGreaterThan(0);
+    expect(alphaAt(start.pixels, start.width, 42)).toBeGreaterThan(0);
+    const end = renderThreeNode(node, 1, 1)!;
+    expect(alphaAt(end.pixels, end.width, 22)).toBeGreaterThan(0);
+    expect(alphaAt(end.pixels, end.width, 42)).toBe(0);
+  });
+
+  it("keeps a fragment unless every plane cuts it when clipIntersection is set", () => {
+    const make = (clipIntersection: boolean) =>
+      three({
+        name: `cut-${clipIntersection}`,
+        width: 64,
+        height: 64,
+        fov: 40,
+        setup({ scene, camera }) {
+          camera.position.set(0, 0, 5);
+          const planes = [new THREE.Plane(new THREE.Vector3(-1, 0, 0), 0), new THREE.Plane(new THREE.Vector3(0, -1, 0), 0)];
+          const material = new THREE.MeshBasicMaterial({ color: "#ff0000", clippingPlanes: planes, clipIntersection });
+          scene.add(new THREE.Mesh(new THREE.BoxGeometry(2, 2, 2), material));
+        },
+      });
+    // pixel (42, 42): x > 0, y < 0 → outside the first plane only
+    const at = (n: ReturnType<typeof make>) => { const f = renderThreeNode(n, 0, 1)!; return f.pixels[(42 * f.width + 42) * 4 + 3]; };
+    expect(at(make(false))).toBe(0);
+    expect(at(make(true))).toBeGreaterThan(0);
+  });
 });
