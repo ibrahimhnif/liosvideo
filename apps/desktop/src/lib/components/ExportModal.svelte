@@ -7,6 +7,7 @@
     X,
   } from "@lucide/svelte";
   import type { ExportConfig } from "$lib/export/export_engine";
+  import { EXPORT_PRESETS, exportPreset, type ExportPresetId } from "$lib/export/presets";
 
   let {
     open = false,
@@ -32,7 +33,7 @@
     onShowInFinder?: (filePath: string) => Promise<void>;
   } = $props();
 
-  let preset = $state<"native" | "1080p" | "4k" | "shorts">("native");
+  let preset = $state<ExportPresetId>("native");
   let selectedFps = $state(30);
   let status = $state<"idle" | "exporting" | "done" | "error">("idle");
   let progress = $state(0);
@@ -60,16 +61,8 @@
   });
 
   const targetResolution = $derived.by(() => {
-    switch (preset) {
-      case "1080p":
-        return { w: 1920, h: 1080, bitrate: 10_000_000 };
-      case "4k":
-        return { w: 3840, h: 2160, bitrate: 30_000_000 };
-      case "shorts":
-        return { w: 1080, h: 1920, bitrate: 10_000_000 };
-      default:
-        return { w: width, h: height, bitrate: 10_000_000 };
-    }
+    const p = exportPreset(preset, width, height);
+    return { w: p.width, h: p.height, bitrate: p.bitrate, audioBitrate: p.audioBitrate };
   });
 
   async function handleStart() {
@@ -85,6 +78,7 @@
         fps: selectedFps,
         totalFrames,
         bitrate: targetResolution.bitrate,
+        audioBitrate: targetResolution.audioBitrate,
       };
       const resultPath = await onStartExport(config, (pct, stage, log) => {
         progress = pct;
@@ -140,10 +134,10 @@
           <div class="field">
             <label for="preset-select">Preset</label>
             <select id="preset-select" bind:value={preset}>
-              <option value="native">Native ({width} × {height})</option>
-              <option value="1080p">1080p Full HD (1920 × 1080)</option>
-              <option value="4k">4K Ultra HD (3840 × 2160)</option>
-              <option value="shorts">Vertical 9:16 Shorts/Reels (1080 × 1920)</option>
+              {#each EXPORT_PRESETS as option (option.id)}
+                {@const size = exportPreset(option.id, width, height)}
+                <option value={option.id}>{option.label} ({size.width} × {size.height})</option>
+              {/each}
             </select>
           </div>
 

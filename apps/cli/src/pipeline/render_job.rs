@@ -142,7 +142,7 @@ pub async fn run_render_job(config: RenderConfig) -> Result<()> {
 
     let (target_width, target_height) = config.preset.size(comp_info.width, comp_info.height);
     let video_bitrate = resolve_bitrate(config.bitrate, config.quality.as_deref(), config.preset);
-    let audio_bitrate = config.audio_bitrate.unwrap_or(192_000);
+    let audio_bitrate = config.audio_bitrate.unwrap_or_else(|| config.preset.audio_bitrate());
 
     let frame_range = parse_frame_range(config.frames.as_deref(), comp_info.total_frames)?;
     let total_render_frames = frame_range.len();

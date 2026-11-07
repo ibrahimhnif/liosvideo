@@ -58,7 +58,7 @@ liosvideo render <ENTRY> [OPTIONS]
 | `--fps <FPS>` | Override composition framerate | From composition | `--fps 60` |
 | `--frames <RANGE>` | Slice a subset of frames to render | Full video | `--frames 0..120` |
 | `--quality <PRESET>`| Encoding quality preset (`low`=4 Mbps, `medium`=10, `high`=30) | Preset default | `--quality high` |
-| `--preset <NAME>` | Output resolution: `native`, `1080p`, `4k`, `shorts` | `native` | `--preset shorts` |
+| `--preset <NAME>` | `native`, `1080p`, `4k`, `shorts`, `preview` (720p, ~0.7 Mbps: a 60 s short is ~5 MB, for sending/review), `tiktok`, `reels` (1080×1920, 10 Mbps), `youtube` (1920×1080, or 1080×1920 for a vertical composition; 12 Mbps, 320 kbps AAC) | `native` | `--preset preview` |
 | `--bitrate <BPS>` | H.264 bitrate override | Preset default | `--bitrate 20000000` |
 | `--audio-bitrate <BPS>` | AAC bitrate | `192000` | `--audio-bitrate 256000` |
 | `--loudness <LUFS>` | Integrated loudness target (whole programme, before `--frames`) | composition `mix`, else `-14` | `--loudness -16` |
@@ -115,7 +115,7 @@ liosvideo snapshot <ENTRY> [OPTIONS]
 | `-o, --out <PATH>` | Output destination PNG path | `out/snapshot.png` | `-o out/frame-0.png` |
 | `--frame <N>` | Target frame number to capture (0-indexed) | `0` | `--frame 45` |
 | `--time <S>` | Time in seconds instead of a frame (nearest frame) | — | `--time 3.2` |
-| `--preset <NAME>` | Output resolution: `native`, `1080p`, `4k`, `shorts` | `native` | `--preset 1080p` |
+| `--preset <NAME>` | Output resolution, as for `render` (`native`, `1080p`, `4k`, `shorts`, `preview`, `tiktok`, `reels`, `youtube`) | `native` | `--preset 1080p` |
 
 #### Visual Verification Workflow:
 Use `snapshot` to verify visual layout, text wrapping, and colors before launching long video renders:

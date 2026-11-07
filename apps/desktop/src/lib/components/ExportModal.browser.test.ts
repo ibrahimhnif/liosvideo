@@ -29,6 +29,12 @@ describe("ExportModal", () => {
     // Select Shorts 9:16 preset
     await presetSelect.selectOptions("shorts");
     await expect.element(screen.getByTestId("resolution-value")).toHaveTextContent("1080 × 1920");
+
+    // Small review file
+    await presetSelect.selectOptions("preview");
+    await expect.element(screen.getByTestId("resolution-value")).toHaveTextContent("1280 × 720");
+    await screen.getByRole("button", { name: "Start Export" }).click();
+    expect(onStart.mock.calls[0][0]).toMatchObject({ width: 1280, height: 720, bitrate: 600_000, audioBitrate: 96_000 });
   });
 
   it("handles export progress and done state", async () => {

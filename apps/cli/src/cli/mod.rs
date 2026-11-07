@@ -38,7 +38,7 @@ pub enum Commands {
         /// Encoding quality preset (low, medium, high); ignored when --bitrate is set
         #[arg(long)]
         quality: Option<String>,
-        /// Output resolution preset (native, 1080p, 4k, shorts)
+        /// Output preset: native, 1080p, 4k, shorts, preview (720p, small), tiktok, reels, youtube
         #[arg(long, default_value = "native")]
         preset: String,
         /// H.264 bitrate in bits per second
@@ -65,7 +65,7 @@ pub enum Commands {
         /// Time in seconds instead of a frame number (e.g. --time 3.2)
         #[arg(long, conflicts_with = "frame")]
         time: Option<f64>,
-        /// Output resolution preset (native, 1080p, 4k, shorts)
+        /// Output preset: native, 1080p, 4k, shorts, preview (720p, small), tiktok, reels, youtube
         #[arg(long, default_value = "native")]
         preset: String,
     },
