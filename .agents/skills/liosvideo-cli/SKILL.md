@@ -343,6 +343,9 @@ liosvideo asset edit-image palace "darker sky, fewer people"   # new version, sa
 liosvideo asset images                                         # ids, versions, prompts
 liosvideo asset use-image palace 1                             # switch back to v1
 
+# Integrity: every render re-reads its MP4 and fails on corrupted H.264 frames
+liosvideo verify out/video.mp4      # check any existing file before posting
+
 # Secrets (env → macOS Keychain → ~/.config/liosvideo/credentials.json)
 liosvideo key get ELEVENLABS_API_KEY
 liosvideo key set ELEVENLABS_API_KEY sk-...

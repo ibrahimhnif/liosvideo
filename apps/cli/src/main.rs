@@ -49,6 +49,16 @@ async fn main() -> anyhow::Result<()> {
         } => {
             pipeline::render_snapshot(&entry, frame, &out, Preset::parse(&preset)?).await?;
         }
+        cli::Commands::Verify { file } => {
+            let report = liosvideo_cli::media::integrity::check_file(&file, None)
+                .map_err(|e| anyhow::anyhow!("{}: {e}", file.display()))?;
+            println!(
+                "{}: OK ({} frames, {} keyframes, no missing or duplicated references)",
+                file.display(),
+                report.frames,
+                report.keyframes
+            );
+        }
         cli::Commands::Info { entry, json } => {
             pipeline::run_info_job(&entry, json).await?;
         }

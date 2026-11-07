@@ -237,6 +237,16 @@ pub async fn run_render_job(config: RenderConfig) -> Result<()> {
     encoder.finish()?;
     progress.finish_with_message("Done");
 
+    // Never hand over a file that only looks fine until a player hits a broken reference frame.
+    let report = crate::media::integrity::check_file(&config.out, Some(total_render_frames as u32))
+        .map_err(|e| anyhow!("Render integrity check failed for {}: {e}", config.out.display()))?;
+    if !config.quiet {
+        println!(
+            "Integrity: OK ({} frames, {} keyframes)",
+            report.frames, report.keyframes
+        );
+    }
+
     if !config.quiet {
         let elapsed = start_instant.elapsed();
         let render_fps = if elapsed.as_secs_f64() > 0.0 {

@@ -65,6 +65,8 @@ pub enum Commands {
         #[arg(long)]
         json: bool,
     },
+    /// Check an MP4's H.264 stream for corrupted frames (missing/duplicated references)
+    Verify { file: PathBuf },
     Validate {
         /// Optional relative scene file; defaults to every scene under scenes/
         path: Option<String>,
@@ -445,6 +447,12 @@ mod tests {
             cli.command,
             Some(Commands::Asset { command: AssetCommand::UseImage { id: "palace".into(), version: 1 } })
         );
+    }
+
+    #[test]
+    fn parses_verify_command() {
+        let cli = Cli::parse_from(["liosvideo", "verify", "out/video.mp4"]);
+        assert_eq!(cli.command, Some(Commands::Verify { file: PathBuf::from("out/video.mp4") }));
     }
 
     #[test]
