@@ -138,3 +138,58 @@ async fn renders_threejs_mesh_with_lights() -> Result<()> {
     let _ = std::fs::remove_dir_all(&dir);
     Ok(())
 }
+
+// Same scene and path as "follows a 3-key camera path" in packages/runtime/test/three_soft.test.ts.
+#[tokio::test]
+async fn follows_a_three_key_camera_path() -> Result<()> {
+    let dir = write_project(
+        "camera-path",
+        r##"
+        import { cameraPath, composition, scene, three } from "liosvideo";
+        import * as THREE from "three";
+
+        const shot = scene("shot", { duration: 1.2 }, ({ root, width, height }) => {
+            root.add(three({
+                name: "cubes",
+                width,
+                height,
+                fov: 40,
+                cameraPath: cameraPath([
+                    { at: 0, position: [-3, 0, 4], target: [-3, 0, 0] },
+                    { at: 0.5, position: [0, 0, 1], target: [0, 0, -3] },
+                    { at: 1, position: [3, 0, 4], target: [3, 0, 0], fov: 30 },
+                ]),
+                setup({ scene: s }) {
+                    for (const [x, z, color] of [[-3, 0, "#ff0000"], [0, -3, "#00ff00"], [3, 0, "#0000ff"]] as const) {
+                        const cube = new THREE.Mesh(new THREE.BoxGeometry(1, 1, 1), new THREE.MeshBasicMaterial({ color }));
+                        cube.position.set(x, 0, z);
+                        s.add(cube);
+                    }
+                },
+            }));
+        });
+
+        export default composition({ width: 64, height: 64, fps: 30, background: "#000000", scenes: [shot] });
+    "##,
+    )?;
+
+    // One process per frame: a second three.js GPU session in the same process is not supported.
+    for (frame, channel, label) in [(0, 0, "red"), (15, 1, "green"), (30, 2, "blue")] {
+        let out = dir.join(format!("frame-{frame}.png"));
+        let status = std::process::Command::new(env!("CARGO_BIN_EXE_liosvideo"))
+            .args(["snapshot", "main.ts", "--frame", &frame.to_string(), "-o"])
+            .arg(&out)
+            .current_dir(&dir)
+            .status()?;
+        assert!(status.success(), "snapshot of frame {frame} failed");
+        let pixel = image::open(&out)?.get_pixel(32, 32);
+        let others = (0..3).filter(|&c| c != channel).map(|c| pixel[c]).max().unwrap();
+        assert!(
+            pixel[channel] > 200 && others < 60,
+            "frame {frame}: expected the {label} cube at the centre, got {pixel:?}"
+        );
+    }
+
+    let _ = std::fs::remove_dir_all(&dir);
+    Ok(())
+}

@@ -281,6 +281,29 @@ three({
 - Each `gltf()` call returns its own copy of the scene, so two uses animate separately. `model.animations` holds the clips.
 - Not supported yet: Draco / meshopt compressed meshes and KTX2 textures. Export plain `.glb` (gltf-transform `--compress false`).
 
+Camera moves are a `cameraPath` prop, not hand-written `update` maths, so the preview and the render take the same shot:
+
+```ts
+import { cameraPath, dolly, orbit, pushIn, three } from "liosvideo";
+
+three({
+  name: "hero", width, height, fov: 40,
+  cameraPath: cameraPath([                                   // keys at scene seconds; catmull spline, inOutCubic per segment
+    { at: 0, position: [-4, 1, 6], target: [0, 0.5, 0] },
+    { at: 2, position: [0, 2, 3], target: [0, 0.5, 0], fov: 35 },
+    { at: 4, position: [4, 1, 6], target: [0, 1, 0], fov: 28 },
+  ], { ease: "inOutSine", spline: "catmull" }),             // spline: "linear" for straight legs
+  setup({ scene }) { /* … */ },
+});
+// Presets (start / end in scene seconds; fov: number | [from, to]):
+// orbit({ target: [0, 0, 0], radius: 6, height: 2, from: 0, to: Math.PI / 2, start: 0, end: 4 })
+// dolly({ from: [-3, 1, 5], to: [3, 1, 5], target: [0, 0, 0], start: 0.5, end: 3 })
+// pushIn({ from: [0, 1, 8], target: [0, 0.5, 0], amount: 0.4, start: 1, end: 3, fov: [40, 30] })
+```
+
+- The path moves the camera before your `update` runs; `update` gets the camera as `state.camera` when setup did not return one. Outside the keys the camera holds the first / last pose.
+- `path.sample(t)` gives `{ position, target, fov }`; `path.apply(camera, t)` sets it by hand (e.g. two paths cut together in `update`).
+
 ```ts
 const globe = root.add(
   three({

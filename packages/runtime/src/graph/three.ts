@@ -1,5 +1,8 @@
 import type * as THREE from "three";
+import type { CameraPath } from "../three/camera_path";
 import { BASE_DEFAULTS, type BaseProps, Node, type NodeInit } from "./node";
+
+const CAMERA = Symbol("liosvideo.threeCamera");
 
 export interface ThreeSetupContext {
   scene: THREE.Scene;
@@ -28,6 +31,8 @@ export interface ThreeProps extends BaseProps, ThreeRenderOptions {
   /** May be async: `await gltf(...)`, `await hdr(...)`, `await texture(...)`. Runs once per node. */
   setup: (ctx: ThreeSetupContext) => ThreeSetupResult;
   update?: (state: any, progress: number, time: number) => void;
+  /** Moves the camera at scene time before `update` runs: `cameraPath([...])`, `orbit()`, `dolly()`, `pushIn()`. */
+  cameraPath?: CameraPath;
 }
 
 export class ThreeNode extends Node<ThreeProps> {
@@ -48,8 +53,31 @@ export class ThreeNode extends Node<ThreeProps> {
       },
       init,
     );
-    this.setupFn = init.setup;
-    this.updateFn = init.update;
+    const path = init.cameraPath;
+    if (!path) {
+      this.setupFn = init.setup;
+      this.updateFn = init.update;
+      return;
+    }
+    // Wrap setup/update so every runner (desktop, CLI GPU and software) drives the camera the same way.
+    const stash = (ctx: ThreeSetupContext, result: Record<string, any> | void) => {
+      const state: Record<string | symbol, any> = result ?? {};
+      state[CAMERA] = ctx.camera;
+      if (!("camera" in state)) state.camera = ctx.camera;
+      path.apply(ctx.camera, 0);
+      return state;
+    };
+    const setup = init.setup;
+    this.setupFn = (ctx) => {
+      const result = setup(ctx);
+      return result instanceof Promise ? result.then((r) => stash(ctx, r)) : stash(ctx, result);
+    };
+    const update = init.update;
+    this.updateFn = (state, progress, time) => {
+      const camera = state?.[CAMERA];
+      if (camera) path.apply(camera, time);
+      update?.(state, progress, time);
+    };
   }
 
   get width(): number {

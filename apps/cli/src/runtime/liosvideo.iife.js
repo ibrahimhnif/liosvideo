@@ -690,6 +690,7 @@ var __liosvideo = (function(exports) {
 		};
 	}
 	// packages/runtime/src/graph/three.ts
+	const CAMERA = Symbol("liosvideo.threeCamera");
 	var ThreeNode = class extends Node {
 		setupFn;
 		updateFn;
@@ -703,8 +704,30 @@ var __liosvideo = (function(exports) {
 				setup: init.setup,
 				update: init.update
 			}, init);
-			this.setupFn = init.setup;
-			this.updateFn = init.update;
+			const path = init.cameraPath;
+			if (!path) {
+				this.setupFn = init.setup;
+				this.updateFn = init.update;
+				return;
+			}
+			const stash = (ctx, result) => {
+				const state = result ?? {};
+				state[CAMERA] = ctx.camera;
+				if (!("camera" in state)) state.camera = ctx.camera;
+				path.apply(ctx.camera, 0);
+				return state;
+			};
+			const setup = init.setup;
+			this.setupFn = (ctx) => {
+				const result = setup(ctx);
+				return result instanceof Promise ? result.then((r) => stash(ctx, r)) : stash(ctx, result);
+			};
+			const update = init.update;
+			this.updateFn = (state, progress, time) => {
+				const camera = state?.[CAMERA];
+				if (camera) path.apply(camera, time);
+				update?.(state, progress, time);
+			};
 		}
 		get width() {
 			return this.propsAt(0).width;
@@ -1795,6 +1818,144 @@ var __liosvideo = (function(exports) {
 	/** Loads an image from the project as a texture (`map`, `normalMap`, `roughnessMap`, …). */
 	async function texture(src, opts) {
 		return need("texture").texture(src, opts);
+	}
+	// packages/runtime/src/three/camera_path.ts
+	const SPLINES = ["catmull", "linear"];
+	function fromSampler(sample) {
+		return {
+			sample,
+			apply(camera, time) {
+				const pose = sample(time);
+				camera.position.set(pose.position[0], pose.position[1], pose.position[2]);
+				camera.lookAt(pose.target[0], pose.target[1], pose.target[2]);
+				const persp = camera;
+				if (pose.fov !== void 0 && persp.isPerspectiveCamera) {
+					persp.fov = pose.fov;
+					persp.updateProjectionMatrix();
+				}
+				camera.updateMatrixWorld();
+			}
+		};
+	}
+	const lerp = (a, b, t) => a + (b - a) * t;
+	const lerp3 = (a, b, t) => [
+		lerp(a[0], b[0], t),
+		lerp(a[1], b[1], t),
+		lerp(a[2], b[2], t)
+	];
+	function catmull(p0, p1, p2, p3, t) {
+		const t2 = t * t;
+		const t3 = t2 * t;
+		return .5 * (2 * p1 + (p2 - p0) * t + (2 * p0 - 5 * p1 + 4 * p2 - p3) * t2 + (3 * p1 - p0 - 3 * p2 + p3) * t3);
+	}
+	const catmull3 = (a, b, c, d, t) => [
+		catmull(a[0], b[0], c[0], d[0], t),
+		catmull(a[1], b[1], c[1], d[1], t),
+		catmull(a[2], b[2], c[2], d[2], t)
+	];
+	/**
+	* A keyframed camera move through `keys` (sorted by `at`). Before the first key and after the last
+	* the camera holds still. Pass it to `three({ cameraPath })`, or call `path.apply(camera, time)` in `update`.
+	*/
+	function cameraPath(keys, options = {}) {
+		if (!keys.length) throw new Error("cameraPath() needs at least one key");
+		const spline = options.spline ?? "catmull";
+		if (!SPLINES.includes(spline)) throw new Error(`Unknown spline ${JSON.stringify(spline)}. Use one of: ${SPLINES.join(", ")}`);
+		const easing = options.ease ?? "inOutCubic";
+		ease(easing, .5);
+		const sorted = keys.map((k, i) => ({
+			k,
+			i
+		})).sort((a, b) => a.k.at - b.k.at || a.i - b.i).map((e) => e.k);
+		const firstFov = sorted.find((k) => k.fov !== void 0)?.fov;
+		let target = [
+			0,
+			0,
+			0
+		];
+		let fov = firstFov;
+		const filled = sorted.map((k) => {
+			target = k.target ? [...k.target] : target;
+			fov = k.fov ?? fov;
+			return {
+				at: k.at,
+				position: [...k.position],
+				target,
+				fov
+			};
+		});
+		const last = filled.length - 1;
+		return fromSampler((time) => {
+			if (time <= filled[0].at || last === 0) return pose(filled[0]);
+			if (time >= filled[last].at) return pose(filled[last]);
+			let i = 0;
+			while (time >= filled[i + 1].at) i++;
+			const a = filled[i];
+			const b = filled[i + 1];
+			const u = ease(easing, (time - a.at) / (b.at - a.at));
+			const fovAt = a.fov === void 0 || b.fov === void 0 ? a.fov : lerp(a.fov, b.fov, u);
+			if (spline === "linear") return {
+				position: lerp3(a.position, b.position, u),
+				target: lerp3(a.target, b.target, u),
+				fov: fovAt
+			};
+			const p = filled[Math.max(0, i - 1)];
+			const n = filled[Math.min(last, i + 2)];
+			return {
+				position: catmull3(p.position, a.position, b.position, n.position, u),
+				target: catmull3(p.target, a.target, b.target, n.target, u),
+				fov: fovAt
+			};
+		});
+	}
+	function pose(k) {
+		return {
+			position: [...k.position],
+			target: [...k.target],
+			fov: k.fov
+		};
+	}
+	const fovAt = (fov, u) => Array.isArray(fov) ? lerp(fov[0], fov[1], u) : fov;
+	function spanProgress({ start, end, ease: e = "inOutCubic" }) {
+		ease(e, .5);
+		return (time) => ease(e, end > start ? (time - start) / (end - start) : time >= end ? 1 : 0);
+	}
+	/** Circles `target` at `radius`, from angle `from` to `to` (radians, 0 = +z, π/2 = +x), at camera height `height`. */
+	function orbit(o) {
+		const progress = spanProgress(o);
+		const y = o.height ?? o.target[1];
+		return fromSampler((time) => {
+			const u = progress(time);
+			const a = lerp(o.from, o.to, u);
+			return {
+				position: [
+					o.target[0] + o.radius * Math.sin(a),
+					y,
+					o.target[2] + o.radius * Math.cos(a)
+				],
+				target: [...o.target],
+				fov: fovAt(o.fov, u)
+			};
+		});
+	}
+	/** Slides the camera in a straight line from `from` to `to`, aimed at `target` the whole way. */
+	function dolly(o) {
+		const progress = spanProgress(o);
+		return fromSampler((time) => {
+			const u = progress(time);
+			return {
+				position: lerp3(o.from, o.to, u),
+				target: [...o.target],
+				fov: fovAt(o.fov, u)
+			};
+		});
+	}
+	/** Moves the camera `amount` (0–1) of the way from `from` towards `target`; pair with `fov: [a, b]` for a push-in zoom. */
+	function pushIn(o) {
+		return dolly({
+			...o,
+			to: lerp3(o.from, o.target, o.amount ?? .3)
+		});
 	}
 	// packages/runtime/src/audio/mix.ts
 	const DEFAULT_MIX = Object.freeze({
@@ -4056,6 +4217,7 @@ var __liosvideo = (function(exports) {
 	exports.attribution = attribution;
 	exports.browserWindow = browserWindow;
 	exports.buildManifest = buildManifest;
+	exports.cameraPath = cameraPath;
 	exports.captions = captions;
 	exports.chatThread = chatThread;
 	exports.chrome = chrome;
@@ -4067,6 +4229,7 @@ var __liosvideo = (function(exports) {
 	exports.creditText = creditText;
 	exports.cursor = cursor;
 	exports.desktop = desktop;
+	exports.dolly = dolly;
 	exports.duckGainAt = duckGainAt;
 	exports.duckPlan = duckPlan;
 	exports.duckSchedule = duckSchedule;
@@ -4093,11 +4256,13 @@ var __liosvideo = (function(exports) {
 	exports.measureText = measureText;
 	exports.multiply = multiply;
 	exports.notification = notification;
+	exports.orbit = orbit;
 	exports.parseColor = parseColor;
 	exports.path = path;
 	exports.peak = peak;
 	exports.phone = phone;
 	exports.planVo = planVo;
+	exports.pushIn = pushIn;
 	exports.rect = rect;
 	exports.registerAttributions = registerAttributions;
 	exports.registerThreeLoaders = registerThreeLoaders;
