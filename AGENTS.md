@@ -296,6 +296,15 @@ node.set({ fill: "#22c55e" }, 2.5);
    - `vo(id).duration`: Exact audio duration in seconds.
    - `vo(id).wordTime(word)`: Second offset when a specific word is spoken.
 
+### Mix: Loudness & Ducking (automatic)
+
+Every render (CLI and desktop export) runs the mix through a master bus:
+
+- **Ducking**: music beds dip **-12 dB** under voice-over, ramping down 0.15 s before each line and back up 0.4 s after it. Lines closer than 0.55 s apart hold the dip, so the music doesn't pump between them. Clips in `assets/audio/vo/` (or with `role: "vo"`) count as voice-over. A clip ducks when it has `role: "music"` or `ducking: true`, or when it is 8 s or longer and is not SFX. SFX means `role: "sfx"`, or a file named `sfx` or kept in `sfx/`. Turn ducking off for a clip with `ducking: false`.
+- **Loudness**: the whole programme is normalised to **-14 LUFS** integrated (BS.1770, YouTube/TikTok/Reels), then a look-ahead limiter keeps peaks under **-1 dBFS**. Write volumes for balance, not for level; there is no need to turn everything down "to be safe".
+- Override it per composition: `composition({ ..., mix: { loudness: -16, duck: { amount: 9, attack: 0.2, release: 0.6 } } })`. Use `loudness: false` to keep the raw level and `duck: false` to turn off ducking. CLI: `liosvideo render long.ts --loudness -16` or `--no-normalize`. The render prints the measured and final LUFS.
+- The desktop preview applies ducking live; loudness normalisation happens on export.
+
 ---
 
 ## External Assets, Media & Attributions

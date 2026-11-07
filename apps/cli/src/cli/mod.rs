@@ -47,6 +47,12 @@ pub enum Commands {
         /// AAC bitrate in bits per second
         #[arg(long)]
         audio_bitrate: Option<u32>,
+        /// Integrated loudness target in LUFS (default: the composition's mix, else -14)
+        #[arg(long, allow_hyphen_values = true)]
+        loudness: Option<f64>,
+        /// Keep the raw mix level (the -1 dBFS limiter still runs)
+        #[arg(long, conflicts_with = "loudness")]
+        no_normalize: bool,
         #[arg(long)]
         quiet: bool,
     },
@@ -270,7 +276,10 @@ pub enum AssetCommand {
         json: bool,
     },
     /// Make an earlier version of a generated image the active one
-    UseImage { id: String, version: u32 },
+    UseImage {
+        id: String,
+        version: u32,
+    },
 }
 
 #[derive(Subcommand, Debug, PartialEq)]
@@ -365,9 +374,35 @@ mod tests {
                 preset: "native".into(),
                 bitrate: None,
                 audio_bitrate: None,
+                loudness: None,
+                no_normalize: false,
                 quiet: false,
             })
         );
+    }
+
+    #[test]
+    fn parses_render_loudness_options() {
+        let cli = Cli::parse_from(["liosvideo", "render", "long.ts", "--loudness", "-16"]);
+        match cli.command {
+            Some(Commands::Render {
+                loudness,
+                no_normalize,
+                ..
+            }) => {
+                assert_eq!(loudness, Some(-16.0));
+                assert!(!no_normalize);
+            }
+            _ => panic!("expected render"),
+        }
+        let cli = Cli::parse_from(["liosvideo", "render", "long.ts", "--no-normalize"]);
+        assert!(matches!(
+            cli.command,
+            Some(Commands::Render {
+                no_normalize: true,
+                ..
+            })
+        ));
     }
 
     #[test]
@@ -415,8 +450,18 @@ mod tests {
     #[test]
     fn parses_image_generation_commands() {
         let cli = Cli::parse_from([
-            "liosvideo", "asset", "generate-image", "a palace at night", "--id", "palace",
-            "--aspect", "9:16", "--ref", "assets/images/a.jpg", "--ref", "assets/images/b.png",
+            "liosvideo",
+            "asset",
+            "generate-image",
+            "a palace at night",
+            "--id",
+            "palace",
+            "--aspect",
+            "9:16",
+            "--ref",
+            "assets/images/a.jpg",
+            "--ref",
+            "assets/images/b.png",
         ]);
         assert_eq!(
             cli.command,
@@ -445,14 +490,24 @@ mod tests {
         let cli = Cli::parse_from(["liosvideo", "asset", "use-image", "palace", "1"]);
         assert_eq!(
             cli.command,
-            Some(Commands::Asset { command: AssetCommand::UseImage { id: "palace".into(), version: 1 } })
+            Some(Commands::Asset {
+                command: AssetCommand::UseImage {
+                    id: "palace".into(),
+                    version: 1
+                }
+            })
         );
     }
 
     #[test]
     fn parses_verify_command() {
         let cli = Cli::parse_from(["liosvideo", "verify", "out/video.mp4"]);
-        assert_eq!(cli.command, Some(Commands::Verify { file: PathBuf::from("out/video.mp4") }));
+        assert_eq!(
+            cli.command,
+            Some(Commands::Verify {
+                file: PathBuf::from("out/video.mp4")
+            })
+        );
     }
 
     #[test]
@@ -507,7 +562,15 @@ mod tests {
 
     #[test]
     fn parses_project_new_with_style_and_styles() {
-        let cli = Cli::parse_from(["liosvideo", "project", "new", "/tmp", "x", "--style", "comic"]);
+        let cli = Cli::parse_from([
+            "liosvideo",
+            "project",
+            "new",
+            "/tmp",
+            "x",
+            "--style",
+            "comic",
+        ]);
         assert_eq!(
             cli.command,
             Some(Commands::Project {

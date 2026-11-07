@@ -19,6 +19,8 @@ pub struct RenderConfig {
     pub preset: Preset,
     pub bitrate: Option<u32>,
     pub audio_bitrate: Option<u32>,
+    /// Overrides the composition's loudness target: `Some(None)` keeps the raw level.
+    pub loudness: Option<Option<f64>>,
     pub quiet: bool,
 }
 
@@ -150,13 +152,49 @@ pub async fn run_render_job(config: RenderConfig) -> Result<()> {
 
     // Pre-mix audio tracks if any exist in the composition
     let audio_pcm = if !comp_info.audio.is_empty() {
-        let pcm = crate::media::audio::mix_audio_tracks(
+        let mut mix = comp_info
+            .mix
+            .as_ref()
+            .map(crate::media::loudness::MixSettings::from_json)
+            .unwrap_or_default();
+        if let Some(target) = config.loudness {
+            mix.loudness = target;
+        }
+        let mut pcm = crate::media::audio::mix_audio_tracks(
             &project_root,
             &comp_info.audio,
             comp_info.duration,
             crate::media::audio::DEFAULT_SAMPLE_RATE,
             fps,
+            mix.duck,
         )?;
+        // loudness is measured on the whole programme, before any --frames slice
+        let report = crate::media::loudness::master(
+            &mut pcm,
+            crate::media::audio::DEFAULT_SAMPLE_RATE,
+            &mix,
+        );
+        if !config.quiet {
+            let lufs = |v: f64| {
+                if v.is_finite() {
+                    format!("{v:.1} LUFS")
+                } else {
+                    "silent".into()
+                }
+            };
+            println!(
+                "Audio: {} -> {} (gain {:+.1} dB, peak {:.1} dBFS{})",
+                lufs(report.measured),
+                lufs(report.final_lufs),
+                report.gain,
+                report.peak,
+                if mix.duck.is_some() {
+                    ", music ducked under VO"
+                } else {
+                    ""
+                }
+            );
+        }
         let start_sec = frame_range.start as f64 / fps;
         let end_sec = frame_range.end as f64 / fps;
         let start_sample = (((start_sec * 48_000.0).round() as usize) * 2).min(pcm.len());
@@ -239,7 +277,12 @@ pub async fn run_render_job(config: RenderConfig) -> Result<()> {
 
     // Never hand over a file that only looks fine until a player hits a broken reference frame.
     let report = crate::media::integrity::check_file(&config.out, Some(total_render_frames as u32))
-        .map_err(|e| anyhow!("Render integrity check failed for {}: {e}", config.out.display()))?;
+        .map_err(|e| {
+            anyhow!(
+                "Render integrity check failed for {}: {e}",
+                config.out.display()
+            )
+        })?;
     if !config.quiet {
         println!(
             "Integrity: OK ({} frames, {} keyframes)",

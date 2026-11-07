@@ -110,6 +110,7 @@ async fn renders_composition_with_audio_to_mp4() -> Result<()> {
         preset: liosvideo_cli::pipeline::Preset::Native,
         bitrate: None,
         audio_bitrate: None,
+        loudness: None,
         quiet: true,
     };
 
@@ -194,6 +195,7 @@ async fn renders_frame_range_subset() -> Result<()> {
         preset: liosvideo_cli::pipeline::Preset::Native,
         bitrate: None,
         audio_bitrate: None,
+        loudness: None,
         quiet: true,
     };
 

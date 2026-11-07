@@ -1,5 +1,6 @@
 import { instantiateScene, layoutComposition, type AudioClip, type Composition, type SceneSpan } from "./composition";
 import type { Node } from "./graph/node";
+import type { AudioRole, MixOptions } from "./audio/mix";
 
 export type FrameSpan = { startFrame: number; endFrame: number };
 export type ManifestNode = { path: string; name: string; kind: string; spans: FrameSpan[]; children: ManifestNode[] };
@@ -18,6 +19,7 @@ export type ManifestAudioClip = {
   startOffset?: number;
   volume?: number;
   ducking?: boolean;
+  role?: AudioRole;
 };
 export type ManifestAudioTrack = {
   id: string;
@@ -31,6 +33,7 @@ export type TimelineManifest = {
   totalFrames: number;
   scenes: ManifestScene[];
   audioTracks?: ManifestAudioTrack[];
+  mix?: MixOptions;
 };
 
 function describe(node: Node<any>, scene: SceneSpan, fps: number): ManifestNode {
@@ -62,6 +65,7 @@ export function buildManifest(c: Composition): TimelineManifest {
               startOffset: track.startOffset,
               volume: track.volume,
               ducking: track.ducking,
+              role: track.role,
             },
           ]
         : [];
@@ -82,6 +86,7 @@ export function buildManifest(c: Composition): TimelineManifest {
           startOffset: clip.startOffset,
           volume: clip.volume,
           ducking: clip.ducking,
+          role: clip.role ?? track.role,
         };
       }),
     };
@@ -94,5 +99,6 @@ export function buildManifest(c: Composition): TimelineManifest {
     totalFrames,
     scenes: scenes.map((span, i) => ({ ...span, tree: describe(instantiateScene(c, c.scenes[i]), span, c.fps), site: c.scenes[i].site })),
     ...(audioTracks ? { audioTracks } : {}),
+    ...(c.mix ? { mix: c.mix } : {}),
   };
 }

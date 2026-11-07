@@ -1,4 +1,5 @@
 import { convertFileSrc, invoke } from "@tauri-apps/api/core";
+import { duckGainAt, duckSchedule, resolveMix, type AudioRole, type MixOptions } from "liosvideo";
 
 export interface AudioClipDef {
   src: string;
@@ -8,6 +9,7 @@ export interface AudioClipDef {
   startOffset?: number;
   volume?: number;
   ducking?: boolean;
+  role?: AudioRole;
 }
 
 export interface AudioPlayerOptions {
@@ -35,6 +37,7 @@ export class AudioPlayer {
   private loadBuffer: (src: string) => Promise<ArrayBuffer>;
 
   private clips: AudioClipDef[] = [];
+  private mix = resolveMix(undefined);
   private bufferCache = new Map<string, AudioBuffer>();
   private activeNodes: ActiveNode[] = [];
   private isPlaying = false;
@@ -74,7 +77,9 @@ export class AudioPlayer {
     this.invalidate();
   }
 
-  async setClips(clips: AudioClipDef[], forceReload = false): Promise<void> {
+  /** `mix` is the composition's mix settings; the preview applies its ducking (loudness is export-only). */
+  async setClips(clips: AudioClipDef[], forceReload = false, mix?: MixOptions): Promise<void> {
+    this.mix = resolveMix(mix);
     if (forceReload) {
       for (const c of clips) {
         this.invalidate(c.src);
@@ -166,17 +171,26 @@ export class AudioPlayer {
     const ctx = this.getContext();
     const now = ctx.currentTime;
     const playheadSec = this.currentFrame / this.currentFps;
+    const { plan, ducked } = duckSchedule(
+      this.clips.map((clip) => {
+        const buffer = this.bufferCache.get(clip.src);
+        const available = buffer ? Math.max(0, buffer.duration - (clip.startOffset ?? 0)) : 0;
+        const span = clip.endFrame > clip.startFrame ? (clip.endFrame - clip.startFrame) / this.currentFps : Infinity;
+        return { ...clip, start: clip.startFrame / this.currentFps, played: Math.min(clip.duration ?? available, available, span) };
+      }),
+      this.mix.duck,
+    );
 
-    for (const clip of this.clips) {
+    this.clips.forEach((clip, index) => {
       const buffer = this.bufferCache.get(clip.src);
-      if (!buffer) continue;
+      if (!buffer) return;
 
       const durationSec = clip.duration ?? buffer.duration;
       const totalClipFrames = Math.round(durationSec * this.currentFps);
       const effectiveEndFrame = clip.endFrame > clip.startFrame ? clip.endFrame : clip.startFrame + totalClipFrames;
 
       if (effectiveEndFrame <= this.currentFrame) {
-        continue;
+        return;
       }
 
       const clipStartSec = clip.startFrame / this.currentFps;
@@ -203,7 +217,14 @@ export class AudioPlayer {
       source.buffer = buffer;
 
       const gain = ctx.createGain();
-      gain.gain.value = clip.volume ?? 1.0;
+      const volume = clip.volume ?? 1.0;
+      if (ducked[index]) {
+        // timeline seconds -> context time
+        gain.gain.setValueAtTime(volume * duckGainAt(plan, playheadSec), now);
+        for (const [t, g] of plan) if (t > playheadSec) gain.gain.linearRampToValueAtTime(volume * g, now + t - playheadSec);
+      } else {
+        gain.gain.value = volume;
+      }
 
       source.connect(gain);
       gain.connect(ctx.destination);
@@ -216,7 +237,7 @@ export class AudioPlayer {
       }
 
       this.activeNodes.push({ source, gain });
-    }
+    });
   }
 
   destroy(): void {

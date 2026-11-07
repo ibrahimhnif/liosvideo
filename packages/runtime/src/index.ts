@@ -12,6 +12,7 @@ export { collectAssets, evaluateFrame } from "./evaluate";
 export type * from "./renderlist";
 export * from "./manifest";
 export * from "./audio/timing";
+export * from "./audio/mix";
 export * from "./mockups/window";
 export * from "./mockups/desktop";
 export * from "./mockups/terminal";

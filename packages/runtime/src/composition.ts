@@ -1,3 +1,4 @@
+import type { AudioRole, MixOptions } from "./audio/mix";
 import { group } from "./graph/kinds";
 import type { Node } from "./graph/node";
 import { seededRandom } from "./math/random";
@@ -34,7 +35,10 @@ export type AudioClip = {
   startOffset?: number;
   /** volume 0.0 - 1.0 */
   volume?: number;
+  /** Dip under voice-over (default: music beds and anything >= 8 s that is not VO). */
   ducking?: boolean;
+  /** "vo" lines duck the music; "music" always ducks; "sfx" never does. */
+  role?: AudioRole;
   loop?: boolean;
 };
 
@@ -49,6 +53,7 @@ export type AudioTrack = {
   volume?: number;
   loop?: boolean;
   ducking?: boolean;
+  role?: AudioRole;
   clips?: AudioClip[];
 };
 
@@ -59,6 +64,8 @@ export type Composition = {
   background: string;
   scenes: SceneDef[];
   audio?: AudioTrack[];
+  /** Master bus: loudness target (default -14 LUFS), limiter ceiling and music ducking. */
+  mix?: MixOptions;
 };
 
 export type SceneSpan = { id: string; startFrame: number; endFrame: number };

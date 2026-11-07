@@ -22,7 +22,12 @@ class MockBufferSource {
 }
 
 class MockGain {
-  gain = { value: 1 };
+  gain = {
+    value: 1,
+    events: [] as Array<[string, number, number]>,
+    setValueAtTime: (v: number, t: number) => void this.gain.events.push(["set", v, t]),
+    linearRampToValueAtTime: (v: number, t: number) => void this.gain.events.push(["ramp", v, t]),
+  };
   connectedTo: any = null;
   connect(target: any) {
     this.connectedTo = target;
@@ -199,5 +204,41 @@ describe("AudioPlayer", () => {
     // forceReload in setClips
     await testPlayer.setClips(clips, true);
     expect(loadCount).toBe(4);
+  });
+
+  it("ducks a music bed under voice-over during playback", async () => {
+    // decoded buffers last 5 s; the bed is long enough to count as music
+    await player.setClips(
+      [
+        { src: "assets/audio/music/bed.mp3", startFrame: 0, endFrame: 300, volume: 0.5, role: "music" },
+        { src: "assets/audio/vo/a.mp3", startFrame: 60, endFrame: 90, duration: 1 },
+      ],
+      false,
+      { duck: { amount: 12 } },
+    );
+    player.play(30, 30); // playhead at 1 s, ctx.currentTime = 10
+    const [bed, vo] = mockCtx.createdGains;
+    const low = 0.5 * 10 ** (-12 / 20);
+    expect(bed.gain.events.map(([k, v, t]) => [k, +v.toFixed(4), +t.toFixed(2)])).toEqual([
+      ["set", 0.5, 10],
+      ["ramp", 0.5, 10.85],
+      ["ramp", +low.toFixed(4), 11],
+      ["ramp", +low.toFixed(4), 12],
+      ["ramp", 0.5, 12.4],
+    ]);
+    expect(vo.gain.events).toEqual([]);
+  });
+
+  it("does not duck when the mix turns it off", async () => {
+    await player.setClips(
+      [
+        { src: "assets/audio/music/bed.mp3", startFrame: 0, endFrame: 300, role: "music" },
+        { src: "assets/audio/vo/a.mp3", startFrame: 60, endFrame: 90, duration: 1 },
+      ],
+      false,
+      { duck: false },
+    );
+    player.play(0, 30);
+    expect(mockCtx.createdGains[0].gain.events).toEqual([]);
   });
 });

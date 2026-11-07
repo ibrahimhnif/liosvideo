@@ -1,8 +1,10 @@
-import type { TimelineManifest } from "liosvideo";
+import { duckGainAt, duckSchedule, master, resolveMix, type MasterReport, type TimelineManifest } from "liosvideo";
 
 export interface MixdownOptions {
   sampleRate?: number;
   createContext?: (channels: number, length: number, sampleRate: number) => OfflineAudioContext;
+  /** Called with the loudness/limiter result of the master bus. */
+  onMaster?: (report: MasterReport) => void;
 }
 
 export async function mixdownAudio(
@@ -38,15 +40,30 @@ export async function mixdownAudio(
     }
   }
 
-  for (const clip of clips) {
-    const buffer = decodedBuffers.get(clip.src);
-    if (!buffer) continue;
+  const mix = resolveMix(manifest.mix);
+  const playable = clips
+    .map((clip) => ({ clip, buffer: decodedBuffers.get(clip.src) }))
+    .filter((c): c is { clip: (typeof clips)[number]; buffer: AudioBuffer } => !!c.buffer);
+  const scheduled = playable.map(({ clip, buffer }) => {
+    const start = clip.startFrame / manifest.fps;
+    const available = Math.max(0, buffer.duration - (clip.startOffset ?? 0));
+    const played = Math.min(clip.duration ?? available, available, Math.max(0, totalDurationSec - start));
+    return { src: clip.src, role: clip.role, ducking: clip.ducking, start, played };
+  });
+  const { plan, ducked } = duckSchedule(scheduled, mix.duck);
 
+  playable.forEach(({ clip, buffer }, i) => {
     const source = ctx.createBufferSource();
     source.buffer = buffer;
 
+    const volume = clip.volume ?? 1.0;
     const gain = ctx.createGain();
-    gain.gain.value = clip.volume ?? 1.0;
+    if (ducked[i]) {
+      gain.gain.setValueAtTime(volume * duckGainAt(plan, 0), 0);
+      for (const [t, g] of plan) if (t > 0) gain.gain.linearRampToValueAtTime(volume * g, t);
+    } else {
+      gain.gain.value = volume;
+    }
 
     source.connect(gain);
     gain.connect(ctx.destination);
@@ -58,7 +75,11 @@ export async function mixdownAudio(
     } else {
       source.start(when, offset);
     }
-  }
+  });
 
-  return ctx.startRendering();
+  const rendered = await ctx.startRendering();
+  const channels = Array.from({ length: rendered.numberOfChannels }, (_, i) => rendered.getChannelData(i));
+  const report = master(channels, sampleRate, mix);
+  options?.onMaster?.(report);
+  return rendered;
 }

@@ -94,7 +94,7 @@
         runtimeError = undefined;
         clock.setLength(loaded.fps, loaded.totalFrames);
         const allClips = loaded.manifest.audioTracks?.flatMap((t) => t.clips) ?? [];
-        audioPlayer.setClips(allClips).catch((e) => devLog(`audio-error ${e}`));
+        audioPlayer.setClips(allClips, false, loaded.manifest.mix).catch((e) => devLog(`audio-error ${e}`));
         select(reconcileSelection(selection.current, entry, loaded.manifest));
         invoke("report_timeline_manifest", { composition: entry, manifest: loaded.manifest }).catch(() => {});
         devLog(`timeline ${entry} ${visibleRows(loaded.manifest, new Set(loaded.manifest.scenes.map((s) => s.id))).map((r) => "  ".repeat(r.depth) + r.label).join(" | ")}`);
@@ -174,6 +174,9 @@
             const res = await fetch(url);
             if (!res.ok) throw new Error(`Could not load audio asset "${src}" (${res.status})`);
             return res.arrayBuffer();
+          }, {
+            onMaster: (r) =>
+              devLog(`[export] Loudness ${r.measured.toFixed(1)} LUFS -> ${r.final.toFixed(1)} LUFS (gain ${r.gain.toFixed(1)} dB, peak ${r.peak.toFixed(1)} dBFS)`),
           })
         : null;
 

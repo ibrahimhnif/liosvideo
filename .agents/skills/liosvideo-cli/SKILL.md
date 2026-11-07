@@ -61,6 +61,8 @@ liosvideo render <ENTRY> [OPTIONS]
 | `--preset <NAME>` | Output resolution: `native`, `1080p`, `4k`, `shorts` | `native` | `--preset shorts` |
 | `--bitrate <BPS>` | H.264 bitrate override | Preset default | `--bitrate 20000000` |
 | `--audio-bitrate <BPS>` | AAC bitrate | `192000` | `--audio-bitrate 256000` |
+| `--loudness <LUFS>` | Integrated loudness target (whole programme, before `--frames`) | composition `mix`, else `-14` | `--loudness -16` |
+| `--no-normalize` | Keep the raw mix level (the -1 dBFS limiter still runs) | `false` | `--no-normalize` |
 | `--quiet` | Disable interactive terminal progress bar (clean CI logs) | `false` | `--quiet` |
 
 #### Supported Frame Range Syntax:

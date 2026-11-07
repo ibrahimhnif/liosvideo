@@ -39,6 +39,9 @@ pub struct AudioClipInfo {
     pub volume: Option<f64>,
     #[serde(default)]
     pub ducking: Option<bool>,
+    /// "vo" | "music" | "sfx"
+    #[serde(default)]
+    pub role: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
@@ -62,6 +65,9 @@ pub struct CompositionInfo {
     pub scenes: Vec<SceneInfo>,
     #[serde(default)]
     pub audio: Vec<AudioTrackInfo>,
+    /// The composition's `mix` settings (loudness, ceiling, duck), as written.
+    #[serde(default)]
+    pub mix: Option<serde_json::Value>,
 }
 
 pub struct RuntimeHost {
@@ -230,6 +236,7 @@ impl RuntimeHost {
                 background: comp.background || "#000000",
                 scenes,
                 audio: manifest.audioTracks || [],
+                mix: manifest.mix ?? null,
             };
 
             return JSON.stringify({ info, manifest });
@@ -496,7 +503,8 @@ mod tests {
 
     #[tokio::test]
     async fn sizes_scenes_from_vo_timings_at_module_scope() -> Result<()> {
-        let dir = std::env::temp_dir().join(format!("liosvideo_vo_duration_test_{}", std::process::id()));
+        let dir =
+            std::env::temp_dir().join(format!("liosvideo_vo_duration_test_{}", std::process::id()));
         let vo_dir = dir.join("assets").join("audio").join("vo");
         std::fs::create_dir_all(&vo_dir)?;
         std::fs::write(
@@ -574,7 +582,8 @@ mod tests {
 
     #[tokio::test]
     async fn lays_out_and_wraps_text_with_the_layout_helpers() -> Result<()> {
-        let dir = std::env::temp_dir().join(format!("liosvideo_layout_test_{}", std::process::id()));
+        let dir =
+            std::env::temp_dir().join(format!("liosvideo_layout_test_{}", std::process::id()));
         std::fs::create_dir_all(&dir)?;
 
         let composition_code = r##"
@@ -594,10 +603,20 @@ mod tests {
         let mut host = RuntimeHost::new(dir.clone())?;
         let _ = host.load_composition("layout.ts").await?;
         let rl = host.evaluate_frame(0)?;
-        let item = rl["items"].as_array().unwrap().iter().find(|i| i["kind"] == "text").expect("text item").clone();
+        let item = rl["items"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|i| i["kind"] == "text")
+            .expect("text item")
+            .clone();
         assert_eq!(item["align"], "center", "caption slot centres its text");
         assert!(item["boxWidth"].as_f64().unwrap() > 0.0);
-        assert!(item["text"].as_str().unwrap().contains('\n'), "long caption wraps: {}", item["text"]);
+        assert!(
+            item["text"].as_str().unwrap().contains('\n'),
+            "long caption wraps: {}",
+            item["text"]
+        );
 
         let _ = std::fs::remove_dir_all(dir);
         Ok(())

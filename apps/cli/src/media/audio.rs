@@ -1,4 +1,6 @@
 use std::collections::HashMap;
+
+use crate::media::loudness::{duck_gain_at, duck_plan, is_voice, should_duck, Duck};
 use std::path::Path;
 
 use anyhow::{anyhow, Context, Result};
@@ -224,6 +226,18 @@ pub fn mix_clip_into(
     fps: f64,
     sample_rate: u32,
 ) {
+    mix_clip_with_gain(master, clip_samples, clip, fps, sample_rate, |_| 1.0);
+}
+
+/// `mix_clip_into` with an extra gain per master frame (used for ducking).
+fn mix_clip_with_gain(
+    master: &mut [f32],
+    clip_samples: &[f32],
+    clip: &AudioClipInfo,
+    fps: f64,
+    sample_rate: u32,
+    gain: impl Fn(usize) -> f32,
+) {
     if clip_samples.is_empty() || master.is_empty() {
         return;
     }
@@ -253,65 +267,102 @@ pub fn mix_clip_into(
     let samples_to_mix = available_source.min(max_samples);
 
     for i in 0..samples_to_mix {
-        master[start_master_sample + i] += clip_samples[start_source_sample + i] * volume;
+        let at = start_master_sample + i;
+        master[at] += clip_samples[start_source_sample + i] * volume * gain(at / 2);
     }
 }
 
 /// Mix all manifest audio clips into a master stereo buffer.
+///
+/// Music beds dip under voice-over when `duck` is set (see `media::loudness`).
+/// The result is not clamped: run `loudness::master` on it, whose limiter keeps
+/// every sample under the ceiling.
 pub fn mix_audio_tracks(
     project_root: impl AsRef<Path>,
     tracks: &[AudioTrackInfo],
     total_seconds: f64,
     sample_rate: u32,
     fps: f64,
+    duck: Option<Duck>,
 ) -> Result<Vec<f32>> {
     let project_root = project_root.as_ref();
     let total_frames = (total_seconds.max(0.0) * sample_rate as f64).ceil() as usize;
     let mut master = vec![0.0f32; total_frames * 2];
+    let effective_fps = if fps > 0.0 { fps } else { 30.0 };
 
     let mut decoded: HashMap<String, Vec<f32>> = HashMap::new();
+    let clips: Vec<&AudioClipInfo> = tracks
+        .iter()
+        .flat_map(|t| t.clips.iter())
+        .filter(|c| !c.src.is_empty())
+        .collect();
 
-    for track in tracks {
-        for clip in &track.clips {
-            if clip.src.is_empty() {
-                continue;
+    for clip in &clips {
+        if decoded.contains_key(&clip.src) {
+            continue;
+        }
+        let path = if Path::new(&clip.src).is_absolute() {
+            std::path::PathBuf::from(&clip.src)
+        } else {
+            project_root.join(&clip.src)
+        };
+        if !path.exists() {
+            eprintln!("Warning: Audio file not found: {}", path.display());
+            continue;
+        }
+        match AudioDecoder::decode_file(&path, sample_rate) {
+            Ok(samples) => {
+                decoded.insert(clip.src.clone(), samples);
             }
-
-            if !decoded.contains_key(&clip.src) {
-                let path = if Path::new(&clip.src).is_absolute() {
-                    std::path::PathBuf::from(&clip.src)
-                } else {
-                    project_root.join(&clip.src)
-                };
-
-                if !path.exists() {
-                    eprintln!("Warning: Audio file not found: {}", path.display());
-                    continue;
-                }
-
-                match AudioDecoder::decode_file(&path, sample_rate) {
-                    Ok(samples) => {
-                        decoded.insert(clip.src.clone(), samples);
-                    }
-                    Err(err) => {
-                        eprintln!(
-                            "Warning: Failed to decode audio file {}: {err}",
-                            path.display()
-                        );
-                        continue;
-                    }
-                }
-            }
-
-            if let Some(samples) = decoded.get(&clip.src) {
-                mix_clip_into(&mut master, samples, clip, fps, sample_rate);
+            Err(err) => {
+                eprintln!(
+                    "Warning: Failed to decode audio file {}: {err}",
+                    path.display()
+                );
             }
         }
     }
 
-    // Clamp mixed samples to [-1.0, 1.0] to prevent clipping (matches Web Audio output bounds).
-    for s in master.iter_mut() {
-        *s = s.clamp(-1.0, 1.0);
+    // when each clip starts and how long it actually plays, in seconds
+    let timing: Vec<Option<(f64, f64)>> = clips
+        .iter()
+        .map(|clip| {
+            let samples = decoded.get(&clip.src)?;
+            let start = clip.start_frame as f64 / effective_fps;
+            let available = (samples.len() as f64 / 2.0 / sample_rate as f64
+                - clip.start_offset.unwrap_or(0.0))
+            .max(0.0);
+            let played = clip
+                .duration
+                .filter(|d| *d > 0.0)
+                .unwrap_or(available)
+                .min(available)
+                .min((total_seconds - start).max(0.0));
+            Some((start, played))
+        })
+        .collect();
+    let spans: Vec<(f64, f64)> = clips
+        .iter()
+        .zip(&timing)
+        .filter_map(|(clip, t)| {
+            let (start, played) = (*t)?;
+            is_voice(&clip.src, clip.role.as_deref()).then_some((start, start + played))
+        })
+        .collect();
+    let plan = duck_plan(&spans, duck);
+
+    for (clip, t) in clips.iter().zip(&timing) {
+        let (Some(samples), Some((_, played))) = (decoded.get(&clip.src), *t) else {
+            continue;
+        };
+        if !plan.is_empty() && should_duck(&clip.src, clip.role.as_deref(), clip.ducking, played) {
+            let rate = sample_rate as f64;
+            mix_clip_with_gain(&mut master, samples, clip, fps, sample_rate, |frame| {
+                duck_gain_at(&plan, frame as f64 / rate) as f32
+            });
+        } else {
+            mix_clip_into(&mut master, samples, clip, fps, sample_rate);
+        }
     }
 
     Ok(master)
@@ -336,6 +387,7 @@ mod tests {
             start_offset,
             volume,
             ducking: None,
+            role: None,
         }
     }
 
@@ -473,12 +525,52 @@ mod tests {
         std::fs::write(&wav_path, wav_bytes).unwrap();
 
         let tracks = vec![track(vec![clip("test.wav", 0, None, None, Some(1.0))])];
-        let mixed = mix_audio_tracks(&temp_dir, &tracks, 0.001, 48000, 30.0)
+        let mixed = mix_audio_tracks(&temp_dir, &tracks, 0.001, 48000, 30.0, None)
             .expect("mix_audio_tracks failed");
 
         assert!(!mixed.is_empty());
         assert!(mixed[0] > 0.0);
 
         let _ = std::fs::remove_dir_all(&temp_dir);
+    }
+
+    #[test]
+    fn ducks_a_music_bed_under_voice_over() {
+        let dir = tempfile::tempdir().unwrap();
+        std::fs::create_dir_all(dir.path().join("assets/audio/music")).unwrap();
+        std::fs::create_dir_all(dir.path().join("assets/audio/vo")).unwrap();
+        let bed = vec![16384i16; 48000 * 2 * 12]; // 12 s at 0.5
+        std::fs::write(
+            dir.path().join("assets/audio/music/bed.wav"),
+            create_test_wav(48000, 2, &bed),
+        )
+        .unwrap();
+        let line = vec![8192i16; 48000 * 2]; // 1 s at 0.25
+        std::fs::write(
+            dir.path().join("assets/audio/vo/a.wav"),
+            create_test_wav(48000, 2, &line),
+        )
+        .unwrap();
+
+        let tracks = vec![
+            track(vec![clip(
+                "assets/audio/music/bed.wav",
+                0,
+                None,
+                None,
+                None,
+            )]),
+            track(vec![clip("assets/audio/vo/a.wav", 60, None, None, None)]), // 2 s
+        ];
+        let duck = crate::media::loudness::MixSettings::default().duck;
+        let mixed = mix_audio_tracks(dir.path(), &tracks, 10.0, 48000, 30.0, duck).unwrap();
+        let at = |t: f64| mixed[(t * 48000.0) as usize * 2];
+        let low = 0.5 * 10f32.powf(-12.0 / 20.0);
+        assert!((at(1.0) - 0.5).abs() < 1e-3, "{}", at(1.0));
+        assert!((at(2.5) - (low + 0.25)).abs() < 1e-3, "{}", at(2.5));
+        assert!((at(4.0) - 0.5).abs() < 1e-3, "{}", at(4.0));
+
+        let flat = mix_audio_tracks(dir.path(), &tracks, 10.0, 48000, 30.0, None).unwrap();
+        assert!((flat[(2.5 * 48000.0) as usize * 2] - 0.75).abs() < 1e-3);
     }
 }

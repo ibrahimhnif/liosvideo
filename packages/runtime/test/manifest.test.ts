@@ -77,3 +77,28 @@ describe("scene call sites", () => {
     expect(m.scenes[0].site).toBe(s.site);
   });
 });
+
+describe("audio mix settings", () => {
+  it("carries clip roles and the composition mix into the manifest", () => {
+    const m = buildManifest(
+      composition({
+        width: 10,
+        height: 10,
+        fps: 30,
+        scenes: [scene("a", { duration: 2 }, () => {})],
+        mix: { loudness: -16, duck: { amount: 9 } },
+        audio: [
+          { id: "bgm", src: "assets/audio/music/bed.mp3", role: "music" },
+          { id: "vo", clips: [{ src: "a.mp3", role: "vo", startAt: 0.5, duration: 1 }] },
+        ],
+      }),
+    );
+    expect(m.mix).toEqual({ loudness: -16, duck: { amount: 9 } });
+    expect(m.audioTracks?.[0].clips[0].role).toBe("music");
+    expect(m.audioTracks?.[1].clips[0]).toMatchObject({ role: "vo", startFrame: 15, endFrame: 45 });
+  });
+
+  it("leaves mix out when the composition does not set it", () => {
+    expect(buildManifest(make())).not.toHaveProperty("mix");
+  });
+});

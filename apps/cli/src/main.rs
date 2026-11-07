@@ -26,6 +26,8 @@ async fn main() -> anyhow::Result<()> {
             preset,
             bitrate,
             audio_bitrate,
+            loudness,
+            no_normalize,
             quiet,
         } => {
             let config = pipeline::RenderConfig {
@@ -37,6 +39,11 @@ async fn main() -> anyhow::Result<()> {
                 preset: Preset::parse(&preset)?,
                 bitrate,
                 audio_bitrate,
+                loudness: if no_normalize {
+                    Some(None)
+                } else {
+                    loudness.map(Some)
+                },
                 quiet,
             };
             pipeline::run_render_job(config).await?;
