@@ -1,6 +1,7 @@
-import type { Ease } from "../anim/easing";
+import { EASE_NAMES, isEase, type Ease } from "../anim/easing";
 import { Track } from "../anim/track";
 import { multiply, rotate, scale, translate, type Affine } from "../math/affine";
+import { checkEnumProps, unknownValue } from "./enums";
 
 export interface BaseProps {
   x: number;
@@ -61,6 +62,7 @@ export abstract class Node<P extends BaseProps = BaseProps> {
     if (name?.includes("/")) throw new Error(`Node name "${name}" must not contain "/"`);
     this.requestedName = name;
     this._name = name ?? `${kind}0`;
+    checkEnumProps(props, this._name);
     this.base = { ...defaults, ...(props as Partial<P>) };
   }
 
@@ -95,6 +97,7 @@ export abstract class Node<P extends BaseProps = BaseProps> {
 
   /** Changes base (un-animated) values, e.g. from a layout helper; keyframes still win where they apply. */
   assign(props: Partial<P>): this {
+    checkEnumProps(props as Record<string, unknown>, this._name);
     Object.assign(this.base, props);
     for (const key of Object.keys(props) as (keyof P)[]) this.tracks.get(key)?.setBase(props[key] as PropValue);
     return this;
@@ -105,6 +108,10 @@ export abstract class Node<P extends BaseProps = BaseProps> {
   }
 
   to(props: Partial<P>, opts: { at: number; duration: number; ease?: Ease }): this {
+    checkEnumProps(props as Record<string, unknown>, this._name);
+    if (opts.ease !== undefined && !isEase(opts.ease)) {
+      throw unknownValue("ease", opts.ease, EASE_NAMES, `node "${this._name}" (${Object.keys(props).join(", ")})`);
+    }
     for (const key of Object.keys(props) as (keyof P)[]) {
       this.track(key).add({
         start: opts.at,

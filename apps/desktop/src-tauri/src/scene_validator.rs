@@ -21,6 +21,40 @@ pub struct SceneValidationResult {
     pub issues: Vec<SceneValidationIssue>,
 }
 
+const EASE_NAMES: &[&str] = &[
+    "linear", "inQuad", "outQuad", "inOutQuad", "inCubic", "outCubic", "inOutCubic", "outBack",
+    "inExpo", "outExpo", "inOutExpo", "inSine", "outSine", "inOutSine",
+];
+const FIT_VALUES: &[&str] = &["fill", "contain", "cover"];
+const TRANSITION_NAMES: &[&str] = &["fade", "slide", "zoom", "wipe"];
+
+/// String literals written right after one of `keys` on a line, e.g. `ease: "outBack"`.
+fn quoted_values<'a>(line: &'a str, keys: &[&'static str]) -> Vec<(&'static str, &'a str)> {
+    let mut out = Vec::new();
+    for &key in keys {
+        let mut rest = line;
+        while let Some(i) = rest.find(key) {
+            // `key` must start a token: `ease:` but not `myease:`
+            let boundary = rest[..i]
+                .chars()
+                .next_back()
+                .is_none_or(|c| !(c.is_alphanumeric() || c == '_' || c == '$'));
+            let after = rest[i + key.len()..].trim_start();
+            rest = &rest[i + key.len()..];
+            if !boundary {
+                continue;
+            }
+            let Some(quote) = after.chars().next().filter(|c| *c == '"' || *c == '\'') else {
+                continue;
+            };
+            if let Some(end) = after[1..].find(quote) {
+                out.push((key, &after[1..1 + end]));
+            }
+        }
+    }
+    out
+}
+
 /// Validate a single scene TypeScript file against liosvideo design & runtime rules.
 pub fn validate_scene_content(content: &str, file_rel: &str, project_root: Option<&Path>) -> SceneValidationResult {
     let mut issues = Vec::new();
@@ -113,6 +147,34 @@ pub fn validate_scene_content(content: &str, file_rel: &str, project_root: Optio
                 message: "Asynchronous timers (`setTimeout`/`setInterval`) are forbidden in deterministic scene builders. Animate properties with `node.to()` or `node.set()`.".to_string(),
                 line: Some(line_num),
             });
+        }
+
+        // 2b. Enum values the runtime rejects (kept in sync with packages/runtime)
+        for (key, value) in quoted_values(line, &["ease:", "fit:"]) {
+            let allowed: &[&str] = if key == "ease:" { EASE_NAMES } else { FIT_VALUES };
+            if !allowed.contains(&value) {
+                issues.push(SceneValidationIssue {
+                    severity: "error".to_string(),
+                    message: format!(
+                        "Unknown {} \"{value}\". Use one of: {}",
+                        key.trim_end_matches(':'),
+                        allowed.join(", ")
+                    ),
+                    line: Some(line_num),
+                });
+            }
+        }
+        for (_, value) in quoted_values(line, &["transition("]) {
+            if !TRANSITION_NAMES.contains(&value) {
+                issues.push(SceneValidationIssue {
+                    severity: "error".to_string(),
+                    message: format!(
+                        "Unknown transition \"{value}\". Use one of: {} (or a custom callback)",
+                        TRANSITION_NAMES.join(", ")
+                    ),
+                    line: Some(line_num),
+                });
+            }
         }
 
         // 3. Check for illegal imports
@@ -308,6 +370,28 @@ export default scene("intro", { duration: 5.0 }, () => {
         let res = validate_scene_content(code, "scenes/intro.ts", None);
         assert!(!res.valid);
         assert!(res.issues.iter().any(|i| i.message.contains("Math.random")));
+    }
+
+    #[test]
+    fn reports_unknown_ease_fit_and_transition_names() {
+        let code = r##"
+import { image, scene, text, transition } from "liosvideo";
+export default scene("intro", { duration: 5.0, transition: transition("dissolve") }, ({ root }) => {
+  const t = root.add(text({ name: "title", text: "hi" }));
+  t.to({ opacity: 1 }, { at: 0.2, duration: 0.4, ease: "bouncy" });
+  t.to({ opacity: 0 }, { at: 2, duration: 0.4, ease: 'inOutSine' });
+  root.add(image({ name: "bg", src: "a.png", fit: "stretch" }));
+});
+"##;
+        let res = validate_scene_content(code, "scenes/intro.ts", None);
+        assert!(!res.valid);
+        let find = |needle: &str| res.issues.iter().find(|i| i.message.contains(needle));
+        let ease = find("Unknown ease \"bouncy\"").expect("ease issue");
+        assert_eq!(ease.line, Some(5));
+        assert!(ease.message.contains("inOutSine"));
+        assert!(find("inOutSine\"").is_none(), "inOutSine is valid");
+        assert_eq!(find("Unknown fit \"stretch\"").and_then(|i| i.line), Some(7));
+        assert_eq!(find("Unknown transition \"dissolve\"").and_then(|i| i.line), Some(3));
     }
 
     #[test]

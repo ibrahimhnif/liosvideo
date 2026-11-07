@@ -45,6 +45,8 @@ fn runtime_export_names(iife: &str) -> Vec<&str> {
 pub struct TsModuleLoader {
     project_root: PathBuf,
     in_memory_modules: Arc<Mutex<HashMap<ModuleSpecifier, String>>>,
+    /// Source maps of transpiled modules, so stack traces point at the .ts lines.
+    source_maps: Arc<Mutex<HashMap<String, Vec<u8>>>>,
 }
 
 impl TsModuleLoader {
@@ -52,6 +54,7 @@ impl TsModuleLoader {
         Self {
             project_root,
             in_memory_modules: Arc::new(Mutex::new(HashMap::new())),
+            source_maps: Arc::new(Mutex::new(HashMap::new())),
         }
     }
 
@@ -154,13 +157,23 @@ impl TsModuleLoader {
             .transpile(
                 &deno_ast::TranspileOptions::default(),
                 &deno_ast::TranspileModuleOptions::default(),
-                &deno_ast::EmitOptions::default(),
+                &deno_ast::EmitOptions {
+                    source_map: deno_ast::SourceMapOption::Separate,
+                    ..Default::default()
+                },
             )
             .map_err(|e| {
                 ModuleLoaderError::Core(CoreError::JsBox(JsErrorBox::generic(e.to_string())))
             })?;
 
-        let js_text = transpiled.into_source().text;
+        let emitted = transpiled.into_source();
+        if let Some(map) = emitted.source_map {
+            self.source_maps
+                .lock()
+                .unwrap()
+                .insert(specifier.to_string(), map.into_bytes());
+        }
+        let js_text = emitted.text;
         Ok(ModuleSource::new(
             ModuleType::JavaScript,
             ModuleSourceCode::String(js_text.into()),
@@ -171,6 +184,11 @@ impl TsModuleLoader {
 }
 
 impl ModuleLoader for TsModuleLoader {
+    fn get_source_map(&self, file_name: &str) -> Option<std::borrow::Cow<'_, [u8]>> {
+        let maps = self.source_maps.lock().unwrap();
+        maps.get(file_name).map(|m| std::borrow::Cow::Owned(m.clone()))
+    }
+
     fn resolve(
         &self,
         specifier: &str,

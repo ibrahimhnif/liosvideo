@@ -1,4 +1,8 @@
+import { unknownValue } from "../graph/enums";
 import type { Node } from "../graph/node";
+
+const TRANSITIONS = ["fade", "slide", "zoom", "wipe"] as const;
+const DIRECTIONS = ["left", "right", "up", "down"] as const;
 
 export type TransitionApplyFn = (
   node: Node<any>,
@@ -27,6 +31,13 @@ export function transition(
         apply?: TransitionApplyFn;
       } = 0.5,
 ): TransitionDef {
+  if (typeof typeOrFn !== "function" && !(TRANSITIONS as readonly string[]).includes(typeOrFn)) {
+    throw unknownValue("transition", typeOrFn, TRANSITIONS);
+  }
+  const direction = typeof optsOrDuration === "object" ? optsOrDuration.direction : undefined;
+  if (direction !== undefined && !(DIRECTIONS as readonly string[]).includes(direction)) {
+    throw unknownValue("direction", direction, DIRECTIONS, "transition");
+  }
   if (typeof typeOrFn === "function") {
     const duration = typeof optsOrDuration === "number" ? optsOrDuration : (optsOrDuration.duration ?? 0.5);
     return { type: "custom", duration, apply: typeOrFn };

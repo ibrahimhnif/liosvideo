@@ -275,8 +275,11 @@ node.set({ fill: "#22c55e" }, 2.5);
 - `"inQuad"`, `"outQuad"`, `"inOutQuad"`
 - `"inCubic"`, `"outCubic"`, `"inOutCubic"` (default)
 - `"outBack"` (slight overshoot, ideal for entrance animations)
-- `"inOutExpo"`
+- `"inExpo"`, `"outExpo"`, `"inOutExpo"`
+- `"inSine"`, `"outSine"`, `"inOutSine"`
 - Custom curve: `(t: number) => number`
+
+An unknown name throws where it is written, with the node, the property and `file:line`, e.g. `Unknown ease "inOutBounce" on node "title" (opacity) (scenes/hook.ts:42). Use one of: …`. The same goes for `fit`, `align`, transition names and directions. `validate_scene` reports unknown `ease`, `fit` and transition names without running the scene.
 
 ---
 

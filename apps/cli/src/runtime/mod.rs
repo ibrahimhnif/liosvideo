@@ -599,6 +599,27 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn names_the_node_and_line_of_an_unknown_ease() -> Result<()> {
+        let dir = tempfile::tempdir()?;
+        std::fs::write(
+            dir.path().join("long.ts"),
+            r##"import { composition, scene, text } from "liosvideo";
+const s = scene("s", { duration: 1 }, ({ root }) => {
+  const t = root.add(text({ name: "title", text: "hi" }));
+  t.to({ opacity: 1 }, { at: 0, duration: 0.5, ease: "inOutBounce" as any });
+});
+export default composition({ width: 640, height: 360, fps: 30, scenes: [s] });
+"##,
+        )?;
+        let mut host = RuntimeHost::new(dir.path().to_path_buf())?;
+        let err = host.load_composition("long.ts").await.unwrap_err().to_string();
+        assert!(err.contains("Unknown ease \"inOutBounce\" on node \"title\" (opacity)"), "{err}");
+        assert!(err.contains("long.ts:4"), "{err}");
+        assert!(err.contains("inOutSine"), "{err}");
+        Ok(())
+    }
+
+    #[tokio::test]
     async fn sizes_scenes_from_vo_timings_at_module_scope() -> Result<()> {
         let dir =
             std::env::temp_dir().join(format!("liosvideo_vo_duration_test_{}", std::process::id()));

@@ -12,13 +12,25 @@ var __liosvideo = (function(exports) {
 		outCubic: (t) => 1 - (1 - t) ** 3,
 		inOutCubic: (t) => t < .5 ? 4 * t * t * t : 1 - (-2 * t + 2) ** 3 / 2,
 		outBack: (t) => 1 + C3 * (t - 1) ** 3 + C1 * (t - 1) ** 2,
-		inOutExpo: (t) => t === 0 ? 0 : t === 1 ? 1 : t < .5 ? 2 ** (20 * t - 10) / 2 : (2 - 2 ** (-20 * t + 10)) / 2
+		inExpo: (t) => t === 0 ? 0 : 2 ** (10 * t - 10),
+		outExpo: (t) => t === 1 ? 1 : 1 - 2 ** (-10 * t),
+		inOutExpo: (t) => t === 0 ? 0 : t === 1 ? 1 : t < .5 ? 2 ** (20 * t - 10) / 2 : (2 - 2 ** (-20 * t + 10)) / 2,
+		inSine: (t) => 1 - Math.cos(t * Math.PI / 2),
+		outSine: (t) => Math.sin(t * Math.PI / 2),
+		inOutSine: (t) => -(Math.cos(Math.PI * t) - 1) / 2
 	};
+	/** Every built-in easing name, in documentation order. */
+	const EASE_NAMES = Object.keys(EASINGS);
+	function isEase(e) {
+		return typeof e === "function" || typeof e === "string" && Object.hasOwn(EASINGS, e);
+	}
 	function ease(e, t) {
+		const fn = typeof e === "function" ? e : Object.hasOwn(EASINGS, e) ? EASINGS[e] : void 0;
+		if (!fn) throw new Error(`Unknown ease ${JSON.stringify(e)}. Use one of: ${EASE_NAMES.join(", ")}`);
 		const c = Math.min(1, Math.max(0, t));
 		if (c === 0) return 0;
 		if (c === 1) return 1;
-		return (typeof e === "function" ? e : EASINGS[e])(c);
+		return fn(c);
 	}
 	// packages/runtime/src/math/color.ts
 	function parseColor(hex) {
@@ -85,8 +97,59 @@ var __liosvideo = (function(exports) {
 			return value;
 		}
 	};
+	// packages/runtime/src/graph/enums.ts
+	/** Props that only take one of a few strings. */
+	const PROP_ENUMS = {
+		fit: [
+			"fill",
+			"contain",
+			"cover"
+		],
+		align: [
+			"left",
+			"center",
+			"right"
+		]
+	};
+	const RUNTIME_FRAME = /(\/packages\/runtime\/src\/|liosvideo\.iife|node_modules|\/liosvideo\/src\/|^\s*at (new )?(Node|TextNode|ImageNode)\b)/;
+	/** "scenes/hook.ts:42" for the first scene-code frame of the current stack, if it can be read. */
+	function callSite() {
+		const stack = (/* @__PURE__ */ new Error()).stack ?? "";
+		for (const line of stack.split("\n").slice(1)) {
+			if (RUNTIME_FRAME.test(line)) continue;
+			const m = /((?:file:\/\/)?[^\s()]+\.(?:[cm]?[jt]sx?)):(\d+)(?::\d+)?\)?\s*$/.exec(line);
+			if (!m || /^(blob:|https?:|data:)/.test(m[1])) continue;
+			return `${m[1].replace(/^file:\/\//, "").split("/").slice(-2).join("/")}:${m[2]}`;
+		}
+	}
+	function unknownValue(what, value, allowed, where) {
+		const site = callSite();
+		return /* @__PURE__ */ new Error(`Unknown ${what} ${JSON.stringify(value)}${where ? ` on ${where}` : ""}${site ? ` (${site})` : ""}. Use one of: ${allowed.join(", ")}`);
+	}
+	/** Throws for any enum prop in `props` that has a value outside its list. */
+	function checkEnumProps(props, node) {
+		for (const [key, allowed] of Object.entries(PROP_ENUMS)) {
+			const v = props[key];
+			if (v !== void 0 && !allowed.includes(v)) throw unknownValue(key, v, allowed, `node "${node}"`);
+		}
+	}
 	// packages/runtime/src/anim/transition.ts
+	const TRANSITIONS = [
+		"fade",
+		"slide",
+		"zoom",
+		"wipe"
+	];
+	const DIRECTIONS = [
+		"left",
+		"right",
+		"up",
+		"down"
+	];
 	function transition(typeOrFn, optsOrDuration = .5) {
+		if (typeof typeOrFn !== "function" && !TRANSITIONS.includes(typeOrFn)) throw unknownValue("transition", typeOrFn, TRANSITIONS);
+		const direction = typeof optsOrDuration === "object" ? optsOrDuration.direction : void 0;
+		if (direction !== void 0 && !DIRECTIONS.includes(direction)) throw unknownValue("direction", direction, DIRECTIONS, "transition");
 		if (typeof typeOrFn === "function") return {
 			type: "custom",
 			duration: typeof optsOrDuration === "number" ? optsOrDuration : optsOrDuration.duration ?? .5,
@@ -238,6 +301,7 @@ var __liosvideo = (function(exports) {
 			if (name?.includes("/")) throw new Error(`Node name "${name}" must not contain "/"`);
 			this.requestedName = name;
 			this._name = name ?? `${kind}0`;
+			checkEnumProps(props, this._name);
 			this.base = {
 				...defaults,
 				...props
@@ -269,6 +333,7 @@ var __liosvideo = (function(exports) {
 		}
 		/** Changes base (un-animated) values, e.g. from a layout helper; keyframes still win where they apply. */
 		assign(props) {
+			checkEnumProps(props, this._name);
 			Object.assign(this.base, props);
 			for (const key of Object.keys(props)) this.tracks.get(key)?.setBase(props[key]);
 			return this;
@@ -280,6 +345,8 @@ var __liosvideo = (function(exports) {
 			});
 		}
 		to(props, opts) {
+			checkEnumProps(props, this._name);
+			if (opts.ease !== void 0 && !isEase(opts.ease)) throw unknownValue("ease", opts.ease, EASE_NAMES, `node "${this._name}" (${Object.keys(props).join(", ")})`);
 			for (const key of Object.keys(props)) this.track(key).add({
 				start: opts.at,
 				end: opts.at + opts.duration,

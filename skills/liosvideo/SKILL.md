@@ -165,6 +165,10 @@ Every render (CLI and desktop export) runs the mix through a master bus:
 - Override it per composition: `composition({ ..., mix: { loudness: -16, duck: { amount: 9, attack: 0.2, release: 0.6 } } })`. Use `loudness: false` to keep the raw level and `duck: false` to turn off ducking. CLI: `liosvideo render long.ts --loudness -16` or `--no-normalize`. The render prints the measured and final LUFS.
 - The desktop preview applies ducking live; loudness normalisation happens on export.
 
+### Easing names
+
+`linear`, `inQuad`, `outQuad`, `inOutQuad`, `inCubic`, `outCubic`, `inOutCubic` (default), `outBack`, `inExpo`, `outExpo`, `inOutExpo`, `inSine`, `outSine`, `inOutSine`, or a `(t) => number` curve. An unknown name throws where it is written, naming the node, property and `file:line`. Unknown `fit`, `align` and transition values do the same.
+
 ### Transition Types
 - `"fade"`: Smooth cross-fade between outgoing and incoming scenes.
 - `"slide"`: Slides the incoming scene in from the specified direction (`"left" | "right" | "up" | "down"`).
