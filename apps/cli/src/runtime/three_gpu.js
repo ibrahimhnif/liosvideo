@@ -61,9 +61,14 @@ function patchWriteBuffer() {
   GPUQueue.prototype.writeBuffer = patched;
 }
 
-/** naga 24 only accepts a signed mip level in textureLoad; three emits `u32( 0 )`. */
+/**
+ * naga 24 cannot convert an abstract float literal to an integer (three emits `u32( 0.0 )` for
+ * equirect sizes), and only accepts a signed mip level in textureLoad (three emits `u32( 0 )`).
+ */
 export function fixWgsl(code) {
-  return code.replace(/(textureLoad\(.*), u32\( (\d+) \) \)/g, "$1, $2i )");
+  return code
+    .replace(/\b(u32|i32)\( (\d+)\.0 \)/g, (_, type, n) => n + (type === "u32" ? "u" : "i"))
+    .replace(/(textureLoad\(.*), (?:u32\( (\d+) \)|(\d+)u) \)/g, (_, head, a, b) => `${head}, ${a ?? b}i )`);
 }
 
 async function getDevice() {
@@ -147,7 +152,8 @@ async function createSession(node, props, width, height) {
   renderer._animation?.stop?.();
   applyRenderOptions(renderer, props);
 
-  const userState = typeof node.setupFn === "function" ? node.setupFn({ scene, camera, width, height }) : undefined;
+  // setup may be async (gltf / hdr / texture loads)
+  const userState = typeof node.setupFn === "function" ? await node.setupFn({ scene, camera, width, height }) : undefined;
   return { scene, camera, renderer, context, userState, width, height };
 }
 

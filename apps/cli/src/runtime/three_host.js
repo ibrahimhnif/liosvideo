@@ -11,8 +11,22 @@
 // Not supported: textures, shadows, skinning, morph targets, instancing, post-processing.
 
 import * as THREE from "three";
+import { createThreeLoaders } from "liosvideo://three-loaders";
+
+// gltf() / hdr() / texture() read project files and decode images in Rust
+globalThis.__liosvideo.registerThreeLoaders(
+  createThreeLoaders({
+    read: async (src) => Deno.core.ops.op_read_asset(src),
+    decodeImage: async (bytes) => {
+      const out = Deno.core.ops.op_decode_image(bytes);
+      const view = new DataView(out.buffer, out.byteOffset, 8);
+      return { width: view.getUint32(0, true), height: view.getUint32(4, true), data: out.subarray(8) };
+    },
+  }),
+);
 
 const sessions = new Map();
+const failed = new Set();
 const warned = new Set();
 
 const FRONT = 0;
@@ -32,7 +46,7 @@ function walk(node, out) {
   for (let i = 0; i < children.length; i++) walk(children[i], out);
 }
 
-function createSession(node, props, width, height) {
+async function createSession(node, props, width, height) {
   const scene = new THREE.Scene();
   const orthographic = props.camera === "orthographic";
   const camera = orthographic
@@ -45,7 +59,8 @@ function createSession(node, props, width, height) {
   }
   let userState = undefined;
   if (typeof node.setupFn === "function") {
-    userState = node.setupFn({ scene, camera, width, height });
+    // setup may be async (gltf / hdr / texture loads)
+    userState = await node.setupFn({ scene, camera, width, height });
   }
   scene.updateMatrixWorld(true);
   camera.updateMatrixWorld(true);
@@ -53,6 +68,27 @@ function createSession(node, props, width, height) {
   camera.updateProjectionMatrix();
 
   return { scene, camera, userState, width, height };
+}
+
+/** Runs setup (awaiting async setup) for the scene's three() nodes that have no session yet. */
+export async function prepareThreeScene(comp, sceneIndex, time) {
+  const def = comp && comp.scenes ? comp.scenes[sceneIndex] : undefined;
+  if (!def) return;
+  const root = globalThis.__liosvideo.instantiateScene(comp, def);
+  const nodes = [];
+  walk(root, nodes);
+  for (const node of nodes) {
+    if (sessions.has(node.path()) || failed.has(node.path())) continue;
+    const props = node.propsAt(time);
+    const width = Math.max(1, Math.round(props.width || 400));
+    const height = Math.max(1, Math.round(props.height || 300));
+    try {
+      sessions.set(node.path(), await createSession(node, props, width, height));
+    } catch (error) {
+      failed.add(node.path());
+      warnOnce(`setup() failed: ${error && error.message ? error.message : error}`);
+    }
+  }
 }
 
 export function renderThreeScene(comp, sceneIndex, time, progress) {
@@ -70,13 +106,8 @@ export function renderThreeScene(comp, sceneIndex, time, progress) {
 
     let session = sessions.get(node.path());
     if (!session) {
-      try {
-        session = createSession(node, props, width, height);
-        sessions.set(node.path(), session);
-      } catch (error) {
-        warnOnce(`setup() failed: ${error && error.message ? error.message : error}`);
-        continue;
-      }
+      // prepareThreeScene runs setup first; a node it could not set up draws nothing
+      continue;
     } else if (session.width !== width || session.height !== height) {
       session.width = width;
       session.height = height;
@@ -788,4 +819,4 @@ function drawLine(line, color, alpha, depth, width, height) {
   }
 }
 
-globalThis.__liosvideoCli = { renderThreeScene };
+globalThis.__liosvideoCli = { prepareThreeScene, renderThreeScene };

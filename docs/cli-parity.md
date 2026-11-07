@@ -17,7 +17,7 @@ backend feature set as the desktop app, with no Node.js, Chromium, or FFmpeg dep
 | Colour pipeline | `rgba8unorm`, premultiplied alpha, no sRGB linearisation — matching the desktop renderer byte-for-byte. |
 | Shaders | `common.wgsl`, `quad.wgsl`, `blur.wgsl`, `composite.wgsl` are copied from `packages/runtime` and guarded by a unit test. |
 | Custom WGSL (`shader()`) | Both compile and run `code` for real with the same preamble, bindings and uniform contract. |
-| three.js (`three()`) | Both execute `setup` / `update` and apply the node's `shadows` / `toneMapping` / `exposure`. Desktop renders with WebGLRenderer; the CLI with three.js WebGPURenderer on the GPU (deno_webgpu over wgpu), falling back to the software rasteriser when no GPU is usable. |
+| three.js (`three()`) | Both execute `setup` / `update` and apply the node's `shadows` / `toneMapping` / `exposure`. Desktop renders with WebGLRenderer; the CLI with three.js WebGPURenderer on the GPU (deno_webgpu over wgpu), falling back to the software rasteriser when no GPU is usable. `gltf()` / `texture()` / `hdr()` share one loader (`packages/runtime/src/three/loaders.ts`): the desktop worker reads files through the host and decodes with `createImageBitmap`; the CLI reads and decodes in Rust (`op_read_asset`, `op_decode_image`). An async `setup` is awaited in both. |
 | Audio mixdown | Manifest audio clips: `startFrame`, `startOffset`, `duration`, `volume`; no looping, no ducking (same as desktop `audio_mixdown.ts`). |
 | Export | H.264 + AAC in MP4, presets `native | 1080p | 4k | shorts`, 10/30 Mbps defaults, 192 kbps AAC, 2-second keyframe interval. |
 | Validation | Same text-based scene validator (`scene_validator.rs`). |

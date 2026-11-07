@@ -9,7 +9,8 @@
     ".": "./src/index.ts",
     "./gpu": "./src/gpu/renderer.ts",
     "./three": "./src/gpu/three_runner.ts",
-    "./three-soft": "./src/gpu/three_soft.ts"
+    "./three-soft": "./src/gpu/three_soft.ts",
+    "./three-loaders": "./src/three/loaders.ts"
   },
   "scripts": {
     "test": "vitest run",

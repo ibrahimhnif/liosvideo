@@ -196,6 +196,33 @@ Renderer settings are props, since `setup` gets no renderer:
 - `shadows: true`, `toneMapping: "aces" | "agx" | "neutral" | …`, `exposure`: renderer settings (there is no renderer in `setup`). Shadows still need `light.castShadow`, `mesh.castShadow` / `receiveShadow`. Off / `"none"` / `1` by default.
 - The desktop preview renders with WebGL and the CLI with three.js on the GPU, so textures, shadows, tone mapping and emissive look the same in both. Set `camera.fov` / `aspect` changes with `camera.updateProjectionMatrix()`, as in plain three.js.
 
+Models, image textures and HDR environments load with `gltf`, `texture` and `hdr` from `liosvideo`, inside an `async setup` (the frame waits for it):
+
+```ts
+import { gltf, hdr, scene, texture, three } from "liosvideo";
+import * as THREE from "three";
+
+three({
+  name: "product", width, height, toneMapping: "aces", shadows: true,
+  async setup({ scene }) {
+    const env = await hdr("assets/hdri/studio.hdr");        // equirect .hdr: reflections + lighting
+    scene.environment = env;
+    const mic = await gltf("assets/models/mic.glb");        // .glb / .gltf with its materials and textures
+    scene.add(mic.scene);
+    const floor = new THREE.Mesh(new THREE.PlaneGeometry(8, 8),
+      new THREE.MeshStandardMaterial({ map: await texture("assets/images/wood.jpg", { repeat: [4, 4] }) }));
+    scene.add(floor);
+    return { grill: mic.part("grill") };                     // a named node; a typo throws with the names
+  },
+  update({ grill }, progress) { grill.rotation.y = progress * Math.PI; },
+});
+```
+
+- Paths are project-relative (`assets/models/`, `assets/hdri/`, `assets/images/`); list each file in `assets/ATTRIBUTIONS.md` (Poly Haven and Sketchfab CC0/CC-BY are good sources).
+- `texture(src, { colorSpace: "linear" })` for normal / roughness maps; colour maps are sRGB by default.
+- Each `gltf()` call returns its own copy of the scene, so two uses animate separately. `model.animations` holds the clips.
+- Not supported yet: Draco / meshopt compressed meshes and KTX2 textures. Export plain `.glb` (gltf-transform `--compress false`).
+
 ### Custom Mockups & Components
 Agents can create domain-specific mockups (smartwatches, tablet frames, notification bubbles, custom app UIs) by authoring composite functions or classes extending `GroupNode` using `group()`, `rect()`, `circle()`, `path()`, and `text()`.
 

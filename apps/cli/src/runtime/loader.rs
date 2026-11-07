@@ -16,6 +16,8 @@ pub const THREE_BUNDLE: &str = include_str!("three.bundle.js");
 pub const THREE_CORE: &str = include_str!("three.core.js");
 /// three.js WebGPURenderer build (shares three.core.js with the bundle), used by three_gpu.js.
 pub const THREE_WEBGPU: &str = include_str!("three.webgpu.js");
+/// gltf() / hdr() / texture() loaders, bundled from packages/runtime/src/three/loaders.ts.
+pub const THREE_LOADERS: &str = include_str!("three_loaders.js");
 
 /// The `liosvideo` ES module: re-exports every name the bundled runtime exports, read from the
 /// bundle itself so a new runtime export can never be missing here.
@@ -288,6 +290,7 @@ impl ModuleLoader for TsModuleLoader {
         if module_specifier.scheme() == "liosvideo" {
             let code = match module_specifier.host_str() {
                 Some("runtime") | Some("gpu") => liosvideo_esm(),
+                Some("three-loaders") => THREE_LOADERS,
                 Some("three") => {
                     if module_specifier.path().ends_with("/core")
                         || module_specifier.path().ends_with("three.core.js")

@@ -20,18 +20,21 @@ export interface ThreeRenderOptions {
   exposure?: number;
 }
 
+export type ThreeSetupResult = Record<string, any> | void | Promise<Record<string, any> | void>;
+
 export interface ThreeProps extends BaseProps, ThreeRenderOptions {
   camera: "perspective" | "orthographic";
   fov: number;
-  setup: (ctx: ThreeSetupContext) => Record<string, any> | void;
+  /** May be async: `await gltf(...)`, `await hdr(...)`, `await texture(...)`. Runs once per node. */
+  setup: (ctx: ThreeSetupContext) => ThreeSetupResult;
   update?: (state: any, progress: number, time: number) => void;
 }
 
 export class ThreeNode extends Node<ThreeProps> {
-  readonly setupFn: (ctx: ThreeSetupContext) => Record<string, any> | void;
+  readonly setupFn: (ctx: ThreeSetupContext) => ThreeSetupResult;
   readonly updateFn?: (state: any, progress: number, time: number) => void;
 
-  constructor(init: NodeInit<ThreeProps> & { setup: (ctx: ThreeSetupContext) => Record<string, any> | void }) {
+  constructor(init: NodeInit<ThreeProps> & { setup: (ctx: ThreeSetupContext) => ThreeSetupResult }) {
     super(
       "three",
       {
@@ -72,7 +75,7 @@ export class ThreeNode extends Node<ThreeProps> {
 }
 
 export function three(
-  init: NodeInit<ThreeProps> & { setup: (ctx: ThreeSetupContext) => Record<string, any> | void },
+  init: NodeInit<ThreeProps> & { setup: (ctx: ThreeSetupContext) => ThreeSetupResult },
 ): ThreeNode {
   return new ThreeNode(init);
 }

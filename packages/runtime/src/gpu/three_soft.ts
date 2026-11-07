@@ -38,12 +38,33 @@ function createSession(node, props, width, height) {
   if (typeof node.setupFn === "function") {
     userState = node.setupFn({ scene, camera, width, height });
   }
+  return { scene, camera, userState, width, height };
+}
+
+function finishSession(session) {
+  const { scene, camera } = session;
   scene.updateMatrixWorld(true);
   camera.updateMatrixWorld(true);
   camera.matrixWorldInverse.copy(camera.matrixWorld).invert();
   camera.updateProjectionMatrix();
+  return session;
+}
 
-  return { scene, camera, userState, width, height };
+function nodeSize(node) {
+  return [Math.max(1, Math.round(node.width || 400)), Math.max(1, Math.round(node.height || 300))];
+}
+
+/** Runs the node's setup, awaiting it when it is async (gltf / hdr / texture), before the first render. */
+export async function prepareThreeNode(node) {
+  if (sessions.has(node.path())) return;
+  const [width, height] = nodeSize(node);
+  try {
+    const session = createSession(node, { width, height, camera: node.cameraType, fov: node.fov }, width, height);
+    session.userState = await session.userState;
+    sessions.set(node.path(), finishSession(session));
+  } catch (error) {
+    warnOnce(`setup() failed: ${error && error.message ? error.message : error}`);
+  }
 }
 
 export function renderThreeNode(node, time, duration) {
@@ -59,7 +80,11 @@ export function renderThreeNode(node, time, duration) {
         width,
         height,
       );
-      sessions.set(node.path(), session);
+      if (session.userState instanceof Promise) {
+        warnOnce("setup() is async: await prepareThreeNode(node) before rendering");
+        return null;
+      }
+      sessions.set(node.path(), finishSession(session));
     } catch (error) {
       warnOnce(`setup() failed: ${error && error.message ? error.message : error}`);
       return null;

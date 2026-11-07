@@ -8,7 +8,9 @@ export type ToWorker =
   | { type: "assets"; bitmaps: [string, ImageBitmap][] }
   | { type: "snapshot"; id: number }
   | { type: "timings"; timings: Record<string, any> }
-  | { type: "attributions"; markdown: string };
+  | { type: "attributions"; markdown: string }
+  /** answer to readAsset: the file's bytes, or why it could not be read */
+  | { type: "assetBytes"; id: number; bytes?: ArrayBuffer; error?: string };
 
 export type FromWorker =
   | {
@@ -24,6 +26,8 @@ export type FromWorker =
       manifest: TimelineManifest;
     }
   | { type: "rendered"; id: number; frame: number }
+  /** three() setup asked for a project file (gltf / hdr / texture) */
+  | { type: "readAsset"; id: number; src: string }
   /** PNG of the last rendered frame */
   | { type: "snapshot"; id: number; png?: ArrayBuffer; error?: string }
   /** phase "lost": the GPU device is gone and the worker must be replaced */

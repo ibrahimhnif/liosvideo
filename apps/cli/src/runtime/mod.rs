@@ -96,6 +96,11 @@ impl RuntimeHost {
             ..Default::default()
         });
 
+        js_runtime
+            .op_state()
+            .borrow_mut()
+            .put(ops::ProjectRoot(project_root.clone()));
+
         // Inject DOM / browser environment shims
         shims::inject_shims(&mut js_runtime)
             .map_err(|e| anyhow!("Failed to inject browser shims: {e}"))?;
@@ -374,6 +379,26 @@ impl RuntimeHost {
             }
             self.three_gpu = false;
         }
+
+        // setup may be async (gltf / hdr / texture), so it runs before the synchronous render
+        let prepare = format!(
+            r#"(async () => {{
+                const host = globalThis.__liosvideoCli;
+                const comp = globalThis.__activeComp;
+                if (host && comp && typeof host.prepareThreeScene === "function") {{
+                    await host.prepareThreeScene(comp, {scene_index}, {time:.9});
+                }}
+            }})()"#
+        );
+        let promise = self
+            .js_runtime
+            .execute_script("prepare_three.js", prepare)
+            .map_err(|e| anyhow!("Failed to set up three nodes: {e}"))?;
+        let resolved = self.js_runtime.resolve(promise);
+        self.js_runtime
+            .with_event_loop_promise(resolved, Default::default())
+            .await
+            .map_err(|e| anyhow!("Failed to set up three nodes: {e}"))?;
 
         let script = format!(
             r#"(() => {{
@@ -711,6 +736,281 @@ mod tests {
         );
         assert_eq!(px(0, 0)[3], 255);
         Ok(())
+    }
+
+    /// A GLB: a 2x2 unlit quad "panel" textured with an embedded 2x1 PNG (red | green), and a
+    /// 0.4x0.4 unlit blue quad "lid" as a separate node.
+    fn test_glb() -> Vec<u8> {
+        let mut png = Vec::new();
+        image::RgbaImage::from_raw(2, 1, vec![255, 0, 0, 255, 0, 255, 0, 255])
+            .unwrap()
+            .write_to(&mut std::io::Cursor::new(&mut png), image::ImageFormat::Png)
+            .unwrap();
+        let f32s = |v: &[f32]| v.iter().flat_map(|f| f.to_le_bytes()).collect::<Vec<u8>>();
+        let mut bin = Vec::new();
+        let mut views = Vec::new();
+        let mut push = |bin: &mut Vec<u8>, bytes: &[u8]| {
+            while !bin.len().is_multiple_of(4) {
+                bin.push(0);
+            }
+            views.push(serde_json::json!({ "buffer": 0, "byteOffset": bin.len(), "byteLength": bytes.len() }));
+            bin.extend_from_slice(bytes);
+        };
+        push(
+            &mut bin,
+            &f32s(&[-1., -1., 0., 1., -1., 0., 1., 1., 0., -1., 1., 0.]),
+        );
+        push(&mut bin, &f32s(&[0., 1., 1., 1., 1., 0., 0., 0.]));
+        push(&mut bin, &[0, 0, 1, 0, 2, 0, 0, 0, 2, 0, 3, 0]);
+        push(
+            &mut bin,
+            &f32s(&[-0.2, -0.2, 0., 0.2, -0.2, 0., 0.2, 0.2, 0., -0.2, 0.2, 0.]),
+        );
+        push(&mut bin, &png);
+        while !bin.len().is_multiple_of(4) {
+            bin.push(0);
+        }
+        let json = serde_json::json!({
+            "asset": { "version": "2.0" },
+            "extensionsUsed": ["KHR_materials_unlit"],
+            "scene": 0,
+            "scenes": [{ "nodes": [0, 1] }],
+            "nodes": [
+                { "name": "panel", "mesh": 0 },
+                { "name": "lid", "mesh": 1, "translation": [0.5, 0.5, 0.1] }
+            ],
+            "meshes": [
+                { "primitives": [{ "attributes": { "POSITION": 0, "TEXCOORD_0": 1 }, "indices": 2, "material": 0 }] },
+                { "primitives": [{ "attributes": { "POSITION": 3 }, "indices": 2, "material": 1 }] }
+            ],
+            "materials": [
+                { "pbrMetallicRoughness": { "baseColorTexture": { "index": 0 } }, "extensions": { "KHR_materials_unlit": {} } },
+                { "pbrMetallicRoughness": { "baseColorFactor": [0, 0, 1, 1] }, "extensions": { "KHR_materials_unlit": {} } }
+            ],
+            "samplers": [{ "magFilter": 9728, "minFilter": 9728 }],
+            "textures": [{ "source": 0, "sampler": 0 }],
+            "images": [{ "bufferView": 4, "mimeType": "image/png" }],
+            "buffers": [{ "byteLength": bin.len() }],
+            "bufferViews": views,
+            "accessors": [
+                { "bufferView": 0, "componentType": 5126, "count": 4, "type": "VEC3", "min": [-1, -1, 0], "max": [1, 1, 0] },
+                { "bufferView": 1, "componentType": 5126, "count": 4, "type": "VEC2" },
+                { "bufferView": 2, "componentType": 5123, "count": 6, "type": "SCALAR" },
+                { "bufferView": 3, "componentType": 5126, "count": 4, "type": "VEC3", "min": [-0.2, -0.2, 0], "max": [0.2, 0.2, 0] }
+            ]
+        });
+        let mut text = serde_json::to_vec(&json).unwrap();
+        while !text.len().is_multiple_of(4) {
+            text.push(b' ');
+        }
+        let total = 12 + 8 + text.len() + 8 + bin.len();
+        let mut out = Vec::with_capacity(total);
+        out.extend_from_slice(&0x4654_6c67u32.to_le_bytes());
+        out.extend_from_slice(&2u32.to_le_bytes());
+        out.extend_from_slice(&(total as u32).to_le_bytes());
+        out.extend_from_slice(&(text.len() as u32).to_le_bytes());
+        out.extend_from_slice(&0x4e4f_534au32.to_le_bytes());
+        out.extend_from_slice(&text);
+        out.extend_from_slice(&(bin.len() as u32).to_le_bytes());
+        out.extend_from_slice(&0x004e_4942u32.to_le_bytes());
+        out.extend_from_slice(&bin);
+        out
+    }
+
+    fn glb_project() -> Result<tempfile::TempDir> {
+        let dir = tempfile::tempdir()?;
+        std::fs::create_dir_all(dir.path().join("assets/models"))?;
+        std::fs::write(dir.path().join("assets/models/box.glb"), test_glb())?;
+        std::fs::write(
+            dir.path().join("long.ts"),
+            r##"
+            import { composition, gltf, scene, three } from "liosvideo";
+            import * as THREE from "three";
+            const s = scene("s", { duration: 1 }, ({ root }) => {
+              root.add(three({
+                name: "stage", width: 160, height: 160,
+                async setup({ scene, camera }) {
+                  scene.background = new THREE.Color("#000000");
+                  camera.position.z = 2.2;
+                  const model = await gltf("assets/models/box.glb");
+                  scene.add(model.scene);
+                  return { lid: model.part("lid") };
+                },
+                update({ lid }, progress) {
+                  lid.position.x = 0.5 - progress; // a named part animates
+                },
+              }));
+            });
+            export default composition({ width: 160, height: 160, fps: 30, scenes: [s] });
+            "##,
+        )?;
+        Ok(dir)
+    }
+
+    #[tokio::test(flavor = "current_thread")]
+    async fn renders_a_gltf_model_with_its_texture_on_the_gpu() -> Result<()> {
+        let dir = glb_project()?;
+        let mut host = RuntimeHost::new(dir.path().to_path_buf())?;
+        host.load_composition("long.ts").await?;
+        let frames = host.render_three_nodes(0, 30.0).await?;
+        if !host.three_gpu {
+            eprintln!("no GPU here; skipping the GPU glTF check");
+            return Ok(());
+        }
+        let img = frames.values().next().expect("a three frame");
+        let px = |x: u32, y: u32| {
+            let i = ((y * img.width + x) * 4) as usize;
+            [img.rgba[i], img.rgba[i + 1], img.rgba[i + 2]]
+        };
+        let (left, right, lid) = (px(40, 120), px(120, 120), px(122, 38));
+        assert!(
+            left[0] > 200 && left[1] < 40,
+            "texture left texel is red: {left:?}"
+        );
+        assert!(
+            right[1] > 200 && right[0] < 40,
+            "texture right texel is green: {right:?}"
+        );
+        assert!(lid[2] > 200 && lid[0] < 40, "the lid part is blue: {lid:?}");
+        Ok(())
+    }
+
+    #[tokio::test(flavor = "current_thread")]
+    async fn runs_an_async_setup_in_the_software_rasteriser() -> Result<()> {
+        let dir = glb_project()?;
+        let mut host = RuntimeHost::new(dir.path().to_path_buf())?;
+        host.load_composition("long.ts").await?;
+        host.three_gpu = false;
+        let frames = host.render_three_nodes(0, 30.0).await?;
+        let img = frames
+            .values()
+            .next()
+            .expect("a three frame after an async setup");
+        let blue = img
+            .rgba
+            .chunks(4)
+            .filter(|p| p[2] > 200 && p[0] < 40 && p[1] < 40)
+            .count();
+        assert!(
+            blue > 50,
+            "the lid from the glTF is drawn ({blue} blue pixels)"
+        );
+        Ok(())
+    }
+
+    /// A mirror ball under an equirect sky (top red, bottom blue) reflects red above and blue below.
+    /// `env` builds the environment: an HDR through hdr(), or an 8-bit DataTexture (whose WGSL
+    /// three writes with `u32( 0.0 )`, which naga 24 rejects without fixWgsl).
+    async fn mirror_ball(env: &str) -> Result<Option<[[u8; 3]; 2]>> {
+        let dir = tempfile::tempdir()?;
+        std::fs::create_dir_all(dir.path().join("assets/hdri"))?;
+        let (w, h) = (256usize, 128usize);
+        let mut hdr = format!("#?RADIANCE\nFORMAT=32-bit_rle_rgbe\n\n-Y {h} +X {w}\n").into_bytes();
+        for y in 0..h {
+            for _ in 0..w {
+                hdr.extend_from_slice(if y < h / 2 {
+                    &[128, 0, 0, 129]
+                } else {
+                    &[0, 0, 128, 129]
+                });
+            }
+        }
+        std::fs::write(dir.path().join("assets/hdri/sky.hdr"), hdr)?;
+        std::fs::write(
+            dir.path().join("long.ts"),
+            format!(
+                r##"
+            import {{ composition, hdr, scene, three }} from "liosvideo";
+            import * as THREE from "three";
+            const s = scene("s", {{ duration: 1 }}, ({{ root }}) => {{
+              root.add(three({{
+                name: "stage", width: 200, height: 200, fov: 90,
+                async setup({{ scene, camera }}) {{
+                  {env}
+                  scene.environment = env;
+                  camera.position.set(0, 0, 3);
+                  scene.add(new THREE.Mesh(new THREE.SphereGeometry(0.8, 48, 24), new THREE.MeshStandardMaterial({{ metalness: 1, roughness: 0 }})));
+                }},
+              }}));
+            }});
+            export default composition({{ width: 200, height: 200, fps: 30, scenes: [s] }});
+            "##
+            ),
+        )?;
+        let mut host = RuntimeHost::new(dir.path().to_path_buf())?;
+        host.load_composition("long.ts").await?;
+        let frames = host.render_three_nodes(0, 30.0).await?;
+        if !host.three_gpu {
+            return Ok(None);
+        }
+        let img = frames.values().next().expect("a three frame");
+        let px = |x: u32, y: u32| {
+            let i = ((y * img.width + x) * 4) as usize;
+            [img.rgba[i], img.rgba[i + 1], img.rgba[i + 2]]
+        };
+        Ok(Some([px(100, 82), px(100, 118)]))
+    }
+
+    #[tokio::test(flavor = "current_thread")]
+    async fn reflects_an_hdr_environment_on_the_gpu() -> Result<()> {
+        let Some([top, bottom]) =
+            mirror_ball(r#"const env = await hdr("assets/hdri/sky.hdr");"#).await?
+        else {
+            eprintln!("no GPU here; skipping the environment check");
+            return Ok(());
+        };
+        assert!(
+            top[0] > 150 && top[2] < 60,
+            "the ball reflects the red sky above: {top:?}"
+        );
+        assert!(
+            bottom[2] > 150 && bottom[0] < 60,
+            "and the blue ground below: {bottom:?}"
+        );
+        Ok(())
+    }
+
+    #[tokio::test(flavor = "current_thread")]
+    async fn reflects_an_8_bit_environment_on_the_gpu() -> Result<()> {
+        let env = r#"const d = new Uint8Array(256 * 128 * 4);
+                  for (let i = 0; i < 256 * 128; i++) d.set(i < 256 * 64 ? [255, 0, 0, 255] : [0, 0, 255, 255], i * 4);
+                  const env = new THREE.DataTexture(d, 256, 128); env.flipY = true;
+                  env.mapping = THREE.EquirectangularReflectionMapping; env.needsUpdate = true;"#;
+        let Some([top, bottom]) = mirror_ball(env).await? else {
+            eprintln!("no GPU here; skipping the environment check");
+            return Ok(());
+        };
+        let lit = |p: [u8; 3]| p.iter().map(|&c| c as u32).sum::<u32>() > 150;
+        assert!(
+            lit(top) && lit(bottom),
+            "the ball reflects the sky, not black: {top:?} {bottom:?}"
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn asset_reads_stay_inside_the_project() {
+        let dir = tempfile::tempdir().unwrap();
+        std::fs::write(dir.path().join("a.bin"), [1u8, 2]).unwrap();
+        assert_eq!(ops::read_asset(dir.path(), "./a.bin").unwrap(), vec![1, 2]);
+        let outside = ops::read_asset(dir.path(), "../../../../../../etc/hosts").unwrap_err();
+        assert!(outside.contains("outside the project"), "{outside}");
+        assert!(ops::read_asset(dir.path(), "missing.glb")
+            .unwrap_err()
+            .contains("not found"));
+    }
+
+    #[test]
+    fn decodes_images_with_a_size_header() {
+        let mut png = Vec::new();
+        image::RgbaImage::from_raw(2, 1, vec![9, 8, 7, 255, 1, 2, 3, 255])
+            .unwrap()
+            .write_to(&mut std::io::Cursor::new(&mut png), image::ImageFormat::Png)
+            .unwrap();
+        let out = ops::decode_image(&png).unwrap();
+        assert_eq!(&out[..8], &[2, 0, 0, 0, 1, 0, 0, 0]);
+        assert_eq!(&out[8..], &[9, 8, 7, 255, 1, 2, 3, 255]);
+        assert!(ops::decode_image(&[1, 2, 3]).is_err());
     }
 
     #[tokio::test]

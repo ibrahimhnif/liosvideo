@@ -55,6 +55,7 @@ export class PreviewHost {
   private sentAssets = new Set<string>();
   private size: { width: number; height: number } | undefined;
   private disposed = false;
+  private readBytes: ((src: string) => Promise<ArrayBuffer>) | undefined;
 
   constructor(
     private canvas: HTMLCanvasElement,
@@ -67,6 +68,11 @@ export class PreviewHost {
   /** The current canvas element (replaced after a restart). */
   get element(): HTMLCanvasElement {
     return this.canvas;
+  }
+
+  /** How three() setup reads project files (gltf / hdr / texture); the worker cannot reach them itself. */
+  setBytesReader(read: (src: string) => Promise<ArrayBuffer>): void {
+    this.readBytes = read;
   }
 
   onError(cb: (e: PreviewError) => void): void {
@@ -273,6 +279,14 @@ export class PreviewHost {
         this.finishFrame(msg.frame);
         this.arm();
         return;
+      case "readAsset": {
+        const read = this.readBytes ?? (() => Promise.reject(new Error("project files are not available here")));
+        read(msg.src).then(
+          (bytes) => this.post({ type: "assetBytes", id: msg.id, bytes }, [bytes]),
+          (err) => this.post({ type: "assetBytes", id: msg.id, error: err instanceof Error ? err.message : String(err) }),
+        );
+        return;
+      }
       case "error": {
         if (msg.phase === "lost") return this.restart("lost", msg.message);
         const code = msg.phase === "load" ? this.loads.get(msg.generation ?? -1)?.code : this.applied?.code;

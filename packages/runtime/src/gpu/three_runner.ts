@@ -52,6 +52,74 @@ export class ThreeRunner {
     return false;
   }
 
+  private pending = new Map<string, Promise<void>>();
+
+  /** Scene, camera and renderer for a node, and whatever its setup returned (maybe a promise). */
+  private build(node: ThreeNode): { session: NodeSession; setup: unknown } {
+    const width = Math.max(1, Math.round(node.width));
+    const height = Math.max(1, Math.round(node.height));
+    const scene = new THREE.Scene();
+    const aspect = width / height;
+
+    let camera: THREE.PerspectiveCamera | THREE.OrthographicCamera;
+    if (node.cameraType === "orthographic") {
+      camera = new THREE.OrthographicCamera(-width / 2, width / 2, height / 2, -height / 2, 0.1, 2000);
+      camera.position.z = 500;
+    } else {
+      camera = new THREE.PerspectiveCamera(node.fov, aspect, 0.1, 1000);
+      camera.position.z = 5;
+    }
+
+    let canvas: OffscreenCanvas | HTMLCanvasElement | undefined;
+    let renderer: THREE.WebGLRenderer | undefined;
+
+    try {
+      if (typeof OffscreenCanvas !== "undefined") {
+        canvas = new OffscreenCanvas(width, height);
+        renderer = new THREE.WebGLRenderer({
+          canvas,
+          alpha: true,
+          antialias: true,
+          preserveDrawingBuffer: true,
+        });
+        renderer.setSize(width, height, false);
+      } else if (typeof document !== "undefined") {
+        canvas = document.createElement("canvas");
+        canvas.width = width;
+        canvas.height = height;
+        renderer = new THREE.WebGLRenderer({
+          canvas,
+          alpha: true,
+          antialias: true,
+          preserveDrawingBuffer: true,
+        });
+        renderer.setSize(width, height, false);
+      }
+    } catch {
+      // Fallback for headless environments without WebGL context
+    }
+
+    if (renderer) applyRenderOptions(renderer, node.renderOptions);
+    const setup = node.setupFn({ scene, camera, width, height });
+    return { session: { scene, camera, userState: {}, canvas, renderer, lastWidth: width, lastHeight: height }, setup };
+  }
+
+  /** Runs the node's setup, awaiting it when it is async (gltf / hdr / texture loads). */
+  async prepare(node: ThreeNode): Promise<void> {
+    const key = node.path();
+    if (this.sessions.has(key)) return;
+    let pending = this.pending.get(key);
+    if (!pending) {
+      pending = (async () => {
+        const { session, setup } = this.build(node);
+        session.userState = (await setup) ?? {};
+        this.sessions.set(key, session);
+      })().finally(() => this.pending.delete(key));
+      this.pending.set(key, pending);
+    }
+    await pending;
+  }
+
   step(node: ThreeNode, time: number, duration: number): { scene: THREE.Scene; camera: THREE.Camera; canvas?: OffscreenCanvas | HTMLCanvasElement } {
     const key = node.path();
     let session = this.sessions.get(key);
@@ -60,50 +128,10 @@ export class ThreeRunner {
     const height = Math.max(1, Math.round(node.height));
 
     if (!session) {
-      const scene = new THREE.Scene();
-      const aspect = width / height;
-
-      let camera: THREE.PerspectiveCamera | THREE.OrthographicCamera;
-      if (node.cameraType === "orthographic") {
-        camera = new THREE.OrthographicCamera(-width / 2, width / 2, height / 2, -height / 2, 0.1, 2000);
-        camera.position.z = 500;
-      } else {
-        camera = new THREE.PerspectiveCamera(node.fov, aspect, 0.1, 1000);
-        camera.position.z = 5;
-      }
-
-      let canvas: OffscreenCanvas | HTMLCanvasElement | undefined;
-      let renderer: THREE.WebGLRenderer | undefined;
-
-      try {
-        if (typeof OffscreenCanvas !== "undefined") {
-          canvas = new OffscreenCanvas(width, height);
-          renderer = new THREE.WebGLRenderer({
-            canvas,
-            alpha: true,
-            antialias: true,
-            preserveDrawingBuffer: true,
-          });
-          renderer.setSize(width, height, false);
-        } else if (typeof document !== "undefined") {
-          canvas = document.createElement("canvas");
-          canvas.width = width;
-          canvas.height = height;
-          renderer = new THREE.WebGLRenderer({
-            canvas,
-            alpha: true,
-            antialias: true,
-            preserveDrawingBuffer: true,
-          });
-          renderer.setSize(width, height, false);
-        }
-      } catch {
-        // Fallback for headless environments without WebGL context
-      }
-
-      if (renderer) applyRenderOptions(renderer, node.renderOptions);
-      const userState = node.setupFn({ scene, camera, width, height }) ?? {};
-      session = { scene, camera, userState, canvas, renderer, lastWidth: width, lastHeight: height };
+      const built = this.build(node);
+      if (built.setup instanceof Promise) throw new Error(`three(): "${node.name}" has an async setup; await prepare(node) before step()`);
+      session = built.session;
+      session.userState = built.setup ?? {};
       this.sessions.set(key, session);
     }
 
@@ -132,6 +160,7 @@ export class ThreeRunner {
   }
 
   async renderBitmap(node: ThreeNode, time: number, duration: number): Promise<ImageBitmap | null> {
+    await this.prepare(node);
     const { canvas } = this.step(node, time, duration);
     if (!canvas || typeof createImageBitmap === "undefined") return null;
     try {

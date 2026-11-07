@@ -3,7 +3,8 @@ import * as runtime from "liosvideo";
 import * as THREE from "three";
 import { createRenderer, measureText, type AssetMap, type Renderer } from "liosvideo/gpu";
 import { ThreeRunner } from "liosvideo/three";
-import { renderThreeNode, resetThreeSoftware } from "liosvideo/three-soft";
+import { createThreeLoaders, decodeImageInBrowser as decodeImage } from "liosvideo/three-loaders";
+import { prepareThreeNode, renderThreeNode, resetThreeSoftware } from "liosvideo/three-soft";
 import type { FromWorker, ToWorker } from "./protocol";
 
 declare const self: DedicatedWorkerGlobalScope;
@@ -28,6 +29,18 @@ for (const name of BLOCKED) {
 (globalThis as unknown as { THREE: typeof THREE }).THREE = THREE;
 runtime.setTextMeasurer(measureText);
 
+// three() setup reads project files through the host (this worker has no file or network access)
+const assetReads = new Map<number, { resolve: (b: ArrayBuffer) => void; reject: (e: Error) => void }>();
+let nextAssetRead = 0;
+function readProjectFile(src: string): Promise<ArrayBuffer> {
+  const id = nextAssetRead++;
+  return new Promise((resolve, reject) => {
+    assetReads.set(id, { resolve, reject });
+    post({ type: "readAsset", id, src });
+  });
+}
+runtime.registerThreeLoaders(createThreeLoaders({ read: readProjectFile, decodeImage }));
+
 let renderer: Renderer | undefined;
 let rendererReady: Promise<Renderer> | undefined;
 let size: { width: number; height: number } | undefined;
@@ -41,6 +54,7 @@ function threeBackend(): "webgl" | "software" {
 }
 
 async function softwareThreeBitmap(node: runtime.ThreeNode, time: number, duration: number): Promise<ImageBitmap | null> {
+  await prepareThreeNode(node);
   const frame = renderThreeNode(node, time, duration);
   if (!frame) return null;
   try {
@@ -161,6 +175,13 @@ self.onmessage = async (e: MessageEvent<ToWorker>) => {
     case "assets":
       for (const [src, bitmap] of msg.bitmaps) assets.set(src, bitmap);
       return;
+    case "assetBytes": {
+      const pending = assetReads.get(msg.id);
+      assetReads.delete(msg.id);
+      if (msg.bytes) pending?.resolve(msg.bytes);
+      else pending?.reject(new Error(msg.error ?? "could not read the file"));
+      return;
+    }
     case "attributions":
       (globalThis as any).__liosAttributions = msg.markdown;
       runtime.registerAttributions(msg.markdown);
@@ -180,6 +201,8 @@ self.onmessage = async (e: MessageEvent<ToWorker>) => {
       threeRunner = undefined;
       threeMode = undefined;
       resetThreeSoftware();
+      // a reload may have changed the files; read them again
+      runtime.registerThreeLoaders(createThreeLoaders({ read: readProjectFile, decodeImage }));
       // loads are applied strictly in the order they were sent
       loading = loading.then(async () => {
         try {

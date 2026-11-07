@@ -5,7 +5,7 @@
   import { onMount } from "svelte";
   import { BuildCoordinator, bundleComposition, type BuildError } from "$lib/bundle/bundler";
   import { devLog, devSnapshots } from "$lib/devlog";
-  import { loadProjectImage } from "$lib/preview/assets";
+  import { loadProjectBytes, loadProjectImage } from "$lib/preview/assets";
   import { AudioPlayer } from "$lib/preview/audio_player";
   import { PlaybackClock } from "$lib/preview/clock";
   import { PreviewHost, SceneError, SupersededError, arrayBufferToBase64 } from "$lib/preview/host";
@@ -260,6 +260,7 @@
     canvas = document.createElement("canvas");
     stage.appendChild(canvas);
     host = new PreviewHost(canvas, loadProjectImage);
+    host.setBytesReader(loadProjectBytes);
     const timingsReady = Promise.all([refreshVoTimings(), refreshAttributions()]);
     host.onError((e) => {
       devLog(`preview-error ${e.phase} ${e.message}${e.location ? ` at ${e.location.file}:${e.location.line}` : ""}`);

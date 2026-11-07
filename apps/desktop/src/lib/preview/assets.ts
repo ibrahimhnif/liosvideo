@@ -59,3 +59,11 @@ export async function loadProjectAsset(src: string): Promise<ImageBitmap> {
 }
 
 export const loadProjectImage = loadProjectAsset;
+
+/** Bytes of a project file (GLB, HDR, texture) for three() setup, through the same path guard. */
+export async function loadProjectBytes(src: string): Promise<ArrayBuffer> {
+  const path = await invoke<string>("asset_url_path", { rel: src });
+  const res = await fetch(convertFileSrc(path));
+  if (!res.ok) throw new Error(`Could not read "${src}" (${res.status})`);
+  return res.arrayBuffer();
+}

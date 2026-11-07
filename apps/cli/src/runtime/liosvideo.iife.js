@@ -1774,6 +1774,28 @@ var __liosvideo = (function(exports) {
 		});
 		return out;
 	}
+	// packages/runtime/src/three/assets.ts
+	let loaders;
+	/** Called by the host that renders three() nodes. */
+	function registerThreeLoaders(impl) {
+		loaders = impl;
+	}
+	function need(name) {
+		if (!loaders) throw new Error(`${name}() works inside three({ setup }): make setup async and await it there`);
+		return loaders;
+	}
+	/** Loads a .glb / .gltf from the project (meshes, PBR materials, textures); parts by name via `model.part()`. */
+	async function gltf(src) {
+		return need("gltf").gltf(src);
+	}
+	/** Loads a Radiance .hdr as an equirectangular environment: `scene.environment = await hdr(...)`. */
+	async function hdr(src) {
+		return need("hdr").hdr(src);
+	}
+	/** Loads an image from the project as a texture (`map`, `normalMap`, `roughnessMap`, …). */
+	async function texture(src, opts) {
+		return need("texture").texture(src, opts);
+	}
 	// packages/runtime/src/audio/mix.ts
 	const DEFAULT_MIX = Object.freeze({
 		loudness: -14,
@@ -3134,7 +3156,9 @@ var __liosvideo = (function(exports) {
 	exports.evaluateFrame = evaluateFrame;
 	exports.focus = focus;
 	exports.formatColor = formatColor;
+	exports.gltf = gltf;
 	exports.group = group;
+	exports.hdr = hdr;
 	exports.image = image;
 	exports.instantiateScene = instantiateScene;
 	exports.isSfxName = isSfxName;
@@ -3155,6 +3179,7 @@ var __liosvideo = (function(exports) {
 	exports.planVo = planVo;
 	exports.rect = rect;
 	exports.registerAttributions = registerAttributions;
+	exports.registerThreeLoaders = registerThreeLoaders;
 	exports.registerVoTiming = registerVoTiming;
 	exports.registerVoTimings = registerVoTimings;
 	exports.resolveMix = resolveMix;
@@ -3167,6 +3192,7 @@ var __liosvideo = (function(exports) {
 	exports.stack = stack;
 	exports.terminal = terminal;
 	exports.text = text;
+	exports.texture = texture;
 	exports.three = three;
 	exports.tokyoNightColors = tokyoNightColors;
 	exports.transition = transition;

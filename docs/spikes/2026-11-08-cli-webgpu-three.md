@@ -29,6 +29,7 @@ deno_webgpu (wgpu), and keeps the software rasteriser as the fallback.
 | :--- | :--- |
 | deno_webgpu 0.158 reads `queue.writeBuffer(buf, off, typedArray, dataOffset, size)` offsets as bytes; the spec counts elements. three's uniform uploads failed `COPY_BUFFER_ALIGNMENT`. | Wrap `GPUQueue.prototype.writeBuffer` to pass a byte view. |
 | naga 24 rejects `textureLoad(t, coords, u32(0))` ("level-of-detail index … not an integer scalar"); only signed levels pass. three emits `u32( 0 )` for DataTextures and the shadow material. Reproduced with `naga-cli 24.0.0` alone. | Rewrite the level to `0i` in `createShaderModule`. |
+| naga 24 cannot convert an abstract float literal to an integer; three emits `u32( 0.0 )` for equirect sizes (8-bit environment maps), which broke PMREM. | Rewrite `u32( N.0 )` / `i32( N.0 )` to `Nu` / `Ni`. |
 | `GPUDevice.lost` is undefined. | Give the device a never-settling promise. |
 | The device does not report `core-features-and-limits`, so three drops to compatibility mode (no MSAA). | Report it (wgpu provides core features). |
 | `getCompilationInfo` is missing (three calls it after a pipeline error). | Stub it. |
@@ -62,4 +63,4 @@ PSNR 48 dB over the objects and floor before the background fix, 46.6 dB full fr
   newer deno_core and wgpu together; re-check the table above then.
 - Scenes tuned on the old CLI output may change: the software rasteriser called
   `camera.updateProjectionMatrix()` every frame, WebGL and WebGPU do not (they match each other).
-- Image textures, GLTF and HDR environments need a loader that works without the DOM (#12, #13).
+- Image textures, GLTF and HDR environments load through `gltf()` / `texture()` / `hdr()` (#13): one loader for both apps, with file reads and image decoding done by the host (Rust in the CLI).
