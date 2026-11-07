@@ -53,6 +53,117 @@ fn quoted_values<'a>(line: &'a str, keys: &[&'static str]) -> Vec<(&'static str,
     out
 }
 
+/// True when `text` calls `scene(` as a whole word.
+fn calls_scene(text: &str) -> bool {
+    let mut rest = text;
+    while let Some(i) = rest.find("scene") {
+        let before = rest[..i].chars().next_back();
+        let after = rest[i + 5..].trim_start();
+        let word_start = before.is_none_or(|c| !(c.is_alphanumeric() || c == '_' || c == '$' || c == '.'));
+        if word_start && after.starts_with('(') {
+            return true;
+        }
+        rest = &rest[i + 5..];
+    }
+    false
+}
+
+fn ident_prefix(s: &str) -> &str {
+    let end = s
+        .char_indices()
+        .find(|(_, c)| !(c.is_alphanumeric() || *c == '_' || *c == '$' || *c == '.'))
+        .map_or(s.len(), |(i, _)| i);
+    &s[..end]
+}
+
+/// The module specifier `name` is imported from in `content`, if any.
+fn import_source<'a>(content: &'a str, name: &str) -> Option<&'a str> {
+    content.lines().map(str::trim).filter(|l| l.starts_with("import ")).find_map(|line| {
+        let (clause, from) = line.split_once(" from ")?;
+        let imported = clause
+            .trim_start_matches("import ")
+            .split(['{', '}', ',', '*'])
+            .map(|part| part.trim().rsplit(" as ").next().unwrap_or("").trim())
+            .any(|n| n == name);
+        if !imported {
+            return None;
+        }
+        let from = from.trim().trim_end_matches(';').trim();
+        let quote = from.chars().next()?;
+        from.get(1..from.len().checked_sub(1)?).filter(|_| quote == '"' || quote == '\'')
+    })
+}
+
+/// Reads a relative import (`./x`, `../lib/x`) of `file_rel` the way the bundler resolves it.
+fn read_relative(project_root: &Path, file_rel: &str, spec: &str) -> Option<String> {
+    let base = project_root.join(file_rel);
+    let joined = base.parent()?.join(spec);
+    let candidates = [
+        joined.clone(),
+        joined.with_extension("ts"),
+        PathBuf::from(format!("{}.ts", joined.display())),
+        joined.join("index.ts"),
+    ];
+    candidates.iter().find(|p| p.is_file()).and_then(|p| fs::read_to_string(p).ok())
+}
+
+/// Checks that the module's default export is a scene: a `scene(...)` call, a variable holding
+/// one, or a call to a factory (local or imported from a project file) that calls `scene()`.
+fn check_default_export(content: &str, file_rel: &str, project_root: Option<&Path>) -> Result<(), String> {
+    const HOW: &str = "Default-export `scene(id, config, builder)` or a helper that returns one.";
+    let Some(pos) = content.find("export default") else {
+        return Err(format!("Scene file must have a default export. {HOW}"));
+    };
+    let mut expr = content[pos + "export default".len()..].trim_start().to_string();
+    for _ in 0..3 {
+        let name = ident_prefix(&expr).to_string();
+        if name.is_empty() {
+            return Err(format!("The default export is not a scene. {HOW}"));
+        }
+        if name == "scene" {
+            return Ok(());
+        }
+        let is_call = expr[name.len()..].trim_start().starts_with('(');
+        let root_name = name.split('.').next().unwrap_or(&name);
+        if !is_call {
+            // `export default s;` -> look at what `s` holds
+            let decl = ["const ", "let ", "var "]
+                .iter()
+                .find_map(|kw| content.find(&format!("{kw}{name} =")).map(|i| i + kw.len() + name.len() + 2));
+            match decl {
+                Some(i) => {
+                    expr = content[i..].trim_start().to_string();
+                    continue;
+                }
+                None => return Err(format!("The default export `{name}` is not a scene. {HOW}")),
+            }
+        }
+        // a call: the factory must be defined here or imported from a project file
+        if let Some(spec) = import_source(content, root_name) {
+            if spec == "liosvideo" {
+                return Err(format!("`{name}(...)` from \"liosvideo\" is not a scene. {HOW}"));
+            }
+            if !spec.starts_with('.') {
+                return Err(format!("`{name}` comes from \"{spec}\"; scenes may only import liosvideo, three and project files."));
+            }
+            let Some(root) = project_root else { return Ok(()) };
+            return match read_relative(root, file_rel, spec) {
+                Some(source) if calls_scene(&source) => Ok(()),
+                Some(_) => Err(format!(
+                    "The default export `{name}(...)` is not a scene: `{root_name}` (imported from \"{spec}\") never calls scene(). {HOW}"
+                )),
+                None => Err(format!("Could not read \"{spec}\", which `{root_name}` is imported from.")),
+            };
+        }
+        return if calls_scene(content) {
+            Ok(())
+        } else {
+            Err(format!("The default export `{name}(...)` is not a scene: nothing in this file calls scene(). {HOW}"))
+        };
+    }
+    Err(format!("The default export is not a scene. {HOW}"))
+}
+
 /// Validate a single scene TypeScript file against liosvideo design & runtime rules.
 pub fn validate_scene_content(
     content: &str,
@@ -65,16 +176,14 @@ pub fn validate_scene_content(
 
     let lines: Vec<&str> = content.lines().collect();
 
-    // 1. Check for default scene export
-    let has_scene_export = content.contains("export default scene(")
-        || content.contains("export default scene (")
-        || (content.contains("scene(") && content.contains("export default"));
-
-    if !has_scene_export {
+    // 1. The default export must be a scene (directly, through a variable or a factory)
+    if let Err(message) = check_default_export(content, file_rel, project_root) {
         issues.push(SceneValidationIssue {
             severity: "error".to_string(),
-            message: "Scene file must export a default scene using `export default scene(id, config, builder)`.".to_string(),
-            line: None,
+            message,
+            line: content
+                .find("export default")
+                .map(|i| content[..i].matches('\n').count() + 1),
         });
     }
 
@@ -388,6 +497,75 @@ export default scene("intro", { duration: 5.0, background: "#0b0d12" }, ({ root 
         assert!(res.valid);
         assert_eq!(res.scene_id.as_deref(), Some("intro"));
         assert!(res.issues.is_empty());
+    }
+
+    fn project_with(files: &[(&str, &str)]) -> tempfile::TempDir {
+        let dir = tempfile::tempdir().unwrap();
+        for (rel, body) in files {
+            let path = dir.path().join(rel);
+            std::fs::create_dir_all(path.parent().unwrap()).unwrap();
+            std::fs::write(path, body).unwrap();
+        }
+        dir
+    }
+
+    const KIT: &str = r##"
+import { scene, text } from "liosvideo";
+export function docScene(cfg: { id: string; title: string }) {
+  return scene(cfg.id, { duration: 4 }, ({ root }) => {
+    root.add(text({ name: "title", text: cfg.title }));
+  });
+}
+"##;
+
+    #[test]
+    fn accepts_a_scene_made_by_an_imported_factory() {
+        let scene = r##"
+import { docScene } from "../lib/kit";
+export default docScene({ id: "hook", title: "Halo" });
+"##;
+        let dir = project_with(&[("lib/kit.ts", KIT), ("scenes/hook.ts", scene)]);
+        let res = validate_scene_content(scene, "scenes/hook.ts", Some(dir.path()));
+        assert!(res.valid, "{:?}", res.issues);
+    }
+
+    #[test]
+    fn accepts_a_local_factory_and_a_scene_held_in_a_variable() {
+        let local = r##"
+import { scene } from "liosvideo";
+const make = (id: string) => scene(id, { duration: 2 }, () => {});
+export default make("a");
+"##;
+        assert!(validate_scene_content(local, "scenes/a.ts", None).valid);
+        let held = r##"
+import { scene } from "liosvideo";
+const s = scene("b", { duration: 2 }, () => {});
+export default s;
+"##;
+        assert!(validate_scene_content(held, "scenes/b.ts", None).valid);
+    }
+
+    #[test]
+    fn rejects_a_default_export_that_is_not_a_scene() {
+        let helper = r##"
+export function makeCard(cfg: { title: string }) {
+  return { title: cfg.title };
+}
+"##;
+        let scene = r##"
+import { makeCard } from "../lib/cards";
+export default makeCard({ title: "x" });
+"##;
+        let dir = project_with(&[("lib/cards.ts", helper), ("scenes/c.ts", scene)]);
+        let res = validate_scene_content(scene, "scenes/c.ts", Some(dir.path()));
+        assert!(!res.valid);
+        let msg = &res.issues[0].message;
+        assert!(msg.contains("makeCard") && msg.contains("../lib/cards") && msg.contains("scene("), "{msg}");
+
+        let object = "export default { id: \"x\" };\n";
+        let res = validate_scene_content(object, "scenes/d.ts", None);
+        assert!(!res.valid);
+        assert!(res.issues[0].message.contains("not a scene"), "{:?}", res.issues);
     }
 
     #[test]

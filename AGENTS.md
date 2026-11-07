@@ -72,7 +72,7 @@ export default composition({
 
 ## Scenes
 
-Each scene is a self-contained module created using `scene(id, config, builder)`:
+Each scene is a self-contained module whose default export is a `scene(id, config, builder)`. A project helper that returns one also works (`export default docScene({ id: "hook", … })` with `docScene` in `lib/`); `validate_scene` follows the import to check it:
 
 ```ts
 import { group, image, rect, scene, text, vo } from "liosvideo";
