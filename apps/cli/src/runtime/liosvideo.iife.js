@@ -60,6 +60,10 @@ var __liosvideo = (function(exports) {
 		constructor(initial) {
 			this.initial = initial;
 		}
+		/** Replaces the value before the first keyframe. */
+		setBase(value) {
+			this.initial = value;
+		}
 		add(seg) {
 			this.sorted.push(seg);
 			this.sorted.sort((x, y) => x.start - y.start);
@@ -262,6 +266,12 @@ var __liosvideo = (function(exports) {
 				this.tracks.set(key, tr);
 			}
 			return tr;
+		}
+		/** Changes base (un-animated) values, e.g. from a layout helper; keyframes still win where they apply. */
+		assign(props) {
+			Object.assign(this.base, props);
+			for (const key of Object.keys(props)) this.tracks.get(key)?.setBase(props[key]);
+			return this;
 		}
 		set(props, at) {
 			return this.to(props, {
@@ -653,9 +663,45 @@ var __liosvideo = (function(exports) {
 		}
 	};
 	let measurer;
+	const wrapCache = /* @__PURE__ */ new Map();
+	const WRAP_CACHE_LIMIT = 2048;
 	/** Installs how text is measured (the render worker uses Canvas2D). Text without an explicit size is sized by it. */
 	function setTextMeasurer(m) {
 		measurer = m;
+		wrapCache.clear();
+	}
+	/** Greedy word wrap: each `\n` line is broken at spaces so no line is wider than `maxWidth`; a lone long word keeps its own line. */
+	function wrapText(p, m) {
+		const key = JSON.stringify([
+			p.text,
+			p.fontFamily,
+			p.fontSize,
+			p.fontWeight,
+			p.lineHeight,
+			p.maxWidth
+		]);
+		const hit = wrapCache.get(key);
+		if (hit !== void 0) return hit;
+		const fits = (line) => m({
+			...p,
+			text: line
+		}).width <= p.maxWidth;
+		const out = [];
+		for (const hard of p.text.split("\n")) {
+			let line = "";
+			for (const word of hard.split(" ").filter((w) => w !== "")) {
+				const next = line ? `${line} ${word}` : word;
+				if (line && !fits(next)) {
+					out.push(line);
+					line = word;
+				} else line = next;
+			}
+			out.push(line);
+		}
+		const wrapped = out.join("\n");
+		if (wrapCache.size >= WRAP_CACHE_LIMIT) wrapCache.clear();
+		wrapCache.set(key, wrapped);
+		return wrapped;
 	}
 	var TextNode = class extends Node {
 		constructor(init) {
@@ -666,12 +712,20 @@ var __liosvideo = (function(exports) {
 				fontSize: 48,
 				fontWeight: 400,
 				color: "#ffffff",
-				lineHeight: 1.2
+				lineHeight: 1.2,
+				align: "left",
+				maxWidth: 0
 			}, init);
 		}
 		propsAt(t) {
 			const p = super.propsAt(t);
-			if (measurer && p.width === 0 && p.height === 0) Object.assign(p, measurer(p));
+			if (!measurer) return p;
+			if (p.maxWidth > 0) p.text = wrapText(p, measurer);
+			if (p.width === 0 && p.height === 0) {
+				const size = measurer(p);
+				p.width = p.maxWidth > 0 ? p.maxWidth : size.width;
+				p.height = size.height;
+			}
 			return p;
 		}
 	};
@@ -813,6 +867,358 @@ var __liosvideo = (function(exports) {
 		}
 		return root;
 	}
+	// packages/runtime/src/layout/grid.ts
+	const GAPS = [
+		1,
+		2,
+		3,
+		4,
+		6,
+		8
+	];
+	const GRID = {
+		landscape: {
+			columns: 12,
+			rows: 6
+		},
+		portrait: {
+			columns: 4,
+			rows: 12
+		},
+		square: {
+			columns: 8,
+			rows: 8
+		}
+	};
+	const SLOTS = {
+		landscape: {
+			full: [
+				1,
+				12,
+				1,
+				6,
+				"center"
+			],
+			title: [
+				1,
+				10,
+				1,
+				2,
+				"left"
+			],
+			center: [
+				2,
+				10,
+				2,
+				4,
+				"center"
+			],
+			body: [
+				1,
+				12,
+				3,
+				4,
+				"left"
+			],
+			left: [
+				1,
+				6,
+				1,
+				6,
+				"left"
+			],
+			right: [
+				7,
+				6,
+				1,
+				6,
+				"left"
+			],
+			lowerThird: [
+				1,
+				7,
+				5,
+				2,
+				"left"
+			],
+			caption: [
+				2,
+				10,
+				6,
+				1,
+				"center"
+			]
+		},
+		portrait: {
+			full: [
+				1,
+				4,
+				1,
+				12,
+				"center"
+			],
+			title: [
+				1,
+				4,
+				1,
+				3,
+				"left"
+			],
+			center: [
+				1,
+				4,
+				4,
+				6,
+				"center"
+			],
+			body: [
+				1,
+				4,
+				4,
+				9,
+				"left"
+			],
+			left: [
+				1,
+				4,
+				1,
+				6,
+				"left"
+			],
+			right: [
+				1,
+				4,
+				7,
+				6,
+				"left"
+			],
+			lowerThird: [
+				1,
+				4,
+				10,
+				3,
+				"left"
+			],
+			caption: [
+				1,
+				4,
+				11,
+				2,
+				"center"
+			]
+		},
+		square: {
+			full: [
+				1,
+				8,
+				1,
+				8,
+				"center"
+			],
+			title: [
+				1,
+				7,
+				1,
+				2,
+				"left"
+			],
+			center: [
+				1,
+				8,
+				3,
+				4,
+				"center"
+			],
+			body: [
+				1,
+				8,
+				3,
+				6,
+				"left"
+			],
+			left: [
+				1,
+				4,
+				1,
+				8,
+				"left"
+			],
+			right: [
+				5,
+				4,
+				1,
+				8,
+				"left"
+			],
+			lowerThird: [
+				1,
+				6,
+				7,
+				2,
+				"left"
+			],
+			caption: [
+				1,
+				8,
+				8,
+				1,
+				"center"
+			]
+		}
+	};
+	function orientationOf(width, height) {
+		const ratio = width / height;
+		if (ratio > 1.15) return "landscape";
+		if (ratio < .87) return "portrait";
+		return "square";
+	}
+	/**
+	* The layout grid for a frame size: safe area, columns/rows, spacing scale, named slots and a type scale.
+	* Pass the scene's `{ width, height }`; the same calls give a correct layout in 16:9, 9:16 and 1:1.
+	*/
+	function layout({ width, height }) {
+		const orientation = orientationOf(width, height);
+		const u = Math.min(width, height) / 100;
+		const edge = u * 6;
+		const top = orientation === "portrait" ? Math.max(edge, height * .05) : edge;
+		const bottom = orientation === "portrait" ? Math.max(edge, height * .12) : edge;
+		const safe = {
+			x: edge,
+			y: top,
+			width: width - edge * 2,
+			height: height - top - bottom
+		};
+		const { columns, rows } = GRID[orientation];
+		const gutter = u * 2;
+		const colW = (safe.width - gutter * (columns - 1)) / columns;
+		const rowH = (safe.height - gutter * (rows - 1)) / rows;
+		const check = (what, count, start, span) => {
+			if (!Number.isInteger(start) || !Number.isInteger(span) || start < 1 || span < 1 || start + span - 1 > count) throw new Error(`${what} ${start}–${start + span - 1} do not fit the ${count}-${what.slice(0, -1)} ${orientation} grid`);
+		};
+		const col = (start, span = 1) => {
+			check("columns", columns, start, span);
+			return {
+				x: safe.x + (start - 1) * (colW + gutter),
+				width: span * colW + (span - 1) * gutter
+			};
+		};
+		const row = (start, span = 1) => {
+			check("rows", rows, start, span);
+			return {
+				y: safe.y + (start - 1) * (rowH + gutter),
+				height: span * rowH + (span - 1) * gutter
+			};
+		};
+		const cell = (colStart, colSpan, rowStart, rowSpan) => {
+			const c = col(colStart, colSpan);
+			const r = row(rowStart, rowSpan);
+			return {
+				x: c.x,
+				y: r.y,
+				width: c.width,
+				height: r.height
+			};
+		};
+		const gap = (n) => {
+			if (!GAPS.includes(n)) throw new Error(`gap(${n}): use one of 1, 2, 3, 4, 6, 8`);
+			return u * n;
+		};
+		const slots = SLOTS[orientation];
+		const slot = (name) => {
+			const def = slots[name];
+			if (!def) throw new Error(`Unknown slot "${name}". Slots: ${Object.keys(slots).join(", ")}`);
+			const [c, cs, r, rs, align] = def;
+			return {
+				...cell(c, cs, r, rs),
+				align
+			};
+		};
+		const t = orientation === "portrait" ? 1.25 : 1;
+		const style = (size, lineHeight, fontWeight) => ({
+			fontSize: Math.round(u * size * t * 10) / 10,
+			lineHeight,
+			fontWeight
+		});
+		const type = {
+			display: style(9, 1.1, 800),
+			h1: style(6.5, 1.15, 700),
+			h2: style(4.5, 1.2, 700),
+			body: style(3.2, 1.45, 400),
+			caption: style(2.6, 1.4, 500),
+			label: style(2, 1.3, 600)
+		};
+		return {
+			width,
+			height,
+			orientation,
+			u,
+			safe,
+			columns,
+			rows,
+			gutter,
+			col,
+			row,
+			cell,
+			gap,
+			slot,
+			slotNames: Object.keys(slots),
+			type
+		};
+	}
+	// packages/runtime/src/layout/stack.ts
+	const factor = (a) => a === "center" ? .5 : a === "end" || a === "right" ? 1 : 0;
+	const textAlign = (a) => a === "center" ? "center" : a === "end" || a === "right" ? "right" : "left";
+	/**
+	* Lays children out in a box and returns a group at the box's position holding them.
+	* Sizes are read once, when the scene is built: text is measured (and, in a column, wrapped to the box
+	* width with the stack's alignment); other nodes need an explicit width/height. Animate opacity/scale on
+	* the children freely; animating their x/y replaces the stacked position.
+	*/
+	function stack(box, children, opts) {
+		const direction = opts.direction ?? "column";
+		const align = opts.align ?? box.align;
+		const k = factor(align);
+		const g = new GroupNode({
+			name: opts.name ?? "stack",
+			x: box.x,
+			y: box.y,
+			width: box.width,
+			height: box.height
+		});
+		if (direction === "column") {
+			for (const c of children) if (c instanceof TextNode) {
+				const p = c.propsAt(0);
+				c.assign({
+					maxWidth: p.maxWidth || box.width,
+					align: textAlign(align)
+				});
+			}
+		}
+		const sizes = children.map((c) => {
+			const p = c.propsAt(0);
+			return {
+				w: p.width,
+				h: p.height,
+				ax: p.anchorX,
+				ay: p.anchorY
+			};
+		});
+		const main = (s) => direction === "column" ? s.h : s.w;
+		const total = sizes.reduce((sum, s) => sum + main(s), 0) + opts.gap * Math.max(0, children.length - 1);
+		let cursor = ((direction === "column" ? box.height : box.width) - total) * factor(opts.justify);
+		children.forEach((c, i) => {
+			const s = sizes[i];
+			const cross = direction === "column" ? (box.width - s.w) * k : (box.height - s.h) * k;
+			const [x, y] = direction === "column" ? [cross, cursor] : [cursor, cross];
+			c.assign({
+				x: x + s.ax * s.w,
+				y: y + s.ay * s.h
+			});
+			cursor += main(s) + opts.gap;
+			g.add(c);
+		});
+		return g;
+	}
 	// packages/runtime/src/evaluate.ts
 	/** The node's filters, or undefined when none is on. */
 	function activeFilters(p) {
@@ -905,7 +1311,9 @@ var __liosvideo = (function(exports) {
 				fontWeight: p.fontWeight,
 				color: p.color,
 				lineHeight: p.lineHeight,
-				opacity
+				opacity,
+				align: p.align,
+				boxWidth: p.width
 			};
 		}
 		if (node instanceof ImageNode) {
@@ -1915,6 +2323,7 @@ var __liosvideo = (function(exports) {
 	exports.group = group;
 	exports.image = image;
 	exports.instantiateScene = instantiateScene;
+	exports.layout = layout;
 	exports.layoutComposition = layoutComposition;
 	exports.lerpColor = lerpColor;
 	exports.logoMark = logoMark;
@@ -1929,6 +2338,7 @@ var __liosvideo = (function(exports) {
 	exports.seededRandom = seededRandom;
 	exports.setTextMeasurer = setTextMeasurer;
 	exports.shader = shader;
+	exports.stack = stack;
 	exports.terminal = terminal;
 	exports.text = text;
 	exports.three = three;

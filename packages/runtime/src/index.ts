@@ -7,6 +7,7 @@ export { seededRandom } from "./math/random";
 export { BASE_DEFAULTS, Node, type BaseProps, type NodeInit } from "./graph/node";
 export * from "./graph/kinds";
 export * from "./composition";
+export * from "./layout";
 export { collectAssets, evaluateFrame } from "./evaluate";
 export type * from "./renderlist";
 export * from "./manifest";

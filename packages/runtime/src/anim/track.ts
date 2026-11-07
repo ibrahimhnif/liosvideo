@@ -15,7 +15,12 @@ function interpolate<T extends number | string | boolean>(a: T, b: T, k: number)
 export class Track<T extends number | string | boolean> {
   private sorted: Segment<T>[] = [];
 
-  constructor(private readonly initial: T) {}
+  constructor(private initial: T) {}
+
+  /** Replaces the value before the first keyframe. */
+  setBase(value: T): void {
+    this.initial = value;
+  }
 
   add(seg: Segment<T>): void {
     this.sorted.push(seg);

@@ -573,6 +573,37 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn lays_out_and_wraps_text_with_the_layout_helpers() -> Result<()> {
+        let dir = std::env::temp_dir().join(format!("liosvideo_layout_test_{}", std::process::id()));
+        std::fs::create_dir_all(&dir)?;
+
+        let composition_code = r##"
+            import { composition, layout, scene, stack, text } from "liosvideo";
+
+            const intro = scene("intro", { duration: 1.0 }, ({ root, width, height }) => {
+                const L = layout({ width, height });
+                root.add(stack(L.slot("caption"), [
+                    text({ name: "line", text: "one two three four five six seven eight nine ten eleven twelve", ...L.type.h1 }),
+                ], { gap: L.gap(2) }));
+            });
+
+            export default composition({ width: 640, height: 360, fps: 30, scenes: [intro] });
+        "##;
+        std::fs::write(dir.join("layout.ts"), composition_code)?;
+
+        let mut host = RuntimeHost::new(dir.clone())?;
+        let _ = host.load_composition("layout.ts").await?;
+        let rl = host.evaluate_frame(0)?;
+        let item = rl["items"].as_array().unwrap().iter().find(|i| i["kind"] == "text").expect("text item").clone();
+        assert_eq!(item["align"], "center", "caption slot centres its text");
+        assert!(item["boxWidth"].as_f64().unwrap() > 0.0);
+        assert!(item["text"].as_str().unwrap().contains('\n'), "long caption wraps: {}", item["text"]);
+
+        let _ = std::fs::remove_dir_all(dir);
+        Ok(())
+    }
+
+    #[tokio::test]
     async fn measures_text_through_the_runtime_measurer() -> Result<()> {
         let dir = std::env::temp_dir().join(format!("liosvideo_text_test_{}", std::process::id()));
         std::fs::create_dir_all(&dir)?;

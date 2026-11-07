@@ -93,6 +93,13 @@ export abstract class Node<P extends BaseProps = BaseProps> {
     return tr;
   }
 
+  /** Changes base (un-animated) values, e.g. from a layout helper; keyframes still win where they apply. */
+  assign(props: Partial<P>): this {
+    Object.assign(this.base, props);
+    for (const key of Object.keys(props) as (keyof P)[]) this.tracks.get(key)?.setBase(props[key] as PropValue);
+    return this;
+  }
+
   set(props: Partial<P>, at: number): this {
     return this.to(props, { at, duration: 0 });
   }
