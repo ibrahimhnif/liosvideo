@@ -5,7 +5,7 @@ import { afterEach, describe, expect, it } from "vitest";
 import * as THREE from "three";
 import { ThreeNode } from "../../src/graph/three";
 import { ThreeRunner } from "../../src/gpu/three_runner";
-import { gltf, hdr, registerThreeLoaders } from "../../src/three/assets";
+import { contactShadow, gltf, hdr, registerThreeLoaders } from "../../src/three/assets";
 import { createThreeLoaders, decodeImageInBrowser } from "../../src/three/loaders";
 
 async function png(width: number, height: number, rgba: number[]): Promise<Uint8Array> {
@@ -204,5 +204,33 @@ describe("depth of field in the desktop preview", () => {
     expect(blurred.n, "soft pixels out of focus").toBeGreaterThan(6);
     expect(blurred.top).toBeGreaterThan(150);
     expect(blurred.bottom).toBeLessThan(20);
+  });
+});
+
+describe("contact shadows in the desktop preview", () => {
+  it("darkens the floor around the object and fades out (as in test/contact_shadow.test.ts)", async () => {
+    registerThreeLoaders(createThreeLoaders({ read: async () => new Uint8Array(), decodeImage: decodeImageInBrowser }));
+    runner = new ThreeRunner();
+    const node = new ThreeNode({
+      name: "floor",
+      width: 64,
+      height: 64,
+      fov: 40,
+      setup({ scene, camera }) {
+        scene.background = new THREE.Color("#ffffff");
+        camera.position.set(0, 6, 0.001);
+        camera.lookAt(0, 0, 0);
+        const slab = new THREE.Mesh(new THREE.BoxGeometry(0.6, 0.05, 0.6), new THREE.MeshBasicMaterial({ color: "#ffffff" }));
+        slab.position.y = 0.05;
+        scene.add(slab);
+        scene.updateMatrixWorld(true);
+        scene.add(contactShadow(slab, { y: 0, opacity: 0.8, blur: 0.3, falloff: 0.5 }).mesh);
+      },
+    });
+    const px = await pixels((await runner.renderBitmap(node, 0, 1))!);
+    const corner = px(2, 2)[0];
+    expect(corner).toBeGreaterThan(250);
+    expect(px(38, 32)[0]).toBeLessThan(corner - 15);
+    expect(px(44, 32)[0]).toBeGreaterThan(245);
   });
 });

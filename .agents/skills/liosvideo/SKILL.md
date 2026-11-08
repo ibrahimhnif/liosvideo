@@ -274,6 +274,28 @@ Key Properties:
 - `shadows: true`, `toneMapping: "aces" | "agx" | "neutral" | …`, `exposure`: renderer settings (there is no renderer in `setup`). Shadows still need `light.castShadow`, `mesh.castShadow` / `receiveShadow`. Off / `"none"` / `1` by default.
 - The desktop preview renders with WebGL and the CLI with three.js on the GPU, so textures, shadows, tone mapping and emissive look the same in both. Set `camera.fov` / `aspect` changes with `camera.updateProjectionMatrix()`, as in plain three.js.
 
+Bloom, depth of field and contact shadows look the same in the preview and the render:
+
+```ts
+import { contactShadow, three } from "liosvideo";
+
+three({
+  name: "hero", width, height, toneMapping: "aces",
+  glow: 18, glowThreshold: 0.75, glowIntensity: 1.2,                   // bloom: only pixels brighter than the threshold glow
+  depthOfField: { focus: [0, 0.5, 0], aperture: 0.1, samples: 16 },  // sharp at that point, softer nearer and further
+  setup({ scene }) {
+    const product = new THREE.Mesh(/* … */);
+    scene.add(product);
+    scene.updateMatrixWorld(true);
+    scene.add(contactShadow(product, { opacity: 0.6 }).mesh);          // soft patch on the floor, darkest where it touches
+  },
+});
+```
+
+- Bloom is the `glow` filter with `glowThreshold` (0–1, any node); pair it with `emissiveIntensity` above 1 for lamps and screens.
+- `depthOfField.focus` is a distance from the camera, a world point, or `(t) => …` for a rack focus; `aperture` is the lens radius in world units. Each frame renders `samples` times, so it costs that much render time.
+- `contactShadow(object, { y, opacity, falloff, blur, resolution, color })` bakes from the object's triangles; call it after placing the object and add `.mesh` to the scene itself. Call `.update()` from `update` when the object moves.
+
 Models, image textures and HDR environments load with `gltf`, `texture` and `hdr` from `liosvideo`, inside an `async setup` (the frame waits for it):
 
 ```ts

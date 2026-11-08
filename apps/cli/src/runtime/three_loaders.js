@@ -2790,6 +2790,160 @@ var HDRLoader = class extends DataTextureLoader {
 		return this;
 	}
 };
+// packages/runtime/src/three/contact_shadow.ts
+function createContactShadow(object, options = {}) {
+	const material = new THREE.MeshBasicMaterial({
+		color: new THREE.Color(options.color ?? "#000000"),
+		vertexColors: true,
+		transparent: true,
+		depthWrite: false
+	});
+	const mesh = new THREE.Mesh(new THREE.BufferGeometry(), material);
+	mesh.name = "contactShadow";
+	mesh.renderOrder = -1;
+	const shadow = {
+		mesh,
+		update() {
+			const geometry = bake(object, mesh, options);
+			mesh.geometry.dispose();
+			mesh.geometry = geometry;
+		}
+	};
+	shadow.update();
+	return shadow;
+}
+function bake(object, self, o) {
+	object.updateWorldMatrix(true, true);
+	const bounds = new THREE.Box3();
+	const meshes = [];
+	object.traverse((child) => {
+		const m = child;
+		if (m.isMesh && m !== self && m.geometry?.attributes.position) {
+			meshes.push(m);
+			bounds.union(new THREE.Box3().setFromBufferAttribute(m.geometry.attributes.position).applyMatrix4(m.matrixWorld));
+		}
+	});
+	const size = bounds.isEmpty() ? new THREE.Vector3(1, 1, 1) : bounds.getSize(new THREE.Vector3());
+	if (bounds.isEmpty()) bounds.setFromCenterAndSize(new THREE.Vector3(), size);
+	const floor = o.y ?? bounds.min.y;
+	const opacity = Math.min(1, Math.max(0, o.opacity ?? .6));
+	const falloff = Math.max(1e-4, o.falloff ?? Math.max(size.y, .001) / 2);
+	const larger = Math.max(size.x, size.z, .001);
+	const blur = Math.max(0, o.blur ?? larger * .05);
+	const resolution = Math.max(4, Math.floor(o.resolution ?? 64));
+	const cell = (larger + 4 * blur) / (resolution - 1);
+	const margin = 2 * blur + cell;
+	const x0 = bounds.min.x - margin;
+	const z0 = bounds.min.z - margin;
+	const nx = Math.ceil((size.x + 2 * margin) / cell) + 1;
+	const nz = Math.ceil((size.z + 2 * margin) / cell) + 1;
+	const low = new Float32Array(nx * nz).fill(Infinity);
+	const v = new THREE.Vector3();
+	const mark = (x, y, z) => {
+		const i = Math.round((x - x0) / cell);
+		const j = Math.round((z - z0) / cell);
+		if (i >= 0 && i < nx && j >= 0 && j < nz) low[j * nx + i] = Math.min(low[j * nx + i], y);
+	};
+	for (const m of meshes) {
+		const position = m.geometry.attributes.position;
+		const world = new Float32Array(position.count * 3);
+		for (let k = 0; k < position.count; k++) {
+			v.fromBufferAttribute(position, k).applyMatrix4(m.matrixWorld);
+			world[k * 3] = v.x;
+			world[k * 3 + 1] = v.y;
+			world[k * 3 + 2] = v.z;
+			mark(v.x, v.y, v.z);
+		}
+		const index = m.geometry.index?.array;
+		const count = index ? index.length : position.count;
+		for (let t = 0; t + 2 < count; t += 3) {
+			const a = (index ? index[t] : t) * 3;
+			const b = (index ? index[t + 1] : t + 1) * 3;
+			const c = (index ? index[t + 2] : t + 2) * 3;
+			triangle(world[a], world[a + 1], world[a + 2], world[b], world[b + 1], world[b + 2], world[c], world[c + 1], world[c + 2]);
+		}
+	}
+	function triangle(ax, ay, az, bx, by, bz, cx, cy, cz) {
+		const area = (bx - ax) * (cz - az) - (cx - ax) * (bz - az);
+		if (Math.abs(area) < 1e-12) return;
+		const i0 = Math.max(0, Math.ceil((Math.min(ax, bx, cx) - x0) / cell));
+		const i1 = Math.min(nx - 1, Math.floor((Math.max(ax, bx, cx) - x0) / cell));
+		const j0 = Math.max(0, Math.ceil((Math.min(az, bz, cz) - z0) / cell));
+		const j1 = Math.min(nz - 1, Math.floor((Math.max(az, bz, cz) - z0) / cell));
+		for (let j = j0; j <= j1; j++) {
+			const pz = z0 + j * cell;
+			for (let i = i0; i <= i1; i++) {
+				const px = x0 + i * cell;
+				const w0 = ((bx - px) * (cz - pz) - (cx - px) * (bz - pz)) / area;
+				const w1 = ((cx - px) * (az - pz) - (ax - px) * (cz - pz)) / area;
+				const w2 = 1 - w0 - w1;
+				if (w0 < -1e-9 || w1 < -1e-9 || w2 < -1e-9) continue;
+				const y = w0 * ay + w1 * by + w2 * cy;
+				if (y < low[j * nx + i]) low[j * nx + i] = y;
+			}
+		}
+	}
+	let alpha = new Float32Array(nx * nz);
+	for (let k = 0; k < low.length; k++) if (low[k] !== Infinity) alpha[k] = opacity * Math.min(1, Math.max(0, 1 - (low[k] - floor) / falloff));
+	const sigma = blur / 2 / cell;
+	if (sigma > .3) alpha = blurGrid(alpha, nx, nz, sigma);
+	const positions = new Float32Array(nx * nz * 3);
+	const colors = new Float32Array(nx * nz * 4);
+	const normals = new Float32Array(nx * nz * 3);
+	const lift = floor + Math.max(1e-4, larger * .001);
+	for (let j = 0; j < nz; j++) for (let i = 0; i < nx; i++) {
+		const k = j * nx + i;
+		positions.set([
+			x0 + i * cell,
+			lift,
+			z0 + j * cell
+		], k * 3);
+		normals.set([
+			0,
+			1,
+			0
+		], k * 3);
+		colors.set([
+			1,
+			1,
+			1,
+			alpha[k]
+		], k * 4);
+	}
+	const indices = [];
+	for (let j = 0; j + 1 < nz; j++) for (let i = 0; i + 1 < nx; i++) {
+		const a = j * nx + i;
+		indices.push(a, a + nx, a + 1, a + 1, a + nx, a + nx + 1);
+	}
+	const geometry = new THREE.BufferGeometry();
+	geometry.setAttribute("position", new THREE.BufferAttribute(positions, 3));
+	geometry.setAttribute("normal", new THREE.BufferAttribute(normals, 3));
+	geometry.setAttribute("color", new THREE.BufferAttribute(colors, 4));
+	geometry.setIndex(indices);
+	self.position.set(0, 0, 0);
+	self.rotation.set(0, 0, 0);
+	self.scale.set(1, 1, 1);
+	return geometry;
+}
+function blurGrid(src, nx, nz, sigma) {
+	const r = Math.ceil(sigma * 3);
+	const kernel = Array.from({ length: 2 * r + 1 }, (_, k) => Math.exp(-((k - r) ** 2) / (2 * sigma * sigma)));
+	const total = kernel.reduce((s, w) => s + w, 0);
+	const pass = (from, dx, dz) => {
+		const out = new Float32Array(from.length);
+		for (let j = 0; j < nz; j++) for (let i = 0; i < nx; i++) {
+			let sum = 0;
+			for (let k = -r; k <= r; k++) {
+				const ii = i + k * dx;
+				const jj = j + k * dz;
+				if (ii >= 0 && ii < nx && jj >= 0 && jj < nz) sum += from[jj * nx + ii] * kernel[k + r];
+			}
+			out[j * nx + i] = sum / total;
+		}
+		return out;
+	};
+	return pass(pass(src, 1, 0), 0, 1);
+}
 // packages/runtime/src/math/random.ts
 /** Deterministic RNG (mulberry32 over an FNV-1a hash of the seed). */
 function seededRandom(seed) {
@@ -3112,7 +3266,8 @@ function createThreeLoaders(host) {
 			}
 			return tex;
 		},
-		particles: createParticles
+		particles: createParticles,
+		contactShadow: createContactShadow
 	};
 }
 export { createThreeLoaders, decodeImageInBrowser };

@@ -6,6 +6,7 @@ import * as THREE from "three";
 import { GLTFLoader, type GLTF } from "three/examples/jsm/loaders/GLTFLoader.js";
 import { HDRLoader } from "three/examples/jsm/loaders/HDRLoader.js";
 import type { Model, TextureOptions, ThreeLoaders } from "./assets";
+import { createContactShadow } from "./contact_shadow";
 import { createParticles } from "./particles";
 
 export interface DecodedImage {
@@ -170,5 +171,6 @@ export function createThreeLoaders(host: AssetHost): ThreeLoaders {
     },
 
     particles: createParticles,
+    contactShadow: createContactShadow,
   };
 }

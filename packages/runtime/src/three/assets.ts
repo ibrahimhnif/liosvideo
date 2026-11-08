@@ -2,8 +2,10 @@
 // `three({ async setup() { ... } })`. The host (desktop worker or CLI) registers the loaders,
 // which read files from the project and decode them the same way in both.
 import type * as THREE from "three";
+import type { ContactShadow, ContactShadowOptions } from "./contact_shadow";
 import type { ParticleOptions, Particles } from "./particles";
 
+export type { ContactShadow, ContactShadowOptions } from "./contact_shadow";
 export type { ParticleOptions, Particles } from "./particles";
 
 /** A loaded glTF / GLB model. */
@@ -29,6 +31,7 @@ export interface ThreeLoaders {
   hdr(src: string): Promise<THREE.DataTexture>;
   texture(src: string, opts?: TextureOptions): Promise<THREE.Texture>;
   particles(opts?: ParticleOptions): Particles;
+  contactShadow(object: THREE.Object3D, opts?: ContactShadowOptions): ContactShadow;
 }
 
 let loaders: ThreeLoaders | undefined;
@@ -66,4 +69,12 @@ export async function texture(src: string, opts?: TextureOptions): Promise<THREE
  */
 export function particles(opts?: ParticleOptions): Particles {
   return need("particles", false).particles(opts);
+}
+
+/**
+ * A soft shadow on the floor under `object`, darkest where it touches (call inside three({ setup }),
+ * after placing the object). Add `.mesh` to the scene; call `.update()` from update() if the object moves.
+ */
+export function contactShadow(object: THREE.Object3D, opts?: ContactShadowOptions): ContactShadow {
+  return need("contactShadow", false).contactShadow(object, opts);
 }

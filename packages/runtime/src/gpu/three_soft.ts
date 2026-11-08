@@ -386,6 +386,12 @@ function buildTriangle(
     }
   }
 
+  // RGBA vertex colours with vertexColors on carry opacity per vertex (contact shadows), as in three.js
+  const vertexAlpha =
+    colorAttribute && colorAttribute.itemSize === 4 && material.vertexColors
+      ? [colorAttribute.getW(ia), colorAttribute.getW(ib), colorAttribute.getW(ic)]
+      : null;
+
   const transparent = material.transparent === true || material.opacity < 1;
 
   return {
@@ -405,6 +411,7 @@ function buildTriangle(
     ],
     faceNormal,
     vertexColor: vertexColor.length ? vertexColor : null,
+    vertexAlpha,
     material,
     lights,
     cameraPos,
@@ -539,15 +546,18 @@ function drawTriangle(triangle, color, alpha, depth, width, height, blend) {
         triangle.cameraPos,
       );
 
+      const va = triangle.vertexAlpha
+        ? p0 * triangle.vertexAlpha[0] + p1 * triangle.vertexAlpha[1] + p2 * triangle.vertexAlpha[2]
+        : 1;
       if (blend && material.blending === THREE.AdditiveBlending) {
         // additive (particles, glows): light adds up where it overlaps
-        const a = Math.min(1, Math.max(0, opacity * shaded[3]));
+        const a = Math.min(1, Math.max(0, opacity * va * shaded[3]));
         color[index * 3] += shaded[0] * a;
         color[index * 3 + 1] += shaded[1] * a;
         color[index * 3 + 2] += shaded[2] * a;
         alpha[index] = Math.min(1, alpha[index] + a * a);
       } else if (blend) {
-        const a = Math.min(1, Math.max(0, opacity * shaded[3]));
+        const a = Math.min(1, Math.max(0, opacity * va * shaded[3]));
         color[index * 3] = shaded[0] * a + color[index * 3] * (1 - a);
         color[index * 3 + 1] = shaded[1] * a + color[index * 3 + 1] * (1 - a);
         color[index * 3 + 2] = shaded[2] * a + color[index * 3 + 2] * (1 - a);
@@ -556,7 +566,7 @@ function drawTriangle(triangle, color, alpha, depth, width, height, blend) {
         color[index * 3] = shaded[0];
         color[index * 3 + 1] = shaded[1];
         color[index * 3 + 2] = shaded[2];
-        alpha[index] = Math.min(1, Math.max(0, opacity));
+        alpha[index] = Math.min(1, Math.max(0, opacity * va));
         depth[index] = z;
       }
     }

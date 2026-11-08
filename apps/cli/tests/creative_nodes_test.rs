@@ -423,3 +423,54 @@ async fn blurs_what_is_out_of_focus() -> Result<()> {
     let _ = std::fs::remove_dir_all(&dir);
     Ok(())
 }
+
+/// Contact shadow: the same slab as packages/runtime/test/contact_shadow.test.ts and the desktop
+/// browser test; a soft dark patch around it on a white floor that fades out within its grid.
+#[tokio::test]
+async fn draws_a_soft_contact_shadow() -> Result<()> {
+    let dir = write_project(
+        "contact_shadow",
+        r##"
+        import { composition, contactShadow, scene, three } from "liosvideo";
+        import * as THREE from "three";
+
+        const shot = scene("shot", { duration: 1 }, ({ root }) => {
+            root.add(three({
+                name: "floor",
+                width: 64,
+                height: 64,
+                fov: 40,
+                setup({ scene: s, camera }) {
+                    s.background = new THREE.Color("#ffffff");
+                    camera.position.set(0, 6, 0.001);
+                    camera.lookAt(0, 0, 0);
+                    const slab = new THREE.Mesh(new THREE.BoxGeometry(0.6, 0.05, 0.6), new THREE.MeshBasicMaterial({ color: "#ffffff" }));
+                    slab.position.y = 0.05;
+                    s.add(slab);
+                    s.updateMatrixWorld(true);
+                    s.add(contactShadow(slab, { y: 0, opacity: 0.8, blur: 0.3, falloff: 0.5 }).mesh);
+                },
+            }));
+        });
+
+        export default composition({ width: 64, height: 64, fps: 30, background: "#ffffff", scenes: [shot] });
+    "##,
+    )?;
+
+    let out = dir.join("shadow.png");
+    let status = std::process::Command::new(env!("CARGO_BIN_EXE_liosvideo"))
+        .args(["snapshot", "main.ts", "--time", "0.5", "-o"])
+        .arg(&out)
+        .current_dir(&dir)
+        .status()?;
+    assert!(status.success(), "snapshot failed");
+    let image = image::open(&out)?.to_rgba8();
+    let red = |x: u32, y: u32| image.get_pixel(x, y).0[0] as i32;
+    let corner = red(2, 2);
+    assert!(corner > 250, "floor corner {corner}");
+    assert!(red(38, 32) < corner - 15, "beside the slab {}", red(38, 32));
+    assert!(red(44, 32) > 245, "past the blur {}", red(44, 32));
+
+    let _ = std::fs::remove_dir_all(&dir);
+    Ok(())
+}

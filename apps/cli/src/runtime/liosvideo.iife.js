@@ -2077,6 +2077,13 @@ var __liosvideo = (function(exports) {
 	function particles(opts) {
 		return need("particles", false).particles(opts);
 	}
+	/**
+	* A soft shadow on the floor under `object`, darkest where it touches (call inside three({ setup }),
+	* after placing the object). Add `.mesh` to the scene; call `.update()` from update() if the object moves.
+	*/
+	function contactShadow(object, opts) {
+		return need("contactShadow", false).contactShadow(object, opts);
+	}
 	// packages/runtime/src/three/camera_path.ts
 	const SPLINES = ["catmull", "linear"];
 	function fromSampler(sample, sfx = []) {
@@ -4583,6 +4590,7 @@ var __liosvideo = (function(exports) {
 	exports.clampFrame = clampFrame;
 	exports.collectAssets = collectAssets;
 	exports.composition = composition;
+	exports.contactShadow = contactShadow;
 	exports.credit = credit;
 	exports.creditText = creditText;
 	exports.cursor = cursor;
