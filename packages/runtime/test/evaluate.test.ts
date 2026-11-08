@@ -45,7 +45,7 @@ describe("evaluateFrame", () => {
     const [layer] = evaluateFrame(c, 0).items as LayerItem[];
     expect(layer).toMatchObject({
       kind: "layer", path: "s/g",
-      filters: { pixelate: 6, posterize: 0, halftone: 0, outline: 2, outlineColor: "#111111", chalk: 0, glow: 0, glowIntensity: 1 },
+      filters: { pixelate: 6, posterize: 0, halftone: 0, outline: 2, outlineColor: "#111111", chalk: 0, glow: 0, glowIntensity: 1, glowThreshold: 0 },
     });
   });
 

@@ -122,6 +122,8 @@ export type Filters = {
   chalk: number;
   glow: number;
   glowIntensity: number;
+  /** brightness a pixel needs before it glows (bloom); 0 glows everything */
+  glowThreshold: number;
 };
 
 export type LayerItem = {

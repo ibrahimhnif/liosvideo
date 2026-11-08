@@ -9,8 +9,8 @@ import type { Filters, RenderItem, RenderList } from "./renderlist";
 /** The node's filters, or undefined when none is on. */
 export function activeFilters(p: BaseProps): Filters | undefined {
   if (!(p.pixelate > 0 || p.posterize > 0 || p.halftone > 0 || p.outline > 0 || p.chalk > 0 || p.glow > 0)) return undefined;
-  const { pixelate, posterize, halftone, outline, outlineColor, chalk, glow, glowIntensity } = p;
-  return { pixelate, posterize, halftone, outline, outlineColor, chalk, glow, glowIntensity };
+  const { pixelate, posterize, halftone, outline, outlineColor, chalk, glow, glowIntensity, glowThreshold } = p;
+  return { pixelate, posterize, halftone, outline, outlineColor, chalk, glow, glowIntensity, glowThreshold };
 }
 
 /** The node's own drawable (groups have none), with opacity already multiplied in. */

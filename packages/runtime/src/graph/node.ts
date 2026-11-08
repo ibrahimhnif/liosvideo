@@ -38,12 +38,14 @@ export interface BaseProps {
   /** bloom radius, px */
   glow: number;
   glowIntensity: number;
+  /** brightness (0–1) a pixel needs before it glows: 0 glows everything, ~0.7 blooms only the highlights */
+  glowThreshold: number;
 }
 
 export const BASE_DEFAULTS: BaseProps = {
   x: 0, y: 0, scaleX: 1, scaleY: 1, rotation: 0, anchorX: 0, anchorY: 0,
   opacity: 1, z: 0, blur: 0, width: 0, height: 0, radius: 0, clip: false,
-  pixelate: 0, posterize: 0, halftone: 0, outline: 0, outlineColor: "#111111", chalk: 0, glow: 0, glowIntensity: 1,
+  pixelate: 0, posterize: 0, halftone: 0, outline: 0, outlineColor: "#111111", chalk: 0, glow: 0, glowIntensity: 1, glowThreshold: 0,
 };
 
 type PropValue = number | string | boolean;

@@ -1438,6 +1438,7 @@ fn apply_filters(
     let outline = f32_of(filters, "outline", 0.0);
     let chalk = f32_of(filters, "chalk", 0.0);
     let glow = f32_of(filters, "glow", 0.0);
+    let threshold = f32_of(filters, "glowThreshold", 0.0).min(1.0);
     if pixelate > 0.0 {
         step(encoder, 1.0, pixelate * sx, None, &mut cur, allocations);
     }
@@ -1461,15 +1462,26 @@ fn apply_filters(
         let sigma = (glow * sx / 2.0).max(0.01);
         let radius = (sigma * 3.0).ceil().min(MAX_BLUR_RADIUS);
         let clear = wgpu::LoadOp::Clear(wgpu::Color::TRANSPARENT);
+        // bloom: only what is brighter than the threshold spreads light
+        let bright = (threshold > 0.0).then(|| {
+            let t = create_layer_texture(device, width, height);
+            let v = t.create_view(&wgpu::TextureViewDescriptor::default());
+            let values = [7.0, threshold, sx, intensity, 0.0, 0.0, 0.0, 0.0];
+            filter_pass(device, encoder, &renderer.filter_pipeline, &v, &values, &cur, &cur);
+            (t, v)
+        });
         fullscreen(
             device,
             encoder,
             &renderer.blur_pipeline,
             &tmp_view,
             &[1.0, 0.0, sigma, radius],
-            &cur,
+            bright.as_ref().map_or(&cur, |(_, v)| v),
             clear,
         );
+        if let Some((t, _)) = bright {
+            allocations.push(t);
+        }
         fullscreen(
             device,
             encoder,

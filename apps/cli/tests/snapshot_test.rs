@@ -190,3 +190,43 @@ async fn renders_filters_like_the_preview() -> Result<()> {
     let _ = std::fs::remove_dir_all(&dir);
     Ok(())
 }
+
+/// Bloom: `glowThreshold` haloes only what is brighter than it (the desktop test in packages/runtime/test/gpu).
+#[tokio::test]
+async fn blooms_only_the_bright_parts() -> Result<()> {
+    let dir = std::env::temp_dir().join(format!("liosvideo_bloom_test_{}", std::process::id()));
+    std::fs::create_dir_all(&dir)?;
+    let composition_code = r##"
+        import { composition, scene, group, rect } from "liosvideo";
+
+        const s = scene("s", { duration: 1.0 }, ({ root }) => {
+            const bloom = root.add(group({ name: "bloom", width: 128, height: 64, glow: 8, glowThreshold: 0.6 }));
+            bloom.add(rect({ name: "bright", x: 20, y: 27, width: 10, height: 10, fill: "#ffffff" }));
+            bloom.add(rect({ name: "dim", x: 90, y: 27, width: 10, height: 10, fill: "#606060" }));
+        });
+
+        export default composition({ width: 128, height: 64, fps: 30, background: "#000000", scenes: [s] });
+    "##;
+    let entry_file = dir.join("bloom.ts");
+    std::fs::write(&entry_file, composition_code)?;
+    let out_png = dir.join("bloom.png");
+    render_snapshot(
+        &entry_file,
+        0,
+        &out_png,
+        liosvideo_cli::pipeline::Preset::Native,
+    )
+    .await?;
+    let img = image::open(&out_png)?.to_rgba8();
+    let lum = |x: u32, y: u32| {
+        let p = img.get_pixel(x, y).0;
+        0.299 * p[0] as f32 + 0.587 * p[1] as f32 + 0.114 * p[2] as f32
+    };
+    assert!(lum(14, 32) > 13.0, "expected a halo beside the white square, got {}", lum(14, 32));
+    assert!(lum(84, 32) < 1.0, "expected no halo beside the grey square, got {}", lum(84, 32));
+    let grey = lum(95, 32);
+    assert!(grey > 90.0 && grey < 100.0, "the grey square is kept as is, got {grey}");
+
+    let _ = std::fs::remove_dir_all(&dir);
+    Ok(())
+}

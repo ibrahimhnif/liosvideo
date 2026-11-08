@@ -296,7 +296,7 @@ describe("text cache", () => {
   });
 });
 
-const NO_FILTERS: Filters = { pixelate: 0, posterize: 0, halftone: 0, outline: 0, outlineColor: "#111111", chalk: 0, glow: 0, glowIntensity: 1 };
+const NO_FILTERS: Filters = { pixelate: 0, posterize: 0, halftone: 0, outline: 0, outlineColor: "#111111", chalk: 0, glow: 0, glowIntensity: 1, glowThreshold: 0 };
 const filtered = (items: RenderItem[], f: Partial<Filters>, opacity = 1): RenderItem => ({
   kind: "layer", path: "fl", items, opacity, blur: 0, filters: { ...NO_FILTERS, ...f },
 });
@@ -382,6 +382,18 @@ describe("filters", () => {
     expect(lum(px(await r.readPixels(), 117, 128))).toBeGreaterThan(13);
     r.render(list([{ kind: "layer", path: "l", items: [dot], opacity: 1, blur: 0 }]), new Map());
     expect(lum(px(await r.readPixels(), 117, 128))).toBe(0);
+  });
+
+  it("glowThreshold blooms only the bright parts (bloom)", async () => {
+    const r = await make();
+    const bright = rectItem({ path: "b", matrix: at(60, 123), width: 10, height: 10, fill: "#ffffff" });
+    const dim = rectItem({ path: "d", matrix: at(180, 123), width: 10, height: 10, fill: "#606060" });
+    r.render(list([filtered([bright, dim], { glow: 8, glowThreshold: 0.6 })]), new Map());
+    const p = await r.readPixels();
+    expect(lum(px(p, 54, 128))).toBeGreaterThan(13); // halo beside the white square
+    expect(lum(px(p, 174, 128))).toBe(0); // none beside the grey one
+    expect(lum(px(p, 185, 128))).toBeGreaterThan(90); // the grey square itself is kept
+    expect(lum(px(p, 185, 128))).toBeLessThan(100);
   });
 
   it("filter sizes are composition px, scaled with the canvas", async () => {

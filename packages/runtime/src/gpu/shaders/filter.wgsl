@@ -1,5 +1,6 @@
 // One layer filter pass. Prepended with common.wgsl. Layers hold premultiplied colour.
-// mode: 1 pixelate, 2 posterize, 3 halftone, 4 outline, 5 chalk, 6 glow (src + extra × intensity)
+// mode: 1 pixelate, 2 posterize, 3 halftone, 4 outline, 5 chalk, 6 glow (src + extra × intensity),
+// 7 bright pass for bloom (keeps what is brighter than the threshold in amount)
 struct FilterU {
   mode: f32,
   amount: f32,    // device px for pixelate / halftone / outline, levels for posterize, strength for chalk
@@ -113,6 +114,11 @@ fn chalk(pos: vec2f) -> vec4f {
     case 6: {
       let glow = textureLoad(extra, vec2i(pos.xy), 0) * u.intensity;
       return min(load(vec2i(pos.xy)) + glow, vec4f(1.0));
+    }
+    case 7: {
+      let c = load(vec2i(pos.xy));
+      let k = clamp((luma(unpremultiply(c)) - u.amount) / max(1.0 - u.amount, 1e-3), 0.0, 1.0);
+      return c * k;
     }
     default: { return load(vec2i(pos.xy)); }
   }

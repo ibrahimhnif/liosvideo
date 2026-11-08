@@ -57,7 +57,7 @@ export default scene("beat-1", { duration: 4, background: theme.colors.paper }, 
 
 ## Filters (any node)
 
-`pixelate` (px), `posterize` (levels), `halftone` (dot px), `outline` (px) + `outlineColor`, `chalk` (0–1), `glow` (px) + `glowIntensity`. Any non-zero filter makes the node render as its own layer; filters run after `blur`, in that order.
+`pixelate` (px), `posterize` (levels), `halftone` (dot px), `outline` (px) + `outlineColor`, `chalk` (0–1), `glow` (px) + `glowIntensity` + `glowThreshold` (0–1: only brighter pixels glow, i.e. bloom). Any non-zero filter makes the node render as its own layer; filters run after `blur`, in that order.
 
 ## Rendering the reel
 

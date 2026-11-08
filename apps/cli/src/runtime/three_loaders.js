@@ -2790,7 +2790,7 @@ var HDRLoader = class extends DataTextureLoader {
 		return this;
 	}
 };
-// ../../packages/runtime/src/math/random.ts
+// src/math/random.ts
 /** Deterministic RNG (mulberry32 over an FNV-1a hash of the seed). */
 function seededRandom(seed) {
 	let h = 2166136261;
@@ -2807,7 +2807,7 @@ function seededRandom(seed) {
 		return ((t ^ t >>> 14) >>> 0) / 4294967296;
 	};
 }
-// ../../packages/runtime/src/three/particles.ts
+// src/three/particles.ts
 function createParticles(o = {}) {
 	const count = Math.max(0, Math.floor(o.count ?? 300));
 	const segments = Math.max(3, Math.floor(o.segments ?? 8));
@@ -2979,7 +2979,7 @@ function createParticles(o = {}) {
 		}
 	};
 }
-// ../../packages/runtime/src/three/loaders.ts
+// src/three/loaders.ts
 /** decodeImage for browsers and workers (the desktop preview): createImageBitmap, then read the pixels back. */
 async function decodeImageInBrowser(bytes, mimeType) {
 	const blob = new Blob([bytes], mimeType ? { type: mimeType } : void 0);

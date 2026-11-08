@@ -445,7 +445,14 @@ export async function createRenderer(
       if (f.glow > 0) {
         const halo = acquire();
         inUse.push(halo);
-        blurInto(halo, cur, f.glow);
+        let bright = cur;
+        if (f.glowThreshold > 0) {
+          // bloom: only what is brighter than the threshold spreads light
+          bright = acquire();
+          inUse.push(bright);
+          filterPass(bright.createView(), [7, Math.min(f.glowThreshold, 1), sx, f.glowIntensity, 0, 0, 0, 0], cur, cur);
+        }
+        blurInto(halo, bright, f.glow);
         step(6, 0, halo);
       }
       return cur;

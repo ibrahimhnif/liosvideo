@@ -1,6 +1,6 @@
 var __liosvideo = (function(exports) {
 	Object.defineProperty(exports, Symbol.toStringTag, { value: "Module" });
-	// ../../packages/runtime/src/anim/easing.ts
+	// src/anim/easing.ts
 	const C1 = 1.70158;
 	const C3 = 2.70158;
 	const EASINGS = {
@@ -32,7 +32,7 @@ var __liosvideo = (function(exports) {
 		if (c === 1) return 1;
 		return fn(c);
 	}
-	// ../../packages/runtime/src/math/color.ts
+	// src/math/color.ts
 	function parseColor(hex) {
 		let h = hex.replace(/^#/, "");
 		if (h.length === 3 || h.length === 4) h = [...h].map((c) => c + c).join("");
@@ -58,7 +58,7 @@ var __liosvideo = (function(exports) {
 		const cb = parseColor(b);
 		return formatColor(ca.map((v, i) => v + (cb[i] - v) * t));
 	}
-	// ../../packages/runtime/src/anim/track.ts
+	// src/anim/track.ts
 	const isColor = (v) => typeof v === "string" && v.startsWith("#");
 	function interpolate(a, b, k) {
 		if (typeof a === "number" && typeof b === "number") return a + (b - a) * k;
@@ -97,7 +97,7 @@ var __liosvideo = (function(exports) {
 			return value;
 		}
 	};
-	// ../../packages/runtime/src/graph/enums.ts
+	// src/graph/enums.ts
 	/** Props that only take one of a few strings. */
 	const PROP_ENUMS = {
 		fit: [
@@ -142,7 +142,7 @@ var __liosvideo = (function(exports) {
 			if (v !== void 0 && !allowed.includes(v)) throw unknownValue(key, v, allowed, `node "${node}"`);
 		}
 	}
-	// ../../packages/runtime/src/anim/transition.ts
+	// src/anim/transition.ts
 	const TRANSITIONS = [
 		"fade",
 		"slide",
@@ -202,7 +202,7 @@ var __liosvideo = (function(exports) {
 			case "wipe": anyNode.base.opacity = t;
 		}
 	}
-	// ../../packages/runtime/src/math/affine.ts
+	// src/math/affine.ts
 	const IDENTITY = [
 		1,
 		0,
@@ -254,7 +254,7 @@ var __liosvideo = (function(exports) {
 			0
 		];
 	}
-	// ../../packages/runtime/src/math/random.ts
+	// src/math/random.ts
 	/** Deterministic RNG (mulberry32 over an FNV-1a hash of the seed). */
 	function seededRandom(seed) {
 		let h = 2166136261;
@@ -271,7 +271,7 @@ var __liosvideo = (function(exports) {
 			return ((t ^ t >>> 14) >>> 0) / 4294967296;
 		};
 	}
-	// ../../packages/runtime/src/audio/sfx.ts
+	// src/audio/sfx.ts
 	const ON = ["start", "end"];
 	/** The cue for a move from `start` to `end` (scene seconds). */
 	function sfxCue(spec, start, end, where) {
@@ -301,7 +301,7 @@ var __liosvideo = (function(exports) {
 			fadeOut: cue.duration !== void 0 ? Math.min(.12, cue.duration / 3) : .03
 		};
 	}
-	// ../../packages/runtime/src/graph/node.ts
+	// src/graph/node.ts
 	const BASE_DEFAULTS = {
 		x: 0,
 		y: 0,
@@ -324,7 +324,8 @@ var __liosvideo = (function(exports) {
 		outlineColor: "#111111",
 		chalk: 0,
 		glow: 0,
-		glowIntensity: 1
+		glowIntensity: 1,
+		glowThreshold: 0
 	};
 	var Node = class {
 		kind;
@@ -440,7 +441,7 @@ var __liosvideo = (function(exports) {
 			return multiply(multiply(multiply(translate(p.x, p.y), rotate(p.rotation)), scale(p.scaleX, p.scaleY)), translate(-p.anchorX * p.width, -p.anchorY * p.height));
 		}
 	};
-	// ../../packages/runtime/src/math/svgpath.ts
+	// src/math/svgpath.ts
 	const ARITY = {
 		M: 2,
 		L: 2,
@@ -739,7 +740,7 @@ var __liosvideo = (function(exports) {
 			height: bounds.maxY - bounds.minY + pad * 2
 		};
 	}
-	// ../../packages/runtime/src/graph/three.ts
+	// src/graph/three.ts
 	const CAMERA = Symbol("liosvideo.threeCamera");
 	var ThreeNode = class extends Node {
 		setupFn;
@@ -865,7 +866,7 @@ var __liosvideo = (function(exports) {
 	function three(init) {
 		return new ThreeNode(init);
 	}
-	// ../../packages/runtime/src/graph/kinds.ts
+	// src/graph/kinds.ts
 	var GroupNode = class extends Node {
 		constructor(init) {
 			super("group", BASE_DEFAULTS, init);
@@ -1044,7 +1045,7 @@ var __liosvideo = (function(exports) {
 	const text = (init) => new TextNode(init);
 	const image = (init) => new ImageNode(init);
 	const video = (init) => new VideoNode(init);
-	// ../../packages/runtime/src/audio/timing.ts
+	// src/audio/timing.ts
 	const VO_REGISTRY = /* @__PURE__ */ new Map();
 	function registerVoTiming(timing) {
 		const key = timing.lineId || timing.line_id;
@@ -1103,7 +1104,7 @@ var __liosvideo = (function(exports) {
 	const vo = (lineId, timing) => {
 		return new VoHelper(lineId, timing ?? VO_REGISTRY.get(lineId) ?? globalThis.__liosVoTimings?.[lineId]);
 	};
-	// ../../packages/runtime/src/audio/narration.ts
+	// src/audio/narration.ts
 	const VO_PAD = .35;
 	const VO_GAP = .3;
 	/** Stand-in length of a line that has no audio yet, so the scene can be previewed. */
@@ -1162,7 +1163,7 @@ var __liosvideo = (function(exports) {
 			word
 		};
 	}
-	// ../../packages/runtime/src/composition.ts
+	// src/composition.ts
 	/**
 	* A scene. With `vo: [lineIds]` the lines are spoken back to back (`lead`/`gap`/`tail`, or `pad`) and
 	* the duration follows the generated audio unless `duration` is given; the builder's `cue()` and
@@ -1245,7 +1246,7 @@ var __liosvideo = (function(exports) {
 		}
 		return root;
 	}
-	// ../../packages/runtime/src/layout/grid.ts
+	// src/layout/grid.ts
 	const GAPS = [
 		1,
 		2,
@@ -1543,7 +1544,7 @@ var __liosvideo = (function(exports) {
 			type
 		};
 	}
-	// ../../packages/runtime/src/layout/stack.ts
+	// src/layout/stack.ts
 	const factor = (a) => a === "center" ? .5 : a === "end" || a === "right" ? 1 : 0;
 	const textAlign = (a) => a === "center" ? "center" : a === "end" || a === "right" ? "right" : "left";
 	/**
@@ -1597,11 +1598,11 @@ var __liosvideo = (function(exports) {
 		});
 		return g;
 	}
-	// ../../packages/runtime/src/evaluate.ts
+	// src/evaluate.ts
 	/** The node's filters, or undefined when none is on. */
 	function activeFilters(p) {
 		if (!(p.pixelate > 0 || p.posterize > 0 || p.halftone > 0 || p.outline > 0 || p.chalk > 0 || p.glow > 0)) return void 0;
-		const { pixelate, posterize, halftone, outline, outlineColor, chalk, glow, glowIntensity } = p;
+		const { pixelate, posterize, halftone, outline, outlineColor, chalk, glow, glowIntensity, glowThreshold } = p;
 		return {
 			pixelate,
 			posterize,
@@ -1610,7 +1611,8 @@ var __liosvideo = (function(exports) {
 			outlineColor,
 			chalk,
 			glow,
-			glowIntensity
+			glowIntensity,
+			glowThreshold
 		};
 	}
 	/** The node's own drawable (groups have none), with opacity already multiplied in. */
@@ -1820,7 +1822,7 @@ var __liosvideo = (function(exports) {
 		for (const def of c.scenes) walk(instantiateScene(c, def));
 		return [...srcs].sort();
 	}
-	// ../../packages/runtime/src/manifest.ts
+	// src/manifest.ts
 	function describe(node, scene, fps) {
 		const clamp = (f) => Math.min(Math.max(f, scene.startFrame), scene.endFrame);
 		return {
@@ -1946,7 +1948,7 @@ var __liosvideo = (function(exports) {
 		});
 		return out;
 	}
-	// ../../packages/runtime/src/three/assets.ts
+	// src/three/assets.ts
 	let loaders;
 	/** Called by the host that renders three() nodes. */
 	function registerThreeLoaders(impl) {
@@ -1975,7 +1977,7 @@ var __liosvideo = (function(exports) {
 	function particles(opts) {
 		return need("particles", false).particles(opts);
 	}
-	// ../../packages/runtime/src/three/camera_path.ts
+	// src/three/camera_path.ts
 	const SPLINES = ["catmull", "linear"];
 	function fromSampler(sample, sfx = []) {
 		return {
@@ -2119,7 +2121,7 @@ var __liosvideo = (function(exports) {
 			to: lerp3(o.from, o.target, o.amount ?? .3)
 		});
 	}
-	// ../../packages/runtime/src/audio/mix.ts
+	// src/audio/mix.ts
 	const DEFAULT_MIX = Object.freeze({
 		loudness: -14,
 		ceiling: -1,
@@ -2350,7 +2352,7 @@ var __liosvideo = (function(exports) {
 			peak: p > 0 ? 20 * Math.log10(p) : -Infinity
 		};
 	}
-	// ../../packages/runtime/src/components/captions.ts
+	// src/components/captions.ts
 	const PRESETS = {
 		short: {
 			fontWeight: 800,
@@ -2540,7 +2542,7 @@ var __liosvideo = (function(exports) {
 			};
 		});
 	}
-	// ../../packages/runtime/src/assets/attributions.ts
+	// src/assets/attributions.ts
 	const HEADERS = [
 		["asset", /^(asset|aset|file|berkas|path)\b/i],
 		["license", /(licen[cs]e|lisensi)/i],
@@ -2600,7 +2602,7 @@ var __liosvideo = (function(exports) {
 		const path = normalise(asset);
 		return rows.get(path) ?? byName.get(basename(path));
 	}
-	// ../../packages/runtime/src/components/credit.ts
+	// src/components/credit.ts
 	const LABELS = {
 		en: {
 			source: "Source",
@@ -2724,7 +2726,7 @@ var __liosvideo = (function(exports) {
 		});
 		return root.add(group);
 	}
-	// ../../packages/runtime/src/components/callout.ts
+	// src/components/callout.ts
 	/**
 	* A dot, leader line and label pinned to a 3D point of a `three()` node; it follows the point as the
 	* camera moves (the node needs a `cameraPath`). Added next to the three node, on top of it.
@@ -2792,7 +2794,7 @@ var __liosvideo = (function(exports) {
 		});
 		return box;
 	}
-	// ../../packages/runtime/src/mockups/window.ts
+	// src/mockups/window.ts
 	var WindowNode = class extends GroupNode {
 		frame;
 		titleBar;
@@ -2898,7 +2900,7 @@ var __liosvideo = (function(exports) {
 		}
 	};
 	const windowNode = (init) => new WindowNode(init);
-	// ../../packages/runtime/src/mockups/desktop.ts
+	// src/mockups/desktop.ts
 	var DesktopNode = class extends GroupNode {
 		wallpaper;
 		menuBar;
@@ -2984,7 +2986,7 @@ var __liosvideo = (function(exports) {
 		}
 	};
 	const desktop = (init) => new DesktopNode(init);
-	// ../../packages/runtime/src/mockups/terminal.ts
+	// src/mockups/terminal.ts
 	var TerminalNode = class extends WindowNode {
 		prompt;
 		actions = [];
@@ -3070,7 +3072,7 @@ var __liosvideo = (function(exports) {
 		}
 	};
 	const terminal = (init) => new TerminalNode(init);
-	// ../../packages/runtime/src/mockups/chrome.ts
+	// src/mockups/chrome.ts
 	var ChromeOmnibox = class {
 		actions = [];
 		initialUrl;
@@ -3187,7 +3189,7 @@ var __liosvideo = (function(exports) {
 		}
 	};
 	const chrome = (init) => new ChromeNode(init);
-	// ../../packages/runtime/src/mockups/editor.ts
+	// src/mockups/editor.ts
 	var EditorNode = class extends WindowNode {
 		tabTitle;
 		tabRect;
@@ -3302,7 +3304,7 @@ var __liosvideo = (function(exports) {
 		}
 	};
 	const editor = (init) => new EditorNode(init);
-	// ../../packages/runtime/src/mockups/cursor.ts
+	// src/mockups/cursor.ts
 	var CursorNode = class extends GroupNode {
 		icon;
 		constructor(init = {}) {
@@ -3347,7 +3349,7 @@ var __liosvideo = (function(exports) {
 		}
 	};
 	const cursor = (init) => new CursorNode(init);
-	// ../../packages/runtime/src/mockups/focus.ts
+	// src/mockups/focus.ts
 	/**
 	* Cinematographic focus helper: brings `target` window to front, slightly scales it up,
 	* and dims & blurs other sibling windows in the desktop.
@@ -3381,7 +3383,7 @@ var __liosvideo = (function(exports) {
 			});
 		}
 	}
-	// ../../packages/runtime/src/mockups/phone.ts
+	// src/mockups/phone.ts
 	var PhoneNode = class extends GroupNode {
 		bezel;
 		screen;
@@ -3478,7 +3480,7 @@ var __liosvideo = (function(exports) {
 	function phone(init = {}) {
 		return new PhoneNode(init);
 	}
-	// ../../packages/runtime/src/mockups/logo.ts
+	// src/mockups/logo.ts
 	const tokyoNightColors = {
 		window: "#16161e",
 		sky: "#7aa2f7",
@@ -3521,7 +3523,7 @@ var __liosvideo = (function(exports) {
 		}));
 		return mark;
 	}
-	// ../../packages/runtime/src/mockups/ui_kit.ts
+	// src/mockups/ui_kit.ts
 	const UI_FONT = "SF Pro Text";
 	function palette(theme = "dark") {
 		return theme === "light" ? {
@@ -3636,7 +3638,7 @@ var __liosvideo = (function(exports) {
 			text
 		}).width;
 	}
-	// ../../packages/runtime/src/mockups/browser.ts
+	// src/mockups/browser.ts
 	var BrowserWindowNode = class extends GroupNode {
 		frame;
 		tabs;
@@ -3832,7 +3834,7 @@ var __liosvideo = (function(exports) {
 		}
 	};
 	const browserWindow = (init) => new BrowserWindowNode(init);
-	// ../../packages/runtime/src/mockups/explorer.ts
+	// src/mockups/explorer.ts
 	const FOLDER = "#e8a33d";
 	const FILE_COLORS = {
 		ts: "#3178c6",
@@ -4018,7 +4020,7 @@ var __liosvideo = (function(exports) {
 		}
 	};
 	const fileExplorer = (init) => new FileExplorerNode(init);
-	// ../../packages/runtime/src/mockups/chat.ts
+	// src/mockups/chat.ts
 	var ChatThreadNode = class extends GroupNode {
 		panel;
 		/** The scrolling column of bubbles */
@@ -4248,7 +4250,7 @@ var __liosvideo = (function(exports) {
 		}
 	};
 	const chatThread = (init) => new ChatThreadNode(init);
-	// ../../packages/runtime/src/mockups/notification.ts
+	// src/mockups/notification.ts
 	var NotificationNode = class extends GroupNode {
 		card;
 		titleText;
