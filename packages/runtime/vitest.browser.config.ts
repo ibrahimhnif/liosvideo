@@ -2,6 +2,10 @@ import { playwright } from "@vitest/browser-playwright";
 import { defineConfig } from "vitest/config";
 
 export default defineConfig({
+  // pre-bundled up front: a dependency found mid-run makes Vite reload and stall the next test file
+  optimizeDeps: {
+    include: ["three", "three/webgpu", "three/examples/jsm/loaders/GLTFLoader.js", "three/examples/jsm/loaders/HDRLoader.js"],
+  },
   test: {
     include: ["test/gpu/**/*.browser.test.ts"],
     browser: {

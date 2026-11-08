@@ -15,6 +15,9 @@ export default defineConfig({
       "marked",
       "mediabunny",
       "three",
+      // loaded by the three() asset loaders; found mid-run they make Vite reload and stall the next test file
+      "three/examples/jsm/loaders/GLTFLoader.js",
+      "three/examples/jsm/loaders/HDRLoader.js",
     ],
   },
   test: {
