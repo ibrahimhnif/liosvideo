@@ -164,3 +164,45 @@ describe("three assets in the desktop preview", () => {
     expect(bottom[0]).toBeLessThan(60);
   });
 });
+
+describe("depth of field in the desktop preview", () => {
+  /** A white square at distance 3, raised into the top half, seen at 64×64 (as in test/dof.test.ts). */
+  const square = (focus: number) =>
+    new ThreeNode({
+      name: `dof-${focus}`,
+      width: 64,
+      height: 64,
+      fov: 40,
+      depthOfField: { focus, aperture: 0.15, samples: 12 },
+      setup({ scene, camera }) {
+        scene.background = new THREE.Color("#000000");
+        camera.position.set(0, 0, 3);
+        camera.lookAt(0, 0, 0);
+        const plane = new THREE.Mesh(new THREE.PlaneGeometry(0.8, 0.5), new THREE.MeshBasicMaterial({ color: "#ffffff" }));
+        plane.position.y = 0.3;
+        scene.add(plane);
+      },
+    });
+  const soft = async (focus: number) => {
+    runner?.dispose();
+    runner = new ThreeRunner();
+    const px = await pixels((await runner.renderBitmap(square(focus), 0, 1))!);
+    let n = 0;
+    for (let x = 0; x < 64; x++) {
+      const v = px(x, 20)[0];
+      if (v > 20 && v < 235) n++;
+    }
+    return { n, top: px(32, 20)[0], bottom: px(32, 52)[0] };
+  };
+
+  it("keeps the subject sharp in focus, blurs it out of focus, the right way up", async () => {
+    const sharp = await soft(3);
+    expect(sharp.n, "soft pixels in focus").toBeLessThanOrEqual(4);
+    expect(sharp.top).toBeGreaterThan(200);
+    expect(sharp.bottom).toBeLessThan(20);
+    const blurred = await soft(12);
+    expect(blurred.n, "soft pixels out of focus").toBeGreaterThan(6);
+    expect(blurred.top).toBeGreaterThan(150);
+    expect(blurred.bottom).toBeLessThan(20);
+  });
+});

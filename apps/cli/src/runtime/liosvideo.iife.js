@@ -1,6 +1,6 @@
 var __liosvideo = (function(exports) {
 	Object.defineProperty(exports, Symbol.toStringTag, { value: "Module" });
-	// src/anim/easing.ts
+	// packages/runtime/src/anim/easing.ts
 	const C1 = 1.70158;
 	const C3 = 2.70158;
 	const EASINGS = {
@@ -32,7 +32,7 @@ var __liosvideo = (function(exports) {
 		if (c === 1) return 1;
 		return fn(c);
 	}
-	// src/math/color.ts
+	// packages/runtime/src/math/color.ts
 	function parseColor(hex) {
 		let h = hex.replace(/^#/, "");
 		if (h.length === 3 || h.length === 4) h = [...h].map((c) => c + c).join("");
@@ -58,7 +58,7 @@ var __liosvideo = (function(exports) {
 		const cb = parseColor(b);
 		return formatColor(ca.map((v, i) => v + (cb[i] - v) * t));
 	}
-	// src/anim/track.ts
+	// packages/runtime/src/anim/track.ts
 	const isColor = (v) => typeof v === "string" && v.startsWith("#");
 	function interpolate(a, b, k) {
 		if (typeof a === "number" && typeof b === "number") return a + (b - a) * k;
@@ -97,7 +97,7 @@ var __liosvideo = (function(exports) {
 			return value;
 		}
 	};
-	// src/graph/enums.ts
+	// packages/runtime/src/graph/enums.ts
 	/** Props that only take one of a few strings. */
 	const PROP_ENUMS = {
 		fit: [
@@ -142,7 +142,7 @@ var __liosvideo = (function(exports) {
 			if (v !== void 0 && !allowed.includes(v)) throw unknownValue(key, v, allowed, `node "${node}"`);
 		}
 	}
-	// src/anim/transition.ts
+	// packages/runtime/src/anim/transition.ts
 	const TRANSITIONS = [
 		"fade",
 		"slide",
@@ -202,7 +202,7 @@ var __liosvideo = (function(exports) {
 			case "wipe": anyNode.base.opacity = t;
 		}
 	}
-	// src/math/affine.ts
+	// packages/runtime/src/math/affine.ts
 	const IDENTITY = [
 		1,
 		0,
@@ -254,7 +254,7 @@ var __liosvideo = (function(exports) {
 			0
 		];
 	}
-	// src/math/random.ts
+	// packages/runtime/src/math/random.ts
 	/** Deterministic RNG (mulberry32 over an FNV-1a hash of the seed). */
 	function seededRandom(seed) {
 		let h = 2166136261;
@@ -271,7 +271,7 @@ var __liosvideo = (function(exports) {
 			return ((t ^ t >>> 14) >>> 0) / 4294967296;
 		};
 	}
-	// src/audio/sfx.ts
+	// packages/runtime/src/audio/sfx.ts
 	const ON = ["start", "end"];
 	/** The cue for a move from `start` to `end` (scene seconds). */
 	function sfxCue(spec, start, end, where) {
@@ -301,7 +301,7 @@ var __liosvideo = (function(exports) {
 			fadeOut: cue.duration !== void 0 ? Math.min(.12, cue.duration / 3) : .03
 		};
 	}
-	// src/graph/node.ts
+	// packages/runtime/src/graph/node.ts
 	const BASE_DEFAULTS = {
 		x: 0,
 		y: 0,
@@ -441,7 +441,7 @@ var __liosvideo = (function(exports) {
 			return multiply(multiply(multiply(translate(p.x, p.y), rotate(p.rotation)), scale(p.scaleX, p.scaleY)), translate(-p.anchorX * p.width, -p.anchorY * p.height));
 		}
 	};
-	// src/math/svgpath.ts
+	// packages/runtime/src/math/svgpath.ts
 	const ARITY = {
 		M: 2,
 		L: 2,
@@ -740,7 +740,100 @@ var __liosvideo = (function(exports) {
 			height: bounds.maxY - bounds.minY + pad * 2
 		};
 	}
-	// src/graph/three.ts
+	// packages/runtime/src/three/dof.ts
+	const GOLDEN_ANGLE = Math.PI * (3 - Math.sqrt(5));
+	/** `n` points spread evenly over the unit disc (a Vogel spiral); the same for the same `n`. */
+	function dofOffsets(n) {
+		return Array.from({ length: n }, (_, i) => {
+			const r = Math.sqrt((i + .5) / n);
+			const a = i * GOLDEN_ANGLE;
+			return [r * Math.cos(a), r * Math.sin(a)];
+		});
+	}
+	/**
+	* The camera moves for one frame: call each pass before a render; it returns the function that
+	* puts the camera back. Without depth of field (or for an orthographic camera) there is one pass
+	* that changes nothing. `height` is the render height in pixels.
+	*/
+	function depthOfFieldPasses(dof, camera, time, height) {
+		const plain = [() => () => {}];
+		if (!dof) return plain;
+		if (!(dof.aperture >= 0)) throw new Error(`depthOfField: aperture must be 0 or more, got ${dof.aperture}`);
+		const samples = dof.samples ?? 16;
+		if (!(Number.isInteger(samples) && samples >= 1)) throw new Error(`depthOfField: samples must be a whole number ≥ 1, got ${samples}`);
+		const cam = camera;
+		if (!cam.isPerspectiveCamera || dof.aperture === 0 || samples === 1) return plain;
+		cam.updateMatrixWorld();
+		const m = cam.matrixWorld.elements;
+		const right = [
+			m[0],
+			m[1],
+			m[2]
+		];
+		const up = [
+			m[4],
+			m[5],
+			m[6]
+		];
+		const forward = [
+			-m[8],
+			-m[9],
+			-m[10]
+		];
+		const eye = [
+			m[12],
+			m[13],
+			m[14]
+		];
+		const focus = typeof dof.focus === "function" ? dof.focus(time) : dof.focus;
+		const distance = Array.isArray(focus) ? (focus[0] - eye[0]) * forward[0] + (focus[1] - eye[1]) * forward[1] + (focus[2] - eye[2]) * forward[2] : focus;
+		if (!(distance > 0)) throw new Error(`depthOfField: the focus must be in front of the camera (distance ${distance})`);
+		const pxPerUnit = height / 2 / (distance * Math.tan(cam.fov * Math.PI / 180 / 2) / cam.zoom);
+		return dofOffsets(samples).map(([ox, oy]) => () => {
+			const position = cam.position.clone();
+			const view = cam.view ? { ...cam.view } : null;
+			const sx = ox * dof.aperture;
+			const sy = oy * dof.aperture;
+			const shift = [
+				right[0] * sx + up[0] * sy,
+				right[1] * sx + up[1] * sy,
+				right[2] * sx + up[2] * sy
+			];
+			if (cam.parent) {
+				const inv = cam.parent.matrixWorld.clone().invert().elements;
+				cam.position.set(position.x + inv[0] * shift[0] + inv[4] * shift[1] + inv[8] * shift[2], position.y + inv[1] * shift[0] + inv[5] * shift[1] + inv[9] * shift[2], position.z + inv[2] * shift[0] + inv[6] * shift[1] + inv[10] * shift[2]);
+			} else cam.position.set(position.x + shift[0], position.y + shift[1], position.z + shift[2]);
+			cam.updateMatrixWorld();
+			const fullHeight = height;
+			const fullWidth = height * cam.aspect;
+			const baseX = view?.enabled ? view.offsetX : 0;
+			const baseY = view?.enabled ? view.offsetY : 0;
+			cam.setViewOffset(view?.enabled ? view.fullWidth : fullWidth, view?.enabled ? view.fullHeight : fullHeight, baseX - sx * pxPerUnit, baseY + sy * pxPerUnit, view?.enabled ? view.width : fullWidth, view?.enabled ? view.height : fullHeight);
+			return () => {
+				cam.position.copy(position);
+				if (view?.enabled) cam.setViewOffset(view.fullWidth, view.fullHeight, view.offsetX, view.offsetY, view.width, view.height);
+				else cam.clearViewOffset();
+				cam.updateMatrixWorld();
+			};
+		});
+	}
+	/** Sums equally sized pixel buffers and gives their rounded average. */
+	function pixelAverage(length) {
+		const sum = new Float64Array(length);
+		let count = 0;
+		return {
+			add(pixels) {
+				for (let i = 0; i < length; i++) sum[i] += pixels[i];
+				count++;
+			},
+			result() {
+				const out = new Uint8Array(length);
+				for (let i = 0; i < length; i++) out[i] = Math.round(sum[i] / Math.max(count, 1));
+				return out;
+			}
+		};
+	}
+	// packages/runtime/src/graph/three.ts
 	const CAMERA = Symbol("liosvideo.threeCamera");
 	var ThreeNode = class extends Node {
 		setupFn;
@@ -791,6 +884,13 @@ var __liosvideo = (function(exports) {
 		}
 		get fov() {
 			return this.propsAt(0).fov;
+		}
+		/**
+		* The camera moves for one frame of this node: one plain pass, or one per depth-of-field sample.
+		* Each renderer calls a pass, renders, calls what the pass returned, and averages the renders.
+		*/
+		lensPasses(camera, time, height) {
+			return depthOfFieldPasses(this.propsAt(0).depthOfField, camera, time, height);
 		}
 		/**
 		* Where a world-space point is drawn at scene time `time`, in the coordinates of this node's parent
@@ -866,7 +966,7 @@ var __liosvideo = (function(exports) {
 	function three(init) {
 		return new ThreeNode(init);
 	}
-	// src/graph/kinds.ts
+	// packages/runtime/src/graph/kinds.ts
 	var GroupNode = class extends Node {
 		constructor(init) {
 			super("group", BASE_DEFAULTS, init);
@@ -1045,7 +1145,7 @@ var __liosvideo = (function(exports) {
 	const text = (init) => new TextNode(init);
 	const image = (init) => new ImageNode(init);
 	const video = (init) => new VideoNode(init);
-	// src/audio/timing.ts
+	// packages/runtime/src/audio/timing.ts
 	const VO_REGISTRY = /* @__PURE__ */ new Map();
 	function registerVoTiming(timing) {
 		const key = timing.lineId || timing.line_id;
@@ -1104,7 +1204,7 @@ var __liosvideo = (function(exports) {
 	const vo = (lineId, timing) => {
 		return new VoHelper(lineId, timing ?? VO_REGISTRY.get(lineId) ?? globalThis.__liosVoTimings?.[lineId]);
 	};
-	// src/audio/narration.ts
+	// packages/runtime/src/audio/narration.ts
 	const VO_PAD = .35;
 	const VO_GAP = .3;
 	/** Stand-in length of a line that has no audio yet, so the scene can be previewed. */
@@ -1163,7 +1263,7 @@ var __liosvideo = (function(exports) {
 			word
 		};
 	}
-	// src/composition.ts
+	// packages/runtime/src/composition.ts
 	/**
 	* A scene. With `vo: [lineIds]` the lines are spoken back to back (`lead`/`gap`/`tail`, or `pad`) and
 	* the duration follows the generated audio unless `duration` is given; the builder's `cue()` and
@@ -1246,7 +1346,7 @@ var __liosvideo = (function(exports) {
 		}
 		return root;
 	}
-	// src/layout/grid.ts
+	// packages/runtime/src/layout/grid.ts
 	const GAPS = [
 		1,
 		2,
@@ -1544,7 +1644,7 @@ var __liosvideo = (function(exports) {
 			type
 		};
 	}
-	// src/layout/stack.ts
+	// packages/runtime/src/layout/stack.ts
 	const factor = (a) => a === "center" ? .5 : a === "end" || a === "right" ? 1 : 0;
 	const textAlign = (a) => a === "center" ? "center" : a === "end" || a === "right" ? "right" : "left";
 	/**
@@ -1598,7 +1698,7 @@ var __liosvideo = (function(exports) {
 		});
 		return g;
 	}
-	// src/evaluate.ts
+	// packages/runtime/src/evaluate.ts
 	/** The node's filters, or undefined when none is on. */
 	function activeFilters(p) {
 		if (!(p.pixelate > 0 || p.posterize > 0 || p.halftone > 0 || p.outline > 0 || p.chalk > 0 || p.glow > 0)) return void 0;
@@ -1822,7 +1922,7 @@ var __liosvideo = (function(exports) {
 		for (const def of c.scenes) walk(instantiateScene(c, def));
 		return [...srcs].sort();
 	}
-	// src/manifest.ts
+	// packages/runtime/src/manifest.ts
 	function describe(node, scene, fps) {
 		const clamp = (f) => Math.min(Math.max(f, scene.startFrame), scene.endFrame);
 		return {
@@ -1948,7 +2048,7 @@ var __liosvideo = (function(exports) {
 		});
 		return out;
 	}
-	// src/three/assets.ts
+	// packages/runtime/src/three/assets.ts
 	let loaders;
 	/** Called by the host that renders three() nodes. */
 	function registerThreeLoaders(impl) {
@@ -1977,7 +2077,7 @@ var __liosvideo = (function(exports) {
 	function particles(opts) {
 		return need("particles", false).particles(opts);
 	}
-	// src/three/camera_path.ts
+	// packages/runtime/src/three/camera_path.ts
 	const SPLINES = ["catmull", "linear"];
 	function fromSampler(sample, sfx = []) {
 		return {
@@ -2121,7 +2221,7 @@ var __liosvideo = (function(exports) {
 			to: lerp3(o.from, o.target, o.amount ?? .3)
 		});
 	}
-	// src/audio/mix.ts
+	// packages/runtime/src/audio/mix.ts
 	const DEFAULT_MIX = Object.freeze({
 		loudness: -14,
 		ceiling: -1,
@@ -2352,7 +2452,7 @@ var __liosvideo = (function(exports) {
 			peak: p > 0 ? 20 * Math.log10(p) : -Infinity
 		};
 	}
-	// src/components/captions.ts
+	// packages/runtime/src/components/captions.ts
 	const PRESETS = {
 		short: {
 			fontWeight: 800,
@@ -2542,7 +2642,7 @@ var __liosvideo = (function(exports) {
 			};
 		});
 	}
-	// src/assets/attributions.ts
+	// packages/runtime/src/assets/attributions.ts
 	const HEADERS = [
 		["asset", /^(asset|aset|file|berkas|path)\b/i],
 		["license", /(licen[cs]e|lisensi)/i],
@@ -2602,7 +2702,7 @@ var __liosvideo = (function(exports) {
 		const path = normalise(asset);
 		return rows.get(path) ?? byName.get(basename(path));
 	}
-	// src/components/credit.ts
+	// packages/runtime/src/components/credit.ts
 	const LABELS = {
 		en: {
 			source: "Source",
@@ -2726,7 +2826,7 @@ var __liosvideo = (function(exports) {
 		});
 		return root.add(group);
 	}
-	// src/components/callout.ts
+	// packages/runtime/src/components/callout.ts
 	/**
 	* A dot, leader line and label pinned to a 3D point of a `three()` node; it follows the point as the
 	* camera moves (the node needs a `cameraPath`). Added next to the three node, on top of it.
@@ -2794,7 +2894,7 @@ var __liosvideo = (function(exports) {
 		});
 		return box;
 	}
-	// src/mockups/window.ts
+	// packages/runtime/src/mockups/window.ts
 	var WindowNode = class extends GroupNode {
 		frame;
 		titleBar;
@@ -2900,7 +3000,7 @@ var __liosvideo = (function(exports) {
 		}
 	};
 	const windowNode = (init) => new WindowNode(init);
-	// src/mockups/desktop.ts
+	// packages/runtime/src/mockups/desktop.ts
 	var DesktopNode = class extends GroupNode {
 		wallpaper;
 		menuBar;
@@ -2986,7 +3086,7 @@ var __liosvideo = (function(exports) {
 		}
 	};
 	const desktop = (init) => new DesktopNode(init);
-	// src/mockups/terminal.ts
+	// packages/runtime/src/mockups/terminal.ts
 	var TerminalNode = class extends WindowNode {
 		prompt;
 		actions = [];
@@ -3072,7 +3172,7 @@ var __liosvideo = (function(exports) {
 		}
 	};
 	const terminal = (init) => new TerminalNode(init);
-	// src/mockups/chrome.ts
+	// packages/runtime/src/mockups/chrome.ts
 	var ChromeOmnibox = class {
 		actions = [];
 		initialUrl;
@@ -3189,7 +3289,7 @@ var __liosvideo = (function(exports) {
 		}
 	};
 	const chrome = (init) => new ChromeNode(init);
-	// src/mockups/editor.ts
+	// packages/runtime/src/mockups/editor.ts
 	var EditorNode = class extends WindowNode {
 		tabTitle;
 		tabRect;
@@ -3304,7 +3404,7 @@ var __liosvideo = (function(exports) {
 		}
 	};
 	const editor = (init) => new EditorNode(init);
-	// src/mockups/cursor.ts
+	// packages/runtime/src/mockups/cursor.ts
 	var CursorNode = class extends GroupNode {
 		icon;
 		constructor(init = {}) {
@@ -3349,7 +3449,7 @@ var __liosvideo = (function(exports) {
 		}
 	};
 	const cursor = (init) => new CursorNode(init);
-	// src/mockups/focus.ts
+	// packages/runtime/src/mockups/focus.ts
 	/**
 	* Cinematographic focus helper: brings `target` window to front, slightly scales it up,
 	* and dims & blurs other sibling windows in the desktop.
@@ -3383,7 +3483,7 @@ var __liosvideo = (function(exports) {
 			});
 		}
 	}
-	// src/mockups/phone.ts
+	// packages/runtime/src/mockups/phone.ts
 	var PhoneNode = class extends GroupNode {
 		bezel;
 		screen;
@@ -3480,7 +3580,7 @@ var __liosvideo = (function(exports) {
 	function phone(init = {}) {
 		return new PhoneNode(init);
 	}
-	// src/mockups/logo.ts
+	// packages/runtime/src/mockups/logo.ts
 	const tokyoNightColors = {
 		window: "#16161e",
 		sky: "#7aa2f7",
@@ -3523,7 +3623,7 @@ var __liosvideo = (function(exports) {
 		}));
 		return mark;
 	}
-	// src/mockups/ui_kit.ts
+	// packages/runtime/src/mockups/ui_kit.ts
 	const UI_FONT = "SF Pro Text";
 	function palette(theme = "dark") {
 		return theme === "light" ? {
@@ -3638,7 +3738,7 @@ var __liosvideo = (function(exports) {
 			text
 		}).width;
 	}
-	// src/mockups/browser.ts
+	// packages/runtime/src/mockups/browser.ts
 	var BrowserWindowNode = class extends GroupNode {
 		frame;
 		tabs;
@@ -3834,7 +3934,7 @@ var __liosvideo = (function(exports) {
 		}
 	};
 	const browserWindow = (init) => new BrowserWindowNode(init);
-	// src/mockups/explorer.ts
+	// packages/runtime/src/mockups/explorer.ts
 	const FOLDER = "#e8a33d";
 	const FILE_COLORS = {
 		ts: "#3178c6",
@@ -4020,7 +4120,7 @@ var __liosvideo = (function(exports) {
 		}
 	};
 	const fileExplorer = (init) => new FileExplorerNode(init);
-	// src/mockups/chat.ts
+	// packages/runtime/src/mockups/chat.ts
 	var ChatThreadNode = class extends GroupNode {
 		panel;
 		/** The scrolling column of bubbles */
@@ -4250,7 +4350,7 @@ var __liosvideo = (function(exports) {
 		}
 	};
 	const chatThread = (init) => new ChatThreadNode(init);
-	// src/mockups/notification.ts
+	// packages/runtime/src/mockups/notification.ts
 	var NotificationNode = class extends GroupNode {
 		card;
 		titleText;
@@ -4487,6 +4587,7 @@ var __liosvideo = (function(exports) {
 	exports.creditText = creditText;
 	exports.cursor = cursor;
 	exports.desktop = desktop;
+	exports.dofOffsets = dofOffsets;
 	exports.dolly = dolly;
 	exports.duckGainAt = duckGainAt;
 	exports.duckPlan = duckPlan;
@@ -4522,6 +4623,7 @@ var __liosvideo = (function(exports) {
 	exports.path = path;
 	exports.peak = peak;
 	exports.phone = phone;
+	exports.pixelAverage = pixelAverage;
 	exports.planVo = planVo;
 	exports.pushIn = pushIn;
 	exports.rect = rect;

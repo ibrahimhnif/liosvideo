@@ -1,5 +1,6 @@
 import * as THREE from "three";
 import { ThreeNode, type ThreeRenderOptions } from "../graph/three";
+import { pixelAverage } from "../three/dof";
 
 const TONE_MAPPING: Record<string, THREE.ToneMapping> = {
   none: THREE.NoToneMapping,
@@ -37,6 +38,8 @@ interface NodeSession {
   renderer?: THREE.WebGLRenderer;
   lastWidth: number;
   lastHeight: number;
+  /** 2D canvas holding the averaged depth-of-field frame */
+  lens?: OffscreenCanvas | HTMLCanvasElement;
 }
 
 export class ThreeRunner {
@@ -155,15 +158,65 @@ export class ThreeRunner {
     const progress = duration > 0 ? time / duration : 0;
     node.updateFn?.(session.userState, progress, time);
 
+    let canvas = session.canvas;
     if (session.renderer && session.canvas) {
-      session.renderer.render(session.scene, session.camera);
+      const passes = node.lensPasses(session.camera, time, height);
+      if (passes.length === 1) {
+        session.renderer.render(session.scene, session.camera);
+      } else {
+        canvas = this.renderLens(session, passes, width, height);
+      }
     }
 
     return {
       scene: session.scene,
       camera: session.camera,
-      canvas: session.canvas,
+      canvas,
     };
+  }
+
+  /** Renders every depth-of-field pass, averages them and returns a canvas holding the result. */
+  private renderLens(session: NodeSession, passes: (() => () => void)[], width: number, height: number) {
+    const renderer = session.renderer!;
+    const gl = renderer.getContext();
+    const frame = new Uint8Array(width * height * 4);
+    const average = pixelAverage(frame.length);
+    for (const pass of passes) {
+      const restore = pass();
+      try {
+        renderer.render(session.scene, session.camera);
+      } finally {
+        restore();
+      }
+      gl.readPixels(0, 0, width, height, gl.RGBA, gl.UNSIGNED_BYTE, frame);
+      average.add(frame);
+    }
+    // WebGL rows run bottom-up and hold premultiplied colour; ImageData is top-down and straight
+    const sum = average.result();
+    const image = new ImageData(width, height);
+    const out = image.data;
+    for (let y = 0; y < height; y++) {
+      for (let x = 0; x < width; x++) {
+        const s = ((height - 1 - y) * width + x) * 4;
+        const d = (y * width + x) * 4;
+        const a = sum[s + 3];
+        const k = a > 0 && a < 255 ? 255 / a : 1;
+        out[d] = Math.min(255, Math.round(sum[s] * k));
+        out[d + 1] = Math.min(255, Math.round(sum[s + 1] * k));
+        out[d + 2] = Math.min(255, Math.round(sum[s + 2] * k));
+        out[d + 3] = a;
+      }
+    }
+    if (!session.lens || session.lens.width !== width || session.lens.height !== height) {
+      if (typeof OffscreenCanvas !== "undefined") session.lens = new OffscreenCanvas(width, height);
+      else {
+        session.lens = document.createElement("canvas");
+        session.lens.width = width;
+        session.lens.height = height;
+      }
+    }
+    (session.lens.getContext("2d") as OffscreenCanvasRenderingContext2D).putImageData(image, 0, 0);
+    return session.lens;
   }
 
   async renderBitmap(node: ThreeNode, time: number, duration: number): Promise<ImageBitmap | null> {

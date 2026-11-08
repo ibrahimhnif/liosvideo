@@ -12,6 +12,7 @@
 // Not supported: textures, shadows, skinning, morph targets, instancing, post-processing.
 
 import * as THREE from "three";
+import { pixelAverage } from "../three/dof";
 
 const sessions = new Map();
 const warned = new Set();
@@ -105,8 +106,19 @@ export function renderThreeNode(node, time, duration) {
     }
   }
 
-  const pixels = rasterize(session.scene, session.camera, width, height);
-  return { width, height, pixels };
+  const passes = node.lensPasses(session.camera, time, height);
+  const average = passes.length > 1 ? pixelAverage(width * height * 4) : null;
+  let pixels: ReturnType<typeof rasterize> | undefined;
+  for (const pass of passes) {
+    const restore = pass();
+    try {
+      pixels = rasterize(session.scene, session.camera, width, height);
+    } finally {
+      restore();
+    }
+    average?.add(pixels);
+  }
+  return { width, height, pixels: average ? average.result() : pixels! };
 }
 
 // ---------------------------------------------------------------- rasteriser

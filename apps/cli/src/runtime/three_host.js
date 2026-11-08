@@ -125,7 +125,19 @@ export function renderThreeScene(comp, sceneIndex, time, progress) {
 
     let pixels;
     try {
-      pixels = rasterize(session.scene, session.camera, width, height);
+      // one pass, or one per depth-of-field sample, averaged (as the desktop renderers do)
+      const passes = node.lensPasses(session.camera, time, height);
+      const average = passes.length > 1 ? globalThis.__liosvideo.pixelAverage(width * height * 4) : null;
+      for (const pass of passes) {
+        const restore = pass();
+        try {
+          pixels = rasterize(session.scene, session.camera, width, height);
+        } finally {
+          restore();
+        }
+        average?.add(pixels);
+      }
+      if (average) pixels = average.result();
     } catch (error) {
       warnOnce(`render failed: ${error && error.message ? error.message : error}`);
       pixels = new Uint8Array(width * height * 4);

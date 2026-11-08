@@ -363,3 +363,63 @@ async fn draws_the_same_seeded_particles() -> Result<()> {
     let _ = std::fs::remove_dir_all(&dir);
     Ok(())
 }
+
+/// Depth of field: the same square as packages/runtime/test/dof.test.ts and the desktop browser
+/// test; sharp when the focus is on it, soft-edged when the focus is far behind it.
+#[tokio::test]
+async fn blurs_what_is_out_of_focus() -> Result<()> {
+    let dir = write_project(
+        "dof",
+        r##"
+        import { composition, scene, three } from "liosvideo";
+        import * as THREE from "three";
+
+        const shot = (focus) => scene(`focus-${focus}`, { duration: 1 }, ({ root }) => {
+            root.add(three({
+                name: "lens",
+                width: 64,
+                height: 64,
+                fov: 40,
+                depthOfField: { focus, aperture: 0.15, samples: 12 },
+                setup({ scene: s, camera }) {
+                    s.background = new THREE.Color("#000000");
+                    camera.position.set(0, 0, 3);
+                    camera.lookAt(0, 0, 0);
+                    const plane = new THREE.Mesh(new THREE.PlaneGeometry(0.8, 0.5), new THREE.MeshBasicMaterial({ color: "#ffffff" }));
+                    plane.position.y = 0.3;
+                    s.add(plane);
+                },
+            }));
+        });
+
+        export default composition({ width: 64, height: 64, fps: 30, background: "#000000", scenes: [shot(3), shot(12)] });
+    "##,
+    )?;
+
+    let soft = |time: &str| -> Result<(usize, u8, u8)> {
+        let out = dir.join(format!("lens-{time}.png"));
+        let status = std::process::Command::new(env!("CARGO_BIN_EXE_liosvideo"))
+            .args(["snapshot", "main.ts", "--time", time, "-o"])
+            .arg(&out)
+            .current_dir(&dir)
+            .status()?;
+        assert!(status.success(), "snapshot failed");
+        let image = image::open(&out)?.to_rgba8();
+        let n = (0..64)
+            .filter(|&x| {
+                let v = image.get_pixel(x, 20).0[0];
+                v > 20 && v < 235
+            })
+            .count();
+        Ok((n, image.get_pixel(32, 20).0[0], image.get_pixel(32, 52).0[0]))
+    };
+    let (sharp, top, bottom) = soft("0.5")?;
+    assert!(sharp <= 4, "{sharp} soft pixels in focus");
+    assert!(top > 200 && bottom < 20, "in focus: top {top}, bottom {bottom}");
+    let (blurred, top, bottom) = soft("1.5")?;
+    assert!(blurred > 6, "{blurred} soft pixels out of focus");
+    assert!(top > 150 && bottom < 20, "out of focus: top {top}, bottom {bottom}");
+
+    let _ = std::fs::remove_dir_all(&dir);
+    Ok(())
+}

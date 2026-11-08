@@ -15,6 +15,7 @@ export * from "./audio/timing";
 export * from "./audio/narration";
 export * from "./three/assets";
 export * from "./three/camera_path";
+export { type DepthOfField, type Focus, dofOffsets, pixelAverage } from "./three/dof";
 export * from "./audio/mix";
 export * from "./audio/sfx";
 export * from "./components/captions";

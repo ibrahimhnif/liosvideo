@@ -1,6 +1,7 @@
 import type * as THREE from "three";
 import { apply } from "../math/affine";
 import type { CameraPath, Vec3 } from "../three/camera_path";
+import { type DepthOfField, depthOfFieldPasses } from "../three/dof";
 import { BASE_DEFAULTS, type BaseProps, Node, type NodeInit } from "./node";
 
 const CAMERA = Symbol("liosvideo.threeCamera");
@@ -34,6 +35,8 @@ export interface ThreeProps extends BaseProps, ThreeRenderOptions {
   update?: (state: any, progress: number, time: number) => void;
   /** Moves the camera at scene time before `update` runs: `cameraPath([...])`, `orbit()`, `dolly()`, `pushIn()`. */
   cameraPath?: CameraPath;
+  /** Lens blur outside the focus, by averaging renders over the aperture: `{ focus, aperture, samples }`. */
+  depthOfField?: DepthOfField;
 }
 
 export class ThreeNode extends Node<ThreeProps> {
@@ -95,6 +98,14 @@ export class ThreeNode extends Node<ThreeProps> {
 
   get fov(): number {
     return this.propsAt(0).fov;
+  }
+
+  /**
+   * The camera moves for one frame of this node: one plain pass, or one per depth-of-field sample.
+   * Each renderer calls a pass, renders, calls what the pass returned, and averages the renders.
+   */
+  lensPasses(camera: THREE.Camera, time: number, height: number): (() => () => void)[] {
+    return depthOfFieldPasses(this.propsAt(0).depthOfField, camera, time, height);
   }
 
   /**

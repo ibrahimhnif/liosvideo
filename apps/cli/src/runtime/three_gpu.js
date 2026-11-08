@@ -302,15 +302,27 @@ export async function renderThreeSceneGpu(comp, sceneIndex, time, progress) {
       const sceneBackground = session.scene.background;
       const background = backgroundBytes(sceneBackground);
       if (background) session.scene.background = null;
+      // one pass, or one per depth-of-field sample, averaged (as the desktop runner does)
+      const passes = node.lensPasses(session.camera, time, height);
+      const average = passes.length > 1 ? globalThis.__liosvideo.pixelAverage(width * height * 4) : null;
+      let pixels;
       const unwrapClipped = wrapClipped(session.scene);
       try {
-        session.renderer.render(session.scene, session.camera);
+        for (const pass of passes) {
+          const restore = pass();
+          try {
+            session.renderer.render(session.scene, session.camera);
+          } finally {
+            restore();
+          }
+          pixels = await readPixels(session, background);
+          average?.add(pixels);
+        }
       } finally {
         unwrapClipped();
         session.scene.background = sceneBackground;
       }
-      const pixels = await readPixels(session, background);
-      Deno.core.ops.op_three_frame(node.path(), width, height, pixels);
+      Deno.core.ops.op_three_frame(node.path(), width, height, average ? average.result() : pixels);
     }
   } finally {
     globalThis.performance.now = performanceNow;
