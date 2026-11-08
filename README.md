@@ -37,13 +37,13 @@ An AI coding agent (Claude Code, Gemini CLI, Codex, Antigravity, or custom ACP a
 Download the latest desktop release for your platform. Installers are published automatically by CI for every `v*` tag.
 
 <!-- downloads:start -->
-Latest release: [`v0.1.9`](https://github.com/ibrahimhnif/liosvideo/releases/tag/v0.1.9) · [All releases](https://github.com/ibrahimhnif/liosvideo/releases)
+Latest release: [`v0.1.10`](https://github.com/ibrahimhnif/liosvideo/releases/tag/v0.1.10) · [All releases](https://github.com/ibrahimhnif/liosvideo/releases)
 
 | Platform | Architecture | Installer |
 | :--- | :--- | :--- |
-| macOS | Universal | [Liosvideo_0.1.9_universal.dmg](https://github.com/ibrahimhnif/liosvideo/releases/download/v0.1.9/Liosvideo_0.1.9_universal.dmg) |
-| Windows | x64 | [Liosvideo_0.1.9_x64-setup.exe](https://github.com/ibrahimhnif/liosvideo/releases/download/v0.1.9/Liosvideo_0.1.9_x64-setup.exe) · [Liosvideo_0.1.9_x64_en-US.msi](https://github.com/ibrahimhnif/liosvideo/releases/download/v0.1.9/Liosvideo_0.1.9_x64_en-US.msi) |
-| Linux | x64 | [Liosvideo-0.1.9-1.x86_64.rpm](https://github.com/ibrahimhnif/liosvideo/releases/download/v0.1.9/Liosvideo-0.1.9-1.x86_64.rpm) · [Liosvideo_0.1.9_amd64.AppImage](https://github.com/ibrahimhnif/liosvideo/releases/download/v0.1.9/Liosvideo_0.1.9_amd64.AppImage) · [Liosvideo_0.1.9_amd64.deb](https://github.com/ibrahimhnif/liosvideo/releases/download/v0.1.9/Liosvideo_0.1.9_amd64.deb) |
+| macOS | Universal | [Liosvideo_0.1.10_universal.dmg](https://github.com/ibrahimhnif/liosvideo/releases/download/v0.1.10/Liosvideo_0.1.10_universal.dmg) |
+| Windows | x64 | [Liosvideo_0.1.10_x64-setup.exe](https://github.com/ibrahimhnif/liosvideo/releases/download/v0.1.10/Liosvideo_0.1.10_x64-setup.exe) · [Liosvideo_0.1.10_x64_en-US.msi](https://github.com/ibrahimhnif/liosvideo/releases/download/v0.1.10/Liosvideo_0.1.10_x64_en-US.msi) |
+| Linux | x64 | [Liosvideo-0.1.10-1.x86_64.rpm](https://github.com/ibrahimhnif/liosvideo/releases/download/v0.1.10/Liosvideo-0.1.10-1.x86_64.rpm) · [Liosvideo_0.1.10_amd64.AppImage](https://github.com/ibrahimhnif/liosvideo/releases/download/v0.1.10/Liosvideo_0.1.10_amd64.AppImage) · [Liosvideo_0.1.10_amd64.deb](https://github.com/ibrahimhnif/liosvideo/releases/download/v0.1.10/Liosvideo_0.1.10_amd64.deb) |
 <!-- downloads:end -->
 
 > On macOS, drag `Liosvideo.app` into `/Applications`. On Windows, run the `.msi` or `-setup.exe` installer. On Linux, use the `.AppImage` (make it executable) or install the `.deb`.
