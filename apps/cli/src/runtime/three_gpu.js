@@ -212,42 +212,18 @@ async function readPixels(session, background) {
   const { context, width, height } = session;
   const texture = context.getCurrentTexture();
   const bytesPerRow = Math.ceil((width * 4) / 256) * 256;
-  const buffer = device.createBuffer({ size: bytesPerRow * height, usage: GPUBufferUsage.COPY_DST | GPUBufferUsage.MAP_READ });
-  const encoder = device.createCommandEncoder();
-  encoder.copyTextureToBuffer({ texture }, { buffer, bytesPerRow }, [width, height]);
-  device.queue.submit([encoder.finish()]);
-  await buffer.mapAsync(GPUMapMode.READ);
-  const src = new Uint8Array(buffer.getMappedRange());
-  const out = new Uint8Array(width * height * 4);
-  const bgra = context.format.startsWith("bgra");
-  for (let y = 0; y < height; y++) {
-    let s = y * bytesPerRow;
-    let d = y * width * 4;
-    for (let x = 0; x < width; x++, s += 4, d += 4) {
-      const a = src[s + 3];
-      let r = src[s + (bgra ? 2 : 0)];
-      let g = src[s + 1];
-      let b = src[s + (bgra ? 0 : 2)];
-      // the canvas is premultiplied; the compositor takes straight alpha like decoded images
-      if (a > 0 && a < 255) {
-        r = Math.min(255, Math.round((r * 255) / a));
-        g = Math.min(255, Math.round((g * 255) / a));
-        b = Math.min(255, Math.round((b * 255) / a));
-      }
-      if (background && a < 255) {
-        r = Math.round((r * a + background[0] * (255 - a)) / 255);
-        g = Math.round((g * a + background[1] * (255 - a)) / 255);
-        b = Math.round((b * a + background[2] * (255 - a)) / 255);
-      }
-      out[d] = r;
-      out[d + 1] = g;
-      out[d + 2] = b;
-      out[d + 3] = background ? 255 : a;
-    }
+  const size = bytesPerRow * height;
+  if (!session.readback || session.readback.size !== size) {
+    session.readback?.destroy();
+    session.readback = device.createBuffer({ size, usage: GPUBufferUsage.COPY_DST | GPUBufferUsage.MAP_READ });
   }
-  buffer.unmap();
-  buffer.destroy();
-  return out;
+  const encoder = device.createCommandEncoder();
+  encoder.copyTextureToBuffer({ texture }, { buffer: session.readback, bytesPerRow }, [width, height]);
+  device.queue.submit([encoder.finish()]);
+  // mapped in Rust with a blocking poll (mapAsync here waits ≥ 10 ms a frame), and unpacked there:
+  // the canvas is premultiplied; the compositor takes straight alpha like decoded images
+  const bg = background ? (background[0] << 16) | (background[1] << 8) | background[2] : -1;
+  return Deno.core.ops.op_three_readback(session.readback, width, height, bytesPerRow, context.format.startsWith("bgra"), bg);
 }
 
 /** Renders every three() node of the scene on the GPU; false when the GPU path cannot be used. */

@@ -94,6 +94,7 @@ deno_core::extension!(
     ops = [
         op_measure_text,
         op_three_frame,
+        super::three_readback::op_three_readback,
         op_read_asset,
         op_decode_image
     ],

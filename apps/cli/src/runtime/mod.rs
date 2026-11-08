@@ -1,6 +1,7 @@
 pub mod loader;
 pub mod ops;
 pub mod shims;
+pub mod three_readback;
 pub mod webgpu;
 
 use std::collections::HashMap;
