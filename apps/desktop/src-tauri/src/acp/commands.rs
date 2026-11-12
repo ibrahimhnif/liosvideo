@@ -99,6 +99,7 @@ pub async fn get_or_start_mcp_server_instance() -> Result<Arc<crate::mcp::McpSer
     let asset_coordinator = Arc::new(crate::mcp::asset_tools::AssetRequestCoordinator::new());
     crate::mcp::asset_tools::register_asset_tools(&mut registry, context.clone(), asset_coordinator);
     crate::mcp::commons_tools::register_commons_tools(&mut registry, context.clone());
+    crate::mcp::sound_tools::register_sound_tools(&mut registry, context.clone());
     crate::mcp::destockd_tools::register_destockd_tools(&mut registry, context.clone());
     crate::mcp::image_tools::register_image_tools(&mut registry, context.clone());
     let tts_provider = Arc::new(crate::audio::MockTtsProvider::new());
@@ -135,6 +136,7 @@ pub async fn get_or_start_mcp_server(app: &AppHandle) -> Option<u16> {
     };
     crate::mcp::asset_tools::register_asset_tools(&mut registry, context.clone(), asset_coordinator);
     crate::mcp::commons_tools::register_commons_tools(&mut registry, context.clone());
+    crate::mcp::sound_tools::register_sound_tools(&mut registry, context.clone());
     crate::mcp::destockd_tools::register_destockd_tools(&mut registry, context.clone());
     crate::mcp::image_tools::register_image_tools(&mut registry, context.clone());
     let tts_provider: Arc<dyn crate::audio::TtsProvider> = match app.try_state::<Arc<dyn crate::audio::TtsProvider>>() {

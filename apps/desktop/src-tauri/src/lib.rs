@@ -2,6 +2,8 @@ mod acp;
 mod agents;
 pub mod audio;
 mod commons;
+mod earshot;
+mod openverse;
 mod destockd;
 pub mod export;
 mod git;

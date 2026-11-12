@@ -1,6 +1,8 @@
 // Sound effects tied to motion: `node.to(..., { sfx })`, camera presets and cameraPath keys carry cues;
 // the manifest turns them into "sfx" clips at the scene time the move starts (or ends).
 
+import { attributedFile } from "../assets/attributions";
+
 /** "whoosh" (a library name or a project path), or the details. */
 export type SfxSpec =
   | string
@@ -45,14 +47,17 @@ export function sfxCue(spec: SfxSpec, start: number, end: number, where: string)
   return cue;
 }
 
-/** File, level and fades of a cue: the library entry, else a path as written, else assets/audio/sfx/<name>.wav. */
+/**
+ * File, level and fades of a cue: the library entry, else a path as written, else the
+ * `assets/audio/sfx/<name>.*` recorded in assets/ATTRIBUTIONS.md, else assets/audio/sfx/<name>.wav.
+ */
 export function resolveSfx(cue: SfxCue, opts: SfxOptions = {}) {
   const entry = opts.library?.[cue.name];
   const libSrc = typeof entry === "string" ? entry : entry?.src;
   const libVolume = typeof entry === "object" ? entry.volume : undefined;
   const looksLikePath = /[/.]/.test(cue.name);
   return {
-    src: libSrc ?? (looksLikePath ? cue.name : `assets/audio/sfx/${cue.name}.wav`),
+    src: libSrc ?? (looksLikePath ? cue.name : (attributedFile("assets/audio/sfx", cue.name) ?? `assets/audio/sfx/${cue.name}.wav`)),
     volume: cue.volume ?? libVolume ?? opts.volume ?? 0.5,
     duration: cue.duration,
     // a few ms in and out so no clip clicks; a trimmed sound fades out over up to a third of what is left

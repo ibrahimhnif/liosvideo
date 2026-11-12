@@ -498,7 +498,7 @@ credit(root, { source: ["ANTARA", "CNBC Indonesia"], asset: "assets/images/habib
 ```
 
 - One line in a fixed spot that never meets the captions. In 16:9 and 1:1 it sits right-aligned in the bottom margin under the caption slot. In 9:16 it sits at the top-right of the safe area, because the bottom belongs to captions and the platform UI. Long credits shrink to fit, and a translucent backdrop keeps it readable (`background: false` turns the backdrop off).
-- `asset` fills the photo credit and licence from that file's row in `assets/ATTRIBUTIONS.md`, so the screen always matches the attribution table. The table's headers can be English or Indonesian (File/Asset, Source/Sumber, Author/Creator, License/Lisensi), and a row may list just the file name. With no author column, the source site is credited. AI-generated rows render as "AI illustration (Google Gemini)" (`lang: "id"`: "Ilustrasi AI").
+- `asset` fills the credit and licence from that file's row in `assets/ATTRIBUTIONS.md` ("Photo:" for images, "Music:" for `assets/audio/music/`, "Sound:" for other audio; an array credits several in one line), so the screen always matches the attribution table. The table's headers can be English or Indonesian (File/Asset, Source/Sumber, Author/Creator, License/Lisensi), and a row may list just the file name. With no author column, the source site is credited. AI-generated rows render as "AI illustration (Google Gemini)" (`lang: "id"`: "Ilustrasi AI").
 - Other options: `source`, `photo`, `license`, `text` (replaces the whole line), `lang` (`"en"` / `"id"`), `at` / `until` (fade in/out), `color`, `fontFamily`, `name`.
 
 ### Motion-synced SFX (`sfx` on moves)
@@ -517,7 +517,7 @@ export default composition({
 });
 ```
 
-- A name is looked up in `sfx.library`, then used as a path if it has `/` or `.`, else `assets/audio/sfx/<name>.wav`. Level: the cue's `volume`, then the library entry's, then `sfx.volume`, then 0.5.
+- A name is looked up in `sfx.library`, then used as a path if it has `/` or `.`, then as the `assets/audio/sfx/<name>.*` recorded in `assets/ATTRIBUTIONS.md` (an Openverse download), else `assets/audio/sfx/<name>.wav`. Level: the cue's `volume`, then the library entry's, then `sfx.volume`, then 0.5.
 - Options: `on: "start" | "end"`, `volume`, `offset` (seconds; negative leads the move), `duration` (trims the sound, with a fade-out). Every SFX clip gets a short fade in and out so nothing clicks; they never duck the music.
 - The composition adds them as `role: "sfx"` clips at scene start + move time; `composition({ sfx: false })` leaves them out. Any clip can fade too: `{ src, startAt, fadeIn: 0.5, fadeOut: 1 }`.
 
@@ -539,6 +539,8 @@ Every render (CLI and desktop export) runs the mix through a master bus:
 - Source high-quality, royalty-free, or permissively licensed media (Unsplash, Pexels, Wikimedia Commons, FreeSound, Google Fonts, GitHub raw assets).
 - For archival/historical B-roll use Destockd first: `destockd_search` then `destockd_download` (CLI: `liosvideo asset search …` / `asset download …`). It downloads FedFlix/government footage into `assets/video/` and appends the attribution row. Rights are not certified per clip — check the source record before commercial use, and keep the row in `assets/ATTRIBUTIONS.md`.
 - For photos of real people, places, products and events use Wikimedia Commons: `commons_search` then `commons_download` (CLI: `liosvideo asset commons search …` / `asset commons download "File:…"`). Only CC0, public domain, CC BY and CC BY-SA files download (NC, ND, GFDL-only and fair use are refused with the reason). It saves into `assets/images/`, writes the attribution row, and returns `credit` — show it with `credit(root, { asset: relPath })` — plus `descriptionCredit` for the video description.
+- For sound effects and music use Openverse: `openverse_search` then `openverse_download` (CLI: `liosvideo asset audio search "<query>" --kind sfx|music` / `asset audio download <id>`). It searches Freesound (sound effects), Jamendo and Wikimedia Commons (music); only CC0, public domain, CC BY and CC BY-SA download (NC, ND and Sampling+ are refused with the reason). It saves into `assets/audio/sfx/` or `assets/audio/music/`, writes the attribution row, and returns `usage`, `credit` and `descriptionCredit` (CC BY needs it in the video description).
+- Sound effects made in code, when [earshot](https://github.com/Leonxlnx/earshot) is installed (`uv tool install "earshot @ git+https://github.com/Leonxlnx/earshot"`): `earshot_sfx_list` / `earshot_sfx_render` (CLI: `liosvideo asset sfx list` / `asset sfx render whoosh_fast/crisp --dur 0.8 --apex 0.32`) render a bank sound into `assets/audio/sfx/<name>.wav` in seconds, aimed with `dur`, `apex`, `pitch`, `seed`; MIT, no credit needed.
 - Store deterministic assets in standard directories:
   - Images / logos: `assets/images/<filename>`
   - Video clips / b-roll: `assets/video/<filename>`

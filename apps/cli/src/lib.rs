@@ -4,6 +4,8 @@ pub mod assets;
 pub mod cli;
 pub mod color;
 pub mod commons;
+pub mod earshot;
+pub mod openverse;
 pub mod destockd;
 pub mod gpu;
 pub mod imagegen;

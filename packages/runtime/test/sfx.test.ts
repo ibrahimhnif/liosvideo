@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import { composition, scene } from "../src/composition";
 import { rect } from "../src/graph/kinds";
 import { three } from "../src/graph/three";
+import { registerAttributions } from "../src/assets/attributions";
 import { buildManifest } from "../src/manifest";
 import { cameraPath, dolly, orbit } from "../src/three/camera_path";
 
@@ -21,6 +22,28 @@ describe("motion-synced SFX", () => {
     expect(clips).toHaveLength(1);
     expect(clips[0]).toMatchObject({ src: "assets/audio/sfx/whoosh.wav", startFrame: 60 + 15, role: "sfx", volume: 0.5 });
     expect(sfxClips(c)).toEqual(clips); // deterministic
+  });
+
+  it("finds a downloaded sound by name whatever its extension, from its attribution row", () => {
+    registerAttributions(`| Asset | Source / URL | Author / Creator | License | Notes / Usage |
+| :--- | :--- | :--- | :--- | :--- |
+| \`assets/audio/sfx/whoosh.mp3\` | https://freesound.org/people/qubodup/sounds/60026 | qubodup | CC0 | via Openverse |
+| \`assets/audio/sfx/pop.ogg\` | https://example.org/pop | x | CC0 | |
+| \`assets/audio/sfx/pop.wav\` | https://github.com/Leonxlnx/earshot | earshot (made in code) | MIT | |
+| \`assets/audio/sfx/deep/hit.mp3\` | https://example.org/hit | x | CC0 | |
+`);
+    try {
+      const shot = scene("shot", { duration: 3 }, ({ root }) => {
+        const card = root.add(rect({ name: "card" }));
+        card.to({ x: 100 }, { at: 1, duration: 0.5, sfx: "whoosh" });
+        card.to({ x: 0 }, { at: 1.5, duration: 0.5, sfx: "pop" });
+        card.to({ x: 50 }, { at: 2, duration: 0.5, sfx: "hit" });
+      });
+      const clips = sfxClips(composition({ width: 100, height: 100, fps: 30, scenes: [shot] }));
+      expect(clips.map((c) => c.src)).toEqual(["assets/audio/sfx/whoosh.mp3", "assets/audio/sfx/pop.wav", "assets/audio/sfx/hit.wav"]);
+    } finally {
+      registerAttributions("");
+    }
   });
 
   it("places keyframe SFX at the start or the end of the move", () => {

@@ -73,6 +73,8 @@ backend feature set as the desktop app, with no Node.js, Chromium, or FFmpeg dep
 | Asset import | `liosvideo asset import <id> <file>`, `save-image`, `save-video`, `record-voice` |
 | Free archival B-roll | `liosvideo asset search <query> [--page N] [--json]`, `asset download <film> <shot> [--name f] [--force]` (Destockd) |
 | Licensed photos | `liosvideo asset commons search <query> [--page N] [--limit N] [--json]`, `asset commons download <File:…> [--name f] [--width px] [--force]` (Wikimedia Commons; MCP `commons_search` / `commons_download` in both apps) |
+| Licensed audio | `liosvideo asset audio search <query> [--kind sfx|music|any] [--page N] [--limit N] [--json]`, `asset audio download <id> [--kind sfx|music] [--name f] [--force]` (Openverse: Freesound, Jamendo, Wikimedia Commons; MCP `openverse_search` / `openverse_download` in both apps) |
+| Code-made SFX | `liosvideo asset sfx list [--kind k]`, `asset sfx render <id> [--name f] [--dur s] [--apex s] [--pitch E5] [--seed n] [--force]` (needs earshot installed; MCP `earshot_sfx_list` / `earshot_sfx_render` in both apps) |
 | API keys | `liosvideo key get|set|delete <service>` |
 | ACP agent | `liosvideo agent list|prompt|chat|auth|set-config|install-adapter|…`; `--handoff <file|auto>` continues on another agent ([details](./acp-handoff.md)) |
 | MCP server | `liosvideo mcp serve [--stdio|--tcp addr]`, `mcp tools`, `mcp call <tool>` |

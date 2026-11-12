@@ -7,7 +7,7 @@ use serde_json::{json, Value};
 use crate::acp::session::{Session, SessionEvents};
 use crate::agents;
 use crate::cli::{
-    AgentCommand, AssetCommand, CommonsCommand, ConversationCommand, HistoryCommand, KeyCommand, McpCommand,
+    AgentCommand, AssetCommand, AudioCommand, CommonsCommand, SfxCommand, ConversationCommand, HistoryCommand, KeyCommand, McpCommand,
     ProjectCommand, TtsCommand,
 };
 use crate::mcp::headless_tools::{self, EditorSession};
@@ -380,6 +380,8 @@ pub async fn run_asset(project: &Path, command: AssetCommand) -> Result<()> {
             println!("{}", serde_json::to_string_pretty(&saved)?);
         }
         AssetCommand::Commons { command } => commons_command(&root, command).await?,
+        AssetCommand::Audio { command } => audio_command(&root, command).await?,
+        AssetCommand::Sfx { command } => sfx_command(&root, command).await?,
         AssetCommand::GenerateImage {
             prompt,
             id,
@@ -480,6 +482,75 @@ async fn commons_command(root: &Path, command: CommonsCommand) -> Result<()> {
                 .await
                 .map_err(|e| anyhow!(e))?;
             println!("{}", serde_json::to_string_pretty(&saved)?);
+        }
+    }
+    Ok(())
+}
+
+async fn audio_command(root: &Path, command: AudioCommand) -> Result<()> {
+    match command {
+        AudioCommand::Search { query, kind, page, limit, json } => {
+            let kind = crate::openverse::Kind::parse(&kind).map_err(|e| anyhow!(e))?;
+            let found = crate::openverse::search(&query, kind, page, limit).await.map_err(|e| anyhow!(e))?;
+            if json {
+                println!("{}", serde_json::to_string_pretty(&found)?);
+                return Ok(());
+            }
+            if found.hits.is_empty() {
+                println!("No Openverse audio for \"{query}\" (page {}).", found.page);
+                return Ok(());
+            }
+            println!("{} result(s) for \"{}\" (page {}):\n", found.hits.len(), found.query, found.page);
+            for hit in &found.hits {
+                let licence = if hit.reusable {
+                    hit.licence.clone()
+                } else {
+                    format!("UNAVAILABLE: {}", hit.refused.as_deref().unwrap_or("licence"))
+                };
+                let length = hit.duration_seconds.map(|d| format!("{d:.1}s")).unwrap_or_else(|| "?".into());
+                println!(
+                    "{}  {:<5} {:>7}  {:<40} {:<20} {}",
+                    hit.id,
+                    hit.kind.folder(),
+                    length,
+                    truncate(&hit.title, 40),
+                    truncate(&hit.creator, 20),
+                    licence
+                );
+            }
+            if found.has_more {
+                println!("\nMore results: --page {}", found.page + 1);
+            }
+            println!("\nListen: liosvideo asset audio search \"{query}\" --json (previewUrl)");
+            println!("Download: liosvideo asset audio download <id> [--name whoosh]");
+        }
+        AudioCommand::Download { id, kind, name, force } => {
+            let kind = match kind {
+                Some(k) => crate::openverse::Kind::parse(&k).map_err(|e| anyhow!(e))?,
+                None => None,
+            };
+            let saved = crate::openverse::download(root, &id, kind, name.as_deref(), force)
+                .await
+                .map_err(|e| anyhow!(e))?;
+            println!("{}", serde_json::to_string_pretty(&saved)?);
+        }
+    }
+    Ok(())
+}
+
+async fn sfx_command(root: &Path, command: SfxCommand) -> Result<()> {
+    match command {
+        SfxCommand::List { kind } => {
+            let listed = crate::earshot::list(kind.as_deref()).await.map_err(|e| anyhow!(e))?;
+            match listed {
+                serde_json::Value::String(text) => println!("{text}"),
+                other => println!("{}", serde_json::to_string_pretty(&other)?),
+            }
+        }
+        SfxCommand::Render { id, name, dur, apex, pitch, seed, force } => {
+            let opts = crate::earshot::RenderOptions { name, dur, apex, pitch, seed, force };
+            let rendered = crate::earshot::render(root, &id, &opts).await.map_err(|e| anyhow!(e))?;
+            println!("{}", serde_json::to_string_pretty(&rendered)?);
         }
     }
     Ok(())

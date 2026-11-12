@@ -10,8 +10,11 @@ export interface CreditOptions {
   photo?: string;
   /** Licence of that image, e.g. "CC BY-SA 4.0". */
   license?: string;
-  /** Fill photo + licence from this asset's row in assets/ATTRIBUTIONS.md. */
-  asset?: string;
+  /**
+   * Fill the credit from this asset's row in assets/ATTRIBUTIONS.md: "Photo: …" for images,
+   * "Music: …" for assets/audio/music/, "Sound: …" for other audio. Several assets share one line.
+   */
+  asset?: string | string[];
   /** Replace the generated line entirely. */
   text?: string;
   /** Label language: "en" (Source / Photo, default) or "id" (Sumber / Foto). */
@@ -28,9 +31,19 @@ export interface CreditOptions {
 }
 
 const LABELS = {
-  en: { source: "Source", photo: "Photo", ai: "AI illustration" },
-  id: { source: "Sumber", photo: "Foto", ai: "Ilustrasi AI" },
+  en: { source: "Source", photo: "Photo", music: "Music", sound: "Sound", ai: "AI illustration" },
+  id: { source: "Sumber", photo: "Foto", music: "Musik", sound: "Suara", ai: "Ilustrasi AI" },
 } as const;
+
+const AUDIO = /\.(mp3|wav|ogg|oga|flac|m4a|aac|opus)$/i;
+
+/** Which label an asset's credit takes, from its folder and extension. */
+function assetLabel(asset: string): "photo" | "music" | "sound" {
+  const path = asset.replace(/^\.\//, "");
+  if (/(^|\/)audio\/music\//i.test(path)) return "music";
+  if (/(^|\/)audio\//i.test(path) || AUDIO.test(path)) return "sound";
+  return "photo";
+}
 
 /** "https://www.unsplash.com/photos/x" -> "unsplash.com"; anything else is returned as written. */
 function siteOf(source: string): string {
@@ -46,23 +59,34 @@ export function creditText(opts: CreditOptions): string {
   const sources = (Array.isArray(opts.source) ? opts.source : opts.source ? [opts.source] : []).filter(Boolean);
   if (sources.length) parts.push(`${L.source}: ${sources.join(" • ")}`);
 
+  const assets = (Array.isArray(opts.asset) ? opts.asset : opts.asset ? [opts.asset] : []).filter(Boolean);
   let photo = opts.photo;
   let license = opts.license;
-  if (opts.asset) {
-    const row = attribution(opts.asset);
+  const assetParts: string[] = [];
+  for (const asset of assets) {
+    const row = attribution(asset);
     if (!row) {
-      throw new Error(`credit(): "${opts.asset}" has no row in assets/ATTRIBUTIONS.md; add one (Asset | Source | Author | License | Notes) first`);
+      throw new Error(`credit(): "${asset}" has no row in assets/ATTRIBUTIONS.md; add one (Asset | Source | Author | License | Notes) first`);
     }
     if (/ai-generated/i.test(row.author)) {
       const tool = /generated with ([^(]+)/i.exec(row.source)?.[1]?.trim();
-      parts.push(tool ? `${L.ai} (${tool})` : L.ai);
-      return parts.join(" • ");
+      assetParts.push(tool ? `${L.ai} (${tool})` : L.ai);
+      continue;
     }
-    photo ??= row.author || siteOf(row.source);
-    license ??= row.license;
+    const label = assetLabel(asset);
+    const who = row.author || siteOf(row.source);
+    if (label === "photo" && assets.length === 1) {
+      // a single image asset fills the photo credit, which `photo` / `license` may override
+      photo ??= who;
+      license ??= row.license;
+      continue;
+    }
+    if (who) assetParts.push(`${L[label]}: ${who}${row.license ? `, ${row.license}` : ""}`);
+    else if (row.license) assetParts.push(row.license);
   }
   if (photo) parts.push(`${L.photo}: ${photo}${license ? `, ${license}` : ""}`);
   else if (license) parts.push(license);
+  parts.push(...assetParts);
   return parts.join(" • ");
 }
 

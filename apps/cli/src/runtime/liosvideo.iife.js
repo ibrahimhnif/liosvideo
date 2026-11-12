@@ -271,6 +271,78 @@ var __liosvideo = (function(exports) {
 			return ((t ^ t >>> 14) >>> 0) / 4294967296;
 		};
 	}
+	// packages/runtime/src/assets/attributions.ts
+	const HEADERS = [
+		["asset", /^(asset|aset|file|berkas|path)\b/i],
+		["license", /(licen[cs]e|lisensi)/i],
+		["author", /(author|creator|pembuat|kreator|fotografer|photographer|credit)/i],
+		["source", /(source|sumber|url|link)/i],
+		["notes", /(notes?|usage|scene|catatan|pemakaian|adegan)/i]
+	];
+	const STANDARD = [
+		"asset",
+		"source",
+		"author",
+		"license",
+		"notes"
+	];
+	let rows = /* @__PURE__ */ new Map();
+	let byName = /* @__PURE__ */ new Map();
+	const normalise = (path) => path.trim().replace(/^`|`$/g, "").trim().replace(/^\.?\//, "");
+	const basename = (path) => path.split("/").pop() ?? path;
+	const cellsOf = (line) => line.trim().replace(/^\||\|$/g, "").split("|").map((c) => c.trim());
+	/**
+	* Parses the attribution table(s). Columns are matched by header name (Asset/File, Source/Sumber,
+	* Author/Creator, License/Lisensi, Notes/Scene), falling back to the standard order.
+	*/
+	function registerAttributions(markdown) {
+		rows = /* @__PURE__ */ new Map();
+		byName = /* @__PURE__ */ new Map();
+		let columns = STANDARD;
+		for (const line of (markdown ?? "").split("\n")) {
+			if (!line.trim().startsWith("|")) continue;
+			const cells = cellsOf(line);
+			if (cells.every((c) => /^:?-*:?$/.test(c))) continue;
+			const header = cells.map((c) => HEADERS.find(([, re]) => re.test(c))?.[0]);
+			if (header[0] === "asset" && !cells[0].includes(".")) {
+				columns = header;
+				continue;
+			}
+			const row = {
+				asset: "",
+				source: "",
+				author: "",
+				license: "",
+				notes: ""
+			};
+			cells.forEach((c, i) => {
+				const field = columns[i];
+				if (field && !row[field]) row[field] = field === "asset" ? normalise(c) : c;
+			});
+			if (!row.asset) continue;
+			rows.set(row.asset, row);
+			if (!byName.has(basename(row.asset))) byName.set(basename(row.asset), row);
+		}
+	}
+	/** The attribution row for a project asset path (or a row listing just its file name). */
+	function attribution(asset) {
+		const hosted = globalThis.__liosAttributions;
+		if (!rows.size && hosted) registerAttributions(hosted);
+		const path = normalise(asset);
+		return rows.get(path) ?? byName.get(basename(path));
+	}
+	/**
+	* The recorded file `<dir>/<stem>.<any extension>`, for names that leave the extension out
+	* (`sfx: "whoosh"` finds an `assets/audio/sfx/whoosh.mp3` downloaded with its row). A `.wav`
+	* wins when several are recorded.
+	*/
+	function attributedFile(dir, stem) {
+		const hosted = globalThis.__liosAttributions;
+		if (!rows.size && hosted) registerAttributions(hosted);
+		const prefix = `${normalise(dir).replace(/\/$/, "")}/${stem}.`;
+		const found = [...rows.keys()].filter((path) => path.startsWith(prefix) && !path.slice(prefix.length).includes("/"));
+		return found.find((path) => path.endsWith(".wav")) ?? found[0];
+	}
 	// packages/runtime/src/audio/sfx.ts
 	const ON = ["start", "end"];
 	/** The cue for a move from `start` to `end` (scene seconds). */
@@ -287,14 +359,17 @@ var __liosvideo = (function(exports) {
 		if (o.duration !== void 0) cue.duration = o.duration;
 		return cue;
 	}
-	/** File, level and fades of a cue: the library entry, else a path as written, else assets/audio/sfx/<name>.wav. */
+	/**
+	* File, level and fades of a cue: the library entry, else a path as written, else the
+	* `assets/audio/sfx/<name>.*` recorded in assets/ATTRIBUTIONS.md, else assets/audio/sfx/<name>.wav.
+	*/
 	function resolveSfx(cue, opts = {}) {
 		const entry = opts.library?.[cue.name];
 		const libSrc = typeof entry === "string" ? entry : entry?.src;
 		const libVolume = typeof entry === "object" ? entry.volume : void 0;
 		const looksLikePath = /[/.]/.test(cue.name);
 		return {
-			src: libSrc ?? (looksLikePath ? cue.name : `assets/audio/sfx/${cue.name}.wav`),
+			src: libSrc ?? (looksLikePath ? cue.name : attributedFile("assets/audio/sfx", cue.name) ?? `assets/audio/sfx/${cue.name}.wav`),
 			volume: cue.volume ?? libVolume ?? opts.volume ?? .5,
 			duration: cue.duration,
 			fadeIn: .005,
@@ -2649,79 +2724,31 @@ var __liosvideo = (function(exports) {
 			};
 		});
 	}
-	// packages/runtime/src/assets/attributions.ts
-	const HEADERS = [
-		["asset", /^(asset|aset|file|berkas|path)\b/i],
-		["license", /(licen[cs]e|lisensi)/i],
-		["author", /(author|creator|pembuat|kreator|fotografer|photographer|credit)/i],
-		["source", /(source|sumber|url|link)/i],
-		["notes", /(notes?|usage|scene|catatan|pemakaian|adegan)/i]
-	];
-	const STANDARD = [
-		"asset",
-		"source",
-		"author",
-		"license",
-		"notes"
-	];
-	let rows = /* @__PURE__ */ new Map();
-	let byName = /* @__PURE__ */ new Map();
-	const normalise = (path) => path.trim().replace(/^`|`$/g, "").trim().replace(/^\.?\//, "");
-	const basename = (path) => path.split("/").pop() ?? path;
-	const cellsOf = (line) => line.trim().replace(/^\||\|$/g, "").split("|").map((c) => c.trim());
-	/**
-	* Parses the attribution table(s). Columns are matched by header name (Asset/File, Source/Sumber,
-	* Author/Creator, License/Lisensi, Notes/Scene), falling back to the standard order.
-	*/
-	function registerAttributions(markdown) {
-		rows = /* @__PURE__ */ new Map();
-		byName = /* @__PURE__ */ new Map();
-		let columns = STANDARD;
-		for (const line of (markdown ?? "").split("\n")) {
-			if (!line.trim().startsWith("|")) continue;
-			const cells = cellsOf(line);
-			if (cells.every((c) => /^:?-*:?$/.test(c))) continue;
-			const header = cells.map((c) => HEADERS.find(([, re]) => re.test(c))?.[0]);
-			if (header[0] === "asset" && !cells[0].includes(".")) {
-				columns = header;
-				continue;
-			}
-			const row = {
-				asset: "",
-				source: "",
-				author: "",
-				license: "",
-				notes: ""
-			};
-			cells.forEach((c, i) => {
-				const field = columns[i];
-				if (field && !row[field]) row[field] = field === "asset" ? normalise(c) : c;
-			});
-			if (!row.asset) continue;
-			rows.set(row.asset, row);
-			if (!byName.has(basename(row.asset))) byName.set(basename(row.asset), row);
-		}
-	}
-	/** The attribution row for a project asset path (or a row listing just its file name). */
-	function attribution(asset) {
-		const hosted = globalThis.__liosAttributions;
-		if (!rows.size && hosted) registerAttributions(hosted);
-		const path = normalise(asset);
-		return rows.get(path) ?? byName.get(basename(path));
-	}
 	// packages/runtime/src/components/credit.ts
 	const LABELS = {
 		en: {
 			source: "Source",
 			photo: "Photo",
+			music: "Music",
+			sound: "Sound",
 			ai: "AI illustration"
 		},
 		id: {
 			source: "Sumber",
 			photo: "Foto",
+			music: "Musik",
+			sound: "Suara",
 			ai: "Ilustrasi AI"
 		}
 	};
+	const AUDIO = /\.(mp3|wav|ogg|oga|flac|m4a|aac|opus)$/i;
+	/** Which label an asset's credit takes, from its folder and extension. */
+	function assetLabel(asset) {
+		const path = asset.replace(/^\.\//, "");
+		if (/(^|\/)audio\/music\//i.test(path)) return "music";
+		if (/(^|\/)audio\//i.test(path) || AUDIO.test(path)) return "sound";
+		return "photo";
+	}
 	/** "https://www.unsplash.com/photos/x" -> "unsplash.com"; anything else is returned as written. */
 	function siteOf(source) {
 		const host = /^https?:\/\/([^/]+)/i.exec(source.trim())?.[1];
@@ -2734,21 +2761,31 @@ var __liosvideo = (function(exports) {
 		const parts = [];
 		const sources = (Array.isArray(opts.source) ? opts.source : opts.source ? [opts.source] : []).filter(Boolean);
 		if (sources.length) parts.push(`${L.source}: ${sources.join(" • ")}`);
+		const assets = (Array.isArray(opts.asset) ? opts.asset : opts.asset ? [opts.asset] : []).filter(Boolean);
 		let photo = opts.photo;
 		let license = opts.license;
-		if (opts.asset) {
-			const row = attribution(opts.asset);
-			if (!row) throw new Error(`credit(): "${opts.asset}" has no row in assets/ATTRIBUTIONS.md; add one (Asset | Source | Author | License | Notes) first`);
+		const assetParts = [];
+		for (const asset of assets) {
+			const row = attribution(asset);
+			if (!row) throw new Error(`credit(): "${asset}" has no row in assets/ATTRIBUTIONS.md; add one (Asset | Source | Author | License | Notes) first`);
 			if (/ai-generated/i.test(row.author)) {
 				const tool = /generated with ([^(]+)/i.exec(row.source)?.[1]?.trim();
-				parts.push(tool ? `${L.ai} (${tool})` : L.ai);
-				return parts.join(" • ");
+				assetParts.push(tool ? `${L.ai} (${tool})` : L.ai);
+				continue;
 			}
-			photo ??= row.author || siteOf(row.source);
-			license ??= row.license;
+			const label = assetLabel(asset);
+			const who = row.author || siteOf(row.source);
+			if (label === "photo" && assets.length === 1) {
+				photo ??= who;
+				license ??= row.license;
+				continue;
+			}
+			if (who) assetParts.push(`${L[label]}: ${who}${row.license ? `, ${row.license}` : ""}`);
+			else if (row.license) assetParts.push(row.license);
 		}
 		if (photo) parts.push(`${L.photo}: ${photo}${license ? `, ${license}` : ""}`);
 		else if (license) parts.push(license);
+		parts.push(...assetParts);
 		return parts.join(" • ");
 	}
 	/**
@@ -4578,6 +4615,7 @@ var __liosvideo = (function(exports) {
 	exports.WindowNode = WindowNode;
 	exports.apply = apply;
 	exports.applyTransition = applyTransition;
+	exports.attributedFile = attributedFile;
 	exports.attribution = attribution;
 	exports.browserWindow = browserWindow;
 	exports.buildManifest = buildManifest;

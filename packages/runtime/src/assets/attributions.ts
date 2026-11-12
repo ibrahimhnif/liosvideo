@@ -63,3 +63,16 @@ export function attribution(asset: string): Attribution | undefined {
   const path = normalise(asset);
   return rows.get(path) ?? byName.get(basename(path));
 }
+
+/**
+ * The recorded file `<dir>/<stem>.<any extension>`, for names that leave the extension out
+ * (`sfx: "whoosh"` finds an `assets/audio/sfx/whoosh.mp3` downloaded with its row). A `.wav`
+ * wins when several are recorded.
+ */
+export function attributedFile(dir: string, stem: string): string | undefined {
+  const hosted = (globalThis as { __liosAttributions?: string }).__liosAttributions;
+  if (!rows.size && hosted) registerAttributions(hosted);
+  const prefix = `${normalise(dir).replace(/\/$/, "")}/${stem}.`;
+  const found = [...rows.keys()].filter((path) => path.startsWith(prefix) && !path.slice(prefix.length).includes("/"));
+  return found.find((path) => path.endsWith(".wav")) ?? found[0];
+}

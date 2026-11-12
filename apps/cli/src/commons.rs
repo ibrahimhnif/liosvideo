@@ -593,6 +593,23 @@ pub fn record_attribution(
     author: &str,
     licence: &Licence,
 ) -> Result<String, String> {
+    let notes = match &licence.url {
+        Some(url) => format!("Wikimedia Commons; licence {url}"),
+        None => "Wikimedia Commons".to_string(),
+    };
+    record_row(root, rel_path, page_url, author, &licence.short, &notes)
+}
+
+/// Adds (or replaces) `rel_path`'s row in `assets/ATTRIBUTIONS.md`:
+/// `| Asset | Source / URL | Author / Creator | License | Notes / Usage |`.
+pub fn record_row(
+    root: &Path,
+    rel_path: &str,
+    source: &str,
+    author: &str,
+    licence: &str,
+    notes: &str,
+) -> Result<String, String> {
     let path = root.join("assets").join("ATTRIBUTIONS.md");
     if let Some(parent) = path.parent() {
         std::fs::create_dir_all(parent).map_err(|e| format!("couldn't create {}: {e}", parent.display()))?;
@@ -601,13 +618,13 @@ pub fn record_attribution(
     if body.trim().is_empty() {
         body = ATTRIBUTIONS_HEADER.to_string();
     }
-    let notes = match &licence.url {
-        Some(url) => format!("Wikimedia Commons; licence {url}"),
-        None => "Wikimedia Commons".to_string(),
-    };
+    let cell = |s: &str| s.replace('|', "/").replace(['\n', '\r'], " ");
     let row = format!(
-        "| `{rel_path}` | {page_url} | {author} | {} | {notes} |",
-        licence.short.replace('|', "/")
+        "| `{rel_path}` | {} | {} | {} | {} |",
+        cell(source),
+        cell(author),
+        cell(licence),
+        cell(notes)
     );
     let prefix = format!("| `{rel_path}` |");
     let mut lines: Vec<&str> = body.lines().filter(|line| !line.starts_with(&prefix)).collect();

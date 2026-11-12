@@ -672,6 +672,41 @@ events, with each file's licence read from Commons.
   (with the licence and file links, for the video description).
 - Put `credit(root, { asset: relPath })` on screen while the photo shows; CC BY and CC BY-SA require it.
 
+### Openverse (sound effects and music with licences checked)
+
+`openverse_search` and `openverse_download` (CLI: `liosvideo asset audio search "<query>" --kind sfx|music` /
+`asset audio download <id>`) find freely licensed audio on Openverse: sound effects from Freesound, music
+from Jamendo and Wikimedia Commons audio.
+
+- Search with specific words ("whoosh fast", "camera shutter", "calm piano"); anonymous use allows about 20
+  searches a minute and 200 a day. `kind: "sfx"` searches Freesound, `"music"` Jamendo and Commons.
+- Hits carry `id`, `title`, `creator`, `licence`, `durationSeconds`, `tags`, `pageUrl`, `previewUrl` and
+  `reusable`. Only CC0, public domain, CC BY and CC BY-SA are reusable; NC, ND and Sampling+ come back with
+  `reusable: false` and a `refused` reason, and `openverse_download` refuses them.
+- `openverse_download` saves into `assets/audio/sfx/` or `assets/audio/music/` (`kind` to choose, `name` for
+  the file name), writes the `assets/ATTRIBUTIONS.md` row and returns `relPath`, `usage`, `credit`
+  ("Music: Torley on Piano, CC BY-SA 3.0") and `descriptionCredit`.
+- A sound effect saved as `assets/audio/sfx/whoosh.mp3` plays with `sfx: "whoosh"` (the name finds the
+  recorded file whatever its extension). Music goes in `composition({ audio: [{ src: relPath, role: "music", loop: true }] })`.
+- CC BY and CC BY-SA need the credit: put `descriptionCredit` in the video description, and for music
+  that runs under the whole video also `credit(root, { asset: relPath })` (or `asset: [photo, music]`
+  to credit both in one line).
+
+### earshot (sound effects made in code, optional)
+
+When the [earshot](https://github.com/Leonxlnx/earshot) tool is installed
+(`uv tool install "earshot @ git+https://github.com/Leonxlnx/earshot"`, needs ffmpeg),
+`earshot_sfx_list` and `earshot_sfx_render` (CLI: `liosvideo asset sfx list --kind whoosh` /
+`asset sfx render whoosh_fast/crisp --dur 0.8 --apex 0.32`) render its bank of about 250 sounds made in
+code: whooshes, swishes, risers, hits, sub drops, clicks, taps, pops, dings, shutters, glitches and
+mallet notes.
+
+- Each render takes seconds, needs no network and lands in `assets/audio/sfx/<name>.wav`, so `sfx: "<name>"`
+  plays it. Aim it at the move: `dur` (length), `apex` (when a whoosh peaks), `pitch` (a note for tonal
+  sounds), `seed` (another take).
+- The sounds are MIT and need no on-screen credit; the attribution row is written anyway.
+- Without earshot the tools say how to install it; Openverse covers sound effects without it.
+
 ### AI Image Generation (Gemini / Nano Banana)
 
 `image_generate` and `image_edit` (CLI: `liosvideo asset generate-image "<prompt>" --id <id>` / `asset edit-image <id> "<change>"`; desktop: **Images** tab) create images with Google Gemini. Needs `GEMINI_API_KEY` (`liosvideo key set GEMINI_API_KEY …` or desktop Settings).

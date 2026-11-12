@@ -10,6 +10,8 @@ const ATTRIBUTIONS = `# Project Asset Attributions
 | :--- | :--- | :--- | :--- | :--- |
 | \`assets/images/habibie.jpg\` | https://commons.wikimedia.org/wiki/File:Habibie.jpg | Kantor Wapres RI | Public domain | Scene 1 |
 | \`assets/images/n250.jpg\` | https://commons.wikimedia.org/wiki/File:N250.jpg | Jane Doe | CC BY-SA 4.0 | Scene 4 |
+| \`assets/audio/music/calm-piano.mp3\` | https://www.jamendo.com/track/151039 | Torley on Piano | CC BY-SA 3.0 | "Corvois calm" via Openverse (Jamendo) |
+| \`assets/audio/sfx/whoosh.mp3\` | https://freesound.org/people/qubodup/sounds/60026 | qubodup | CC0 | via Openverse (Freesound) |
 | \`assets/images/lab.png\` | Generated with Google Gemini (\`gemini-nano-banana-2.1\`) | AI-generated | AI-generated image (Google Gemini terms) | v1 · Prompt: a lab |
 `;
 
@@ -98,6 +100,23 @@ describe("credit()", () => {
     const root = group({ name: "s", width: 1920, height: 1080 });
     credit(root, { asset: "assets/images/lab.png", lang: "id" });
     expect(textOf(root)).toBe("Ilustrasi AI (Google Gemini)");
+  });
+
+  it("labels music and sound effects by their folder", () => {
+    registerAttributions(ATTRIBUTIONS);
+    const music = group({ name: "s", width: 1920, height: 1080 });
+    credit(music, { asset: "assets/audio/music/calm-piano.mp3" });
+    expect(textOf(music)).toBe("Music: Torley on Piano, CC BY-SA 3.0");
+    const sound = group({ name: "s", width: 1920, height: 1080 });
+    credit(sound, { asset: "assets/audio/sfx/whoosh.mp3", lang: "id" });
+    expect(textOf(sound)).toBe("Suara: qubodup, CC0");
+  });
+
+  it("credits several assets in one line", () => {
+    registerAttributions(ATTRIBUTIONS);
+    const root = group({ name: "s", width: 1920, height: 1080 });
+    credit(root, { source: "ANTARA", asset: ["assets/images/n250.jpg", "assets/audio/music/calm-piano.mp3"], lang: "id" });
+    expect(textOf(root)).toBe("Sumber: ANTARA • Foto: Jane Doe, CC BY-SA 4.0 • Musik: Torley on Piano, CC BY-SA 3.0");
   });
 
   it("refuses an asset that has no attribution row", () => {

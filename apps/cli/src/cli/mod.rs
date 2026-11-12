@@ -264,6 +264,68 @@ pub enum CommonsCommand {
 }
 
 #[derive(Subcommand, Debug, PartialEq)]
+pub enum AudioCommand {
+    /// Search sound effects (Freesound) and music (Jamendo, Wikimedia Commons) on Openverse
+    Search {
+        query: String,
+        /// sfx, music or any
+        #[arg(long, default_value = "any")]
+        kind: String,
+        #[arg(long, default_value_t = 1)]
+        page: u32,
+        #[arg(long, default_value_t = 10)]
+        limit: u32,
+        #[arg(long)]
+        json: bool,
+    },
+    /// Download into assets/audio/sfx|music (CC0, public domain, CC BY, CC BY-SA only) and record its attribution
+    Download {
+        /// The id from the search, or an openverse.org/audio/<id> URL
+        id: String,
+        /// sfx or music (default: from the source and length)
+        #[arg(long)]
+        kind: Option<String>,
+        /// Output file name without extension (default: the title)
+        #[arg(long)]
+        name: Option<String>,
+        #[arg(long)]
+        force: bool,
+    },
+}
+
+#[derive(Subcommand, Debug, PartialEq)]
+pub enum SfxCommand {
+    /// List earshot's bank of sound effects made in code (needs earshot installed)
+    List {
+        /// Only one kind, e.g. whoosh, pop, click, riser
+        #[arg(long)]
+        kind: Option<String>,
+    },
+    /// Render a bank sound into assets/audio/sfx/<name>.wav, usable as sfx: "<name>"
+    Render {
+        /// Bank id, e.g. whoosh_fast/crisp
+        id: String,
+        /// Output file name without extension (default: the id with / as -)
+        #[arg(long)]
+        name: Option<String>,
+        /// Length in seconds
+        #[arg(long)]
+        dur: Option<f64>,
+        /// Seconds from the start to a whoosh's loudest moment
+        #[arg(long)]
+        apex: Option<f64>,
+        /// Note (E5) or Hz, for tonal sounds
+        #[arg(long)]
+        pitch: Option<String>,
+        /// Another take of the same sound
+        #[arg(long)]
+        seed: Option<u64>,
+        #[arg(long)]
+        force: bool,
+    },
+}
+
+#[derive(Subcommand, Debug, PartialEq)]
 pub enum AssetCommand {
     /// Copy an external file into assets/<id>.<ext>
     Import {
@@ -308,6 +370,16 @@ pub enum AssetCommand {
     Commons {
         #[command(subcommand)]
         command: CommonsCommand,
+    },
+    /// Sound effects and music from Openverse with their licence checked and attribution recorded
+    Audio {
+        #[command(subcommand)]
+        command: AudioCommand,
+    },
+    /// Sound effects made in code by earshot (optional: uv tool install earshot)
+    Sfx {
+        #[command(subcommand)]
+        command: SfxCommand,
     },
     /// Generate an image with Google Gemini (Nano Banana) into assets/images/<id>.png
     GenerateImage {
