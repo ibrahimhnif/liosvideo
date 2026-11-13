@@ -36,6 +36,8 @@ An AI coding agent (Claude Code, Gemini CLI, Codex, Antigravity, or custom ACP a
 
 Download the latest desktop release for your platform. Installers are published automatically by CI for every `v*` tag.
 
+From v0.1.12 on, the desktop app updates itself: it checks GitHub Releases at launch (and every 6 hours), and **Update now** downloads the signed update, installs it in place and restarts. macOS, Windows and the Linux AppImage update this way; `.deb` / `.rpm` installs update through your package manager or a new download.
+
 <!-- downloads:start -->
 Latest release: [`v0.1.11`](https://github.com/ibrahimhnif/liosvideo/releases/tag/v0.1.11) · [All releases](https://github.com/ibrahimhnif/liosvideo/releases)
 
@@ -157,6 +159,8 @@ pnpm --filter desktop test:browser
 # Start the desktop application in development mode
 pnpm --filter desktop tauri dev
 ```
+
+A release build (`pnpm --filter desktop tauri build`) also makes signed update bundles, so it needs the updater key: set `TAURI_SIGNING_PRIVATE_KEY` to the key file's contents (and `TAURI_SIGNING_PRIVATE_KEY_PASSWORD`, empty if none). CI reads both from repository secrets.
 
 ---
 

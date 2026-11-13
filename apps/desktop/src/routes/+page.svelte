@@ -22,6 +22,9 @@
   import CodeViewer from "$lib/components/CodeViewer.svelte";
   import ImageStudio from "$lib/components/ImageStudio.svelte";
   import Logo from "$lib/components/Logo.svelte";
+  import UpdateBanner from "$lib/components/UpdateBanner.svelte";
+  import { createTauriUpdateApi } from "$lib/update/api";
+  import { isTauri } from "@tauri-apps/api/core";
   import { revealItemInDir } from "@tauri-apps/plugin-opener";
   import {
     Settings,
@@ -350,6 +353,7 @@
 </main>
 
 <SettingsModal open={showSettings} onClose={() => (showSettings = false)} />
+{#if import.meta.env.PROD && isTauri()}<UpdateBanner api={createTauriUpdateApi()} />{/if}
 <ValidationModal open={showValidation} onClose={() => (showValidation = false)} />
 
 <style>
