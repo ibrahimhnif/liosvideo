@@ -49,6 +49,20 @@ describe("evaluateFrame", () => {
     });
   });
 
+  it("a sticker outline isolates the node and redraws its line `stickerBoil` times a second", () => {
+    const c = comp(({ root }) => {
+      root.add(group({ name: "g", sticker: 6 })).add(rect({ width: 10, height: 10 }));
+      root.add(group({ name: "still", sticker: 4, stickerBoil: 0, stickerColor: "#ff0000", stickerGap: 2, stickerWobble: 0 })).add(rect({ width: 1, height: 1 }));
+    });
+    const [g, still] = evaluateFrame(c, 9).items as LayerItem[]; // 0.3 s
+    expect(g).toMatchObject({
+      kind: "layer", path: "s/g",
+      filters: { sticker: 6, stickerColor: "#ffffff", stickerGap: 6, stickerWobble: 0.5, stickerSeed: 2 }, // floor(0.3 × 8)
+    });
+    expect(still.filters).toMatchObject({ sticker: 4, stickerColor: "#ff0000", stickerGap: 2, stickerWobble: 0, stickerSeed: 0 });
+    expect((evaluateFrame(c, 15).items[0] as LayerItem).filters?.stickerSeed).toBe(4); // 0.5 s
+  });
+
   it("a filter tweened to zero stops isolating the node", () => {
     const c = comp(({ root }) => {
       root.add(group({ name: "g", pixelate: 40 })).to({ pixelate: 0 }, { at: 0, duration: 1, ease: "linear" }).add(rect({ width: 10, height: 10 }));

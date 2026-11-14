@@ -6,6 +6,8 @@ pub mod image_tools;
 pub mod protocol;
 pub mod server;
 pub mod sound_tools;
+#[cfg(feature = "matte")]
+pub mod matte_tools;
 pub mod tools;
 
 pub use bridge::run_bridge;

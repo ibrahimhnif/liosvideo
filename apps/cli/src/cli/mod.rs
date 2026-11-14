@@ -376,6 +376,17 @@ pub enum AssetCommand {
         #[command(subcommand)]
         command: AudioCommand,
     },
+    /// Cut the person out of a video (MODNet on the GPU) into <name>.matte.mp4, for video({ matte: true })
+    Matte {
+        /// Project video, e.g. assets/video/talk.mp4 (MP4, H.264)
+        video: String,
+        /// fast (256 px, ~25 fps on an M4), balanced (384) or best (512, finer hair)
+        #[arg(long, default_value = "fast")]
+        quality: String,
+        /// Make it again even when the cut-out exists
+        #[arg(long)]
+        force: bool,
+    },
     /// Sound effects made in code by earshot (optional: uv tool install earshot)
     Sfx {
         #[command(subcommand)]

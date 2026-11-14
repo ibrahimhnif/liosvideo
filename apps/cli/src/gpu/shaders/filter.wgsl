@@ -1,12 +1,15 @@
 // One layer filter pass. Prepended with common.wgsl. Layers hold premultiplied colour.
 // mode: 1 pixelate, 2 posterize, 3 halftone, 4 outline, 5 chalk, 6 glow (src + extra × intensity),
-// 7 bright pass for bloom (keeps what is brighter than the threshold in amount)
+// 7 bright pass for bloom (keeps what is brighter than the threshold in amount),
+// 8 sticker line (extra = the layer blurred; the line is a band of its alpha, see sticker())
 struct FilterU {
   mode: f32,
-  amount: f32,    // device px for pixelate / halftone / outline, levels for posterize, strength for chalk
+  amount: f32,    // device px for pixelate / halftone / outline, levels for posterize, strength for chalk;
+                  // sticker: blurred alpha at the line's inner edge
   scale: f32,     // device px per composition px
-  intensity: f32, // glow strength
-  color: vec4f,   // premultiplied outline colour
+  intensity: f32, // glow strength; sticker: blurred alpha at the line's outer edge
+  color: vec4f,   // premultiplied outline / sticker colour
+  extra: vec4f,   // sticker: wobble amplitude px, wobble wavelength px, seed, unused
 };
 
 @group(0) @binding(0) var<uniform> u: FilterU;
@@ -103,6 +106,48 @@ fn chalk(pos: vec2f) -> vec4f {
   return c * keep;
 }
 
+// Smooth value noise in [0, 1], seeded, from the integer hash so every backend agrees.
+fn vnoise(p: vec2f, seed: f32) -> f32 {
+  let i = floor(p);
+  let f = p - i;
+  let s = f * f * (3.0 - 2.0 * f);
+  let o = vec2f(seed * 131.0, seed * 71.0);
+  let a = hash(i + o);
+  let b = hash(i + vec2f(1.0, 0.0) + o);
+  let c = hash(i + vec2f(0.0, 1.0) + o);
+  let d = hash(i + vec2f(1.0, 1.0) + o);
+  return mix(mix(a, b, s.x), mix(c, d, s.x), s.y);
+}
+
+fn extraAlpha(p: vec2f) -> f32 {
+  // bilinear read of the blurred layer, so a wobbled position moves the line smoothly
+  let size = vec2i(textureDimensions(extra)) - 1;
+  let q = p - 0.5;
+  let i = vec2i(floor(q));
+  let f = q - floor(q);
+  let a = textureLoad(extra, clamp(i, vec2i(0), size), 0).a;
+  let b = textureLoad(extra, clamp(i + vec2i(1, 0), vec2i(0), size), 0).a;
+  let c = textureLoad(extra, clamp(i + vec2i(0, 1), vec2i(0), size), 0).a;
+  let d = textureLoad(extra, clamp(i + vec2i(1, 1), vec2i(0), size), 0).a;
+  return mix(mix(a, b, f.x), mix(c, d, f.x), f.y);
+}
+
+// Sticker / cut-out line: the layer blurred by sigma falls off smoothly outside the shape, so a band
+// of that blurred alpha between two levels (computed on the CPU from the gap and width) is a line at
+// a steady distance from the shape, rounded over small details like a cut-out sticker's border.
+// Moving the read position by smooth noise makes the line hand-drawn; the seed changes the wobble.
+fn sticker(pos: vec2f) -> vec4f {
+  let c = load(vec2i(pos));
+  let amp = u.extra.x;
+  let wave = max(u.extra.y, 1.0);
+  let seed = u.extra.z;
+  let n = vec2f(vnoise(pos / wave, seed), vnoise(pos / wave + 37.0, seed)) * 2.0 - 1.0;
+  let b = extraAlpha(pos + n * amp);
+  let e = max(fwidth(b) * 0.75, 1e-4);
+  let band = smoothstep(u.intensity - e, u.intensity + e, b) * (1.0 - smoothstep(u.amount - e, u.amount + e, b));
+  return c + u.color * band * (1.0 - c.a);
+}
+
 @fragment fn fs(@builtin(position) pos: vec4f) -> @location(0) vec4f {
   let m = i32(u.mode + 0.5);
   switch m {
@@ -111,6 +156,7 @@ fn chalk(pos: vec2f) -> vec4f {
     case 3: { return halftone(pos.xy); }
     case 4: { return outline(pos.xy); }
     case 5: { return chalk(pos.xy); }
+    case 8: { return sticker(pos.xy); }
     case 6: {
       let glow = textureLoad(extra, vec2i(pos.xy), 0) * u.intensity;
       return min(load(vec2i(pos.xy)) + glow, vec4f(1.0));

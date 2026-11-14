@@ -4,6 +4,7 @@ pub mod audio;
 mod commons;
 mod earshot;
 mod openverse;
+mod matte_cli;
 mod destockd;
 pub mod export;
 mod git;

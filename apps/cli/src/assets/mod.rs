@@ -288,6 +288,71 @@ impl VideoState {
     }
 }
 
+/// Frame count and rate of an MP4's H.264 track.
+#[derive(Debug, Clone, Copy)]
+pub struct VideoInfo {
+    pub frames: u32,
+    pub fps: f64,
+}
+
+pub fn video_info(path: &Path) -> Result<VideoInfo> {
+    let state = VideoState::open(path)?;
+    let track = state
+        .reader
+        .tracks()
+        .get(&state.track_id)
+        .ok_or_else(|| anyhow!("no video track"))?;
+    let seconds = track.duration().as_secs_f64();
+    let fps = if seconds > 0.0 {
+        state.sample_count as f64 / seconds
+    } else {
+        track.frame_rate()
+    };
+    Ok(VideoInfo {
+        frames: state.sample_count,
+        fps: if fps.is_finite() && fps > 0.0 { fps } else { 30.0 },
+    })
+}
+
+/// Decodes every frame of an MP4's H.264 track in order and hands each to `on_frame`
+/// (premultiplied RGBA; video is opaque, so plain RGB with alpha 255). A sample the decoder
+/// returns no picture for repeats the previous frame, so the count always matches the track.
+pub fn for_each_video_frame(
+    path: &Path,
+    mut on_frame: impl FnMut(&ImageAsset) -> Result<()>,
+) -> Result<u32> {
+    let mut state = VideoState::open(path)?;
+    let mut count = 0;
+    let mut last: Option<ImageAsset> = None;
+    for sample_id in 1..=state.sample_count {
+        let Some(sample) = state
+            .reader
+            .read_sample(state.track_id, sample_id)
+            .map_err(|e| anyhow!("failed to read sample {sample_id}: {e}"))?
+        else {
+            break;
+        };
+        let annexb = avcc_to_annexb(&sample.bytes);
+        if !annexb.is_empty() {
+            let decoder = state.ensure_decoder()?;
+            if let Ok(Some(yuv)) = decoder.decode(&annexb) {
+                last = Some(yuv_to_image(&yuv));
+            }
+        }
+        if let Some(frame) = &last {
+            on_frame(frame)?;
+            count += 1;
+        }
+    }
+    if count == 0 {
+        return Err(anyhow!(
+            "no frames decoded from {} (H.264 Baseline/Main MP4 is supported)",
+            path.display()
+        ));
+    }
+    Ok(count)
+}
+
 fn avcc_to_annexb(data: &[u8]) -> Vec<u8> {
     let mut out = Vec::with_capacity(data.len() + 16);
     let mut i = 0usize;
@@ -308,20 +373,43 @@ fn yuv_to_image(yuv: &openh264::decoder::DecodedYUV<'_>) -> ImageAsset {
     use openh264::formats::YUVSource;
 
     let (width, height) = yuv.dimensions();
-    let mut rgb = vec![0u8; width * height * 3];
-    yuv.write_rgb8(&mut rgb);
-
-    let mut rgba = vec![255u8; width * height * 4];
-    for i in 0..width * height {
-        rgba[i * 4] = rgb[i * 3];
-        rgba[i * 4 + 1] = rgb[i * 3 + 1];
-        rgba[i * 4 + 2] = rgb[i * 3 + 2];
-    }
-
+    let mut rgba = vec![0u8; width * height * 4];
+    yuv709_to_rgba(yuv.y(), yuv.u(), yuv.v(), (width, height), yuv.strides(), &mut rgba);
     ImageAsset {
         width: width as u32,
         height: height as u32,
         rgba,
+    }
+}
+
+/// I420 in BT.709 limited range (16–235, what our encoders and nearly all H.264 write) to RGBA,
+/// the way the browser decodes it for the preview. openh264's own `write_rgb8` keeps luma as is,
+/// so black came out as 16 and a matte's cut-away was never fully clear.
+fn yuv709_to_rgba(
+    y: &[u8],
+    u: &[u8],
+    v: &[u8],
+    (width, height): (usize, usize),
+    (ys, us, vs): (usize, usize, usize),
+    out: &mut [u8],
+) {
+    const K: i32 = 1 << 16;
+    let fix = |f: f32| (f * K as f32).round() as i32;
+    let (cy, crv, cgu, cgv, cbu) = (fix(1.164_383_6), fix(1.792_741), fix(0.213_249), fix(0.532_909), fix(2.112_402));
+    let clamp = |x: i32| ((x + K / 2) >> 16).clamp(0, 255) as u8;
+    for row in 0..height {
+        let (yr, ur, vr) = (&y[row * ys..], &u[(row / 2) * us..], &v[(row / 2) * vs..]);
+        let o = &mut out[row * width * 4..(row + 1) * width * 4];
+        for col in 0..width {
+            let l = cy * (yr[col] as i32 - 16);
+            let cb = ur[col / 2] as i32 - 128;
+            let cr = vr[col / 2] as i32 - 128;
+            let p = &mut o[col * 4..col * 4 + 4];
+            p[0] = clamp(l + crv * cr);
+            p[1] = clamp(l - cgu * cb - cgv * cr);
+            p[2] = clamp(l + cbu * cb);
+            p[3] = 255;
+        }
     }
 }
 
@@ -341,6 +429,22 @@ pub struct WordTimingFileWord {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn decodes_limited_range_bt709_to_full_range_rgb() {
+        // 2x2 frames: one luma value, one chroma pair (I420)
+        let px = |y: u8, u: u8, v: u8| {
+            let mut out = vec![0u8; 16];
+            yuv709_to_rgba(&[y; 4], &[u], &[v], (2, 2), (2, 1, 1), &mut out);
+            [out[0], out[1], out[2], out[3]]
+        };
+        assert_eq!(px(16, 128, 128), [0, 0, 0, 255], "video black is 0, so a matte's cut-away is fully clear");
+        assert_eq!(px(235, 128, 128), [255, 255, 255, 255]);
+        let red = px(91, 101, 191); // what our encoder writes for (200, 60, 30)
+        for (got, want) in red.iter().zip([200u8, 60, 30]) {
+            assert!((*got as i32 - want as i32).abs() <= 2, "{red:?}");
+        }
+    }
 
     #[test]
     fn premultiplies_rgba() {

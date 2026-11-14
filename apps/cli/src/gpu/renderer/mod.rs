@@ -28,6 +28,8 @@ const MAX_BLUR_RADIUS: f32 = 64.0;
 const MODE_RECT: f32 = 0.0;
 const MODE_TEXTURE: f32 = 1.0;
 const MODE_SOLID: f32 = 2.0;
+/// packed cut-out video (`liosvideo asset matte`): colour in the top 2/3, its mask below
+const MODE_PACKED: f32 = 3.0;
 
 pub const INSTANCE_FLOATS: usize = INST_FLOATS;
 
@@ -760,13 +762,20 @@ impl Renderer {
                 };
 
                 if let Some(image) = asset {
+                    let packed = is_video && leaf.get("matte").is_some_and(|m| !m.is_null());
+                    // a packed cut-out holds the picture in its top 2/3
+                    let image_height = if packed {
+                        image.height as f32 * 2.0 / 3.0
+                    } else {
+                        image.height as f32
+                    };
                     let item_width = f32_of(leaf, "width", 0.0);
                     let item_height = f32_of(leaf, "height", 0.0);
                     width = non_zero(item_width, image.width as f32);
-                    height = non_zero(item_height, image.height as f32);
+                    height = non_zero(item_height, image_height);
 
                     let box_aspect = width / height.max(0.0001);
-                    let img_aspect = image.width as f32 / image.height.max(1) as f32;
+                    let img_aspect = image.width as f32 / image_height.max(1.0);
                     match str_of(leaf, "fit", "fill") {
                         "contain" => {
                             let cw = if img_aspect > box_aspect {
@@ -809,7 +818,12 @@ impl Renderer {
                     } else {
                         bind = self.image_texture(device, queue, src, &image);
                     }
-                    params = [0.0, 0.0, opacity, MODE_TEXTURE];
+                    params = [
+                        0.0,
+                        0.0,
+                        opacity,
+                        if packed { MODE_PACKED } else { MODE_TEXTURE },
+                    ];
                 } else {
                     width = non_zero(f32_of(leaf, "width", 0.0), 100.0);
                     height = non_zero(f32_of(leaf, "height", 0.0), 100.0);
@@ -1353,6 +1367,43 @@ fn draw_layer(
     allocations.push(content);
 }
 
+/// Where the sticker line sits in the layer blurred by `sigma`; mirrors `stickerParams` in
+/// packages/runtime/src/gpu/sticker.ts (see there for the maths).
+struct StickerParams {
+    sigma: f32,
+    inner: f32,
+    outer: f32,
+    wobble: f32,
+    wave: f32,
+}
+
+fn sticker_params(sticker: f32, gap: f32, wobble: f32, sx: f32) -> StickerParams {
+    let width = sticker.max(0.0) * sx;
+    let gap = gap.max(0.0) * sx;
+    let total = width + gap;
+    let sigma = (total / 1.6).clamp(0.5, 21.0);
+    StickerParams {
+        sigma,
+        inner: phi(-gap / sigma),
+        outer: phi(-total / sigma),
+        wobble: wobble.clamp(0.0, 1.0) * total * 0.35,
+        wave: (total * 2.5).max(1.0),
+    }
+}
+
+/// Standard normal CDF (Abramowitz–Stegun 7.1.26 erf), as in sticker.ts.
+fn phi(x: f32) -> f32 {
+    let x = x as f64;
+    let z = x.abs() / std::f64::consts::SQRT_2;
+    let t = 1.0 / (1.0 + 0.3275911 * z);
+    let y = 1.0
+        - ((((1.061405429 * t - 1.453152027) * t + 1.421413741) * t - 0.284496736) * t
+            + 0.254829592)
+            * t
+            * (-z * z).exp();
+    (if x >= 0.0 { 0.5 * (1.0 + y) } else { 0.5 * (1.0 - y) }) as f32
+}
+
 /// Two-pass Gaussian blur of `src` into `dest` (they may be the same texture). `px` is in device pixels.
 #[allow(clippy::too_many_arguments)]
 fn blur_into(
@@ -1394,7 +1445,7 @@ fn blur_into(
     allocations.push(tmp);
 }
 
-/// Runs a layer's filters in their fixed order (pixelate → posterize → halftone → outline → chalk → glow),
+/// Runs a layer's filters in their fixed order (pixelate → posterize → halftone → outline → chalk → sticker → glow),
 /// mirroring `applyFilters` in packages/runtime/src/gpu/renderer.ts. Returns a view of the result.
 #[allow(clippy::too_many_arguments)]
 fn apply_filters(
@@ -1454,6 +1505,45 @@ fn apply_filters(
     if chalk > 0.0 {
         step(encoder, 5.0, chalk.min(1.0), None, &mut cur, allocations);
     }
+    let sticker = f32_of(filters, "sticker", 0.0);
+    if sticker > 0.0 {
+        let p = sticker_params(
+            sticker,
+            f32_of(filters, "stickerGap", 6.0),
+            f32_of(filters, "stickerWobble", 0.5),
+            sx,
+        );
+        let blurred = create_layer_texture(device, width, height);
+        let blurred_view = blurred.create_view(&wgpu::TextureViewDescriptor::default());
+        let tmp = create_layer_texture(device, width, height);
+        let tmp_view = tmp.create_view(&wgpu::TextureViewDescriptor::default());
+        let radius = (p.sigma * 3.0).ceil().min(MAX_BLUR_RADIUS);
+        let clear = wgpu::LoadOp::Clear(wgpu::Color::TRANSPARENT);
+        fullscreen(device, encoder, &renderer.blur_pipeline, &tmp_view, &[1.0, 0.0, p.sigma, radius], &cur, clear);
+        fullscreen(device, encoder, &renderer.blur_pipeline, &blurred_view, &[0.0, 1.0, p.sigma, radius], &tmp_view, clear);
+        let [cr, cg, cb, ca] = color_of(filters, "stickerColor").unwrap_or([1.0, 1.0, 1.0, 1.0]);
+        let out = create_layer_texture(device, width, height);
+        let out_view = out.create_view(&wgpu::TextureViewDescriptor::default());
+        let values = [
+            8.0,
+            p.inner,
+            sx,
+            p.outer,
+            cr * ca,
+            cg * ca,
+            cb * ca,
+            ca,
+            p.wobble,
+            p.wave,
+            f32_of(filters, "stickerSeed", 0.0),
+            0.0,
+        ];
+        filter_pass(device, encoder, &renderer.filter_pipeline, &out_view, &values, &cur, &blurred_view);
+        cur = out_view;
+        allocations.push(blurred);
+        allocations.push(tmp);
+        allocations.push(out);
+    }
     if glow > 0.0 {
         let halo = create_layer_texture(device, width, height);
         let halo_view = halo.create_view(&wgpu::TextureViewDescriptor::default());
@@ -1504,13 +1594,17 @@ fn filter_pass(
     encoder: &mut wgpu::CommandEncoder,
     pipeline: &wgpu::RenderPipeline,
     view: &wgpu::TextureView,
-    values: &[f32; 8],
+    values: &[f32],
     source: &wgpu::TextureView,
     extra: &wgpu::TextureView,
 ) {
+    // FilterU is 12 floats; passes that don't use the last vec4 leave it zero
+    let mut padded = [0.0f32; 12];
+    let n = values.len().min(12);
+    padded[..n].copy_from_slice(&values[..n]);
     let buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
         label: Some("liosvideo filter uniform"),
-        contents: bytemuck::cast_slice(values),
+        contents: bytemuck::cast_slice(&padded),
         usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
     });
     let bind = device.create_bind_group(&wgpu::BindGroupDescriptor {

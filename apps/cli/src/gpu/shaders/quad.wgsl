@@ -6,7 +6,7 @@ struct Inst {
   m1: vec4f,      // affine e f, size w h
   color: vec4f,   // fill, straight alpha
   stroke: vec4f,  // stroke, straight alpha
-  params: vec4f,  // radius, strokeWidth, opacity, mode (0 rect, 1 texture, 2 solid)
+  params: vec4f,  // radius, strokeWidth, opacity, mode (0 rect, 1 texture, 2 solid, 3 packed matte)
   uv: vec4f,      // u0 v0 u1 v1
 };
 
@@ -56,6 +56,16 @@ struct VOut {
 
   if (mode == 1.0) {
     return sampled * opacity;
+  }
+  if (mode == 3.0) {
+    // packed cut-out (`liosvideo asset matte`): colour in the top 2/3, its mask below at half height.
+    // Each half is clamped half a texel inside so bilinear filtering never mixes the two.
+    let texel = 0.5 / f32(textureDimensions(tex).y);
+    let cv = clamp(in.uv.y * (2.0 / 3.0), texel, 2.0 / 3.0 - texel);
+    let mv = clamp(2.0 / 3.0 + in.uv.y / 3.0, 2.0 / 3.0 + texel, 1.0 - texel);
+    let color = textureSampleLevel(tex, samp, vec2f(in.uv.x, cv), 0.0);
+    let alpha = textureSampleLevel(tex, samp, vec2f(in.uv.x, mv), 0.0).r;
+    return vec4f(color.rgb * alpha, alpha) * opacity;
   }
   if (mode == 2.0) {
     return vec4f(inst.color.rgb * inst.color.a, inst.color.a) * opacity;

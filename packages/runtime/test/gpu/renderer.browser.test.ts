@@ -208,6 +208,42 @@ describe("renderer", () => {
     expect(p[0]).toBeLessThan(5);
   });
 
+  it("cuts a packed matte video out by its mask (colour on top, mask below at half height)", async () => {
+    const r = await make();
+    // 8×12 frame: 8×8 colour (all green) over an 8×4 mask whose left half is white
+    const c = new OffscreenCanvas(8, 12);
+    const ctx = c.getContext("2d")!;
+    ctx.fillStyle = "#00ff00";
+    ctx.fillRect(0, 0, 8, 8);
+    ctx.fillStyle = "#000000";
+    ctx.fillRect(0, 8, 8, 4);
+    ctx.fillStyle = "#ffffff";
+    ctx.fillRect(0, 8, 4, 4);
+    const bmp = await createImageBitmap(c);
+    const item: RenderItem = {
+      kind: "video", path: "v", matrix: at(0, 0), src: "a.matte.mp4", time: 0, width: 0, height: 0, fit: "fill", opacity: 1,
+      matte: { source: "a.mp4" },
+    };
+    r.render(list([{ ...item, width: 160, height: 160 }]), new Map([["a.matte.mp4", bmp]]));
+    const p = await r.readPixels();
+    expect(px(p, 30, 80)[1]).toBeGreaterThan(250); // kept: left half
+    expect(px(p, 130, 80)).toEqual([0, 0, 0, 255]); // cut away: right half shows the background
+    expect(px(p, 30, 150)[1]).toBeGreaterThan(250); // the bottom of the box is still colour, not the mask
+  });
+
+  it("sizes a packed matte video by its picture, not the whole frame", async () => {
+    const r = await make();
+    const bmp = await createImageBitmap(new ImageData(new Uint8ClampedArray(20 * 30 * 4).fill(255), 20, 30));
+    r.render(
+      list([{ kind: "video", path: "v", matrix: I, src: "b.matte.mp4", time: 0, width: 200, height: 0, fit: "fill", opacity: 1, matte: { source: "b.mp4" } }]),
+      new Map([["b.matte.mp4", bmp]]),
+    );
+    const p = await r.readPixels();
+    // a 20×30 packed frame holds a 20×20 picture, so with no height given it is drawn 20 px high, not 30
+    expect(lum(px(p, 100, 15))).toBeGreaterThan(250);
+    expect(px(p, 100, 25)).toEqual([0, 0, 0, 255]);
+  });
+
   it("draws a magenta placeholder for a missing image instead of throwing", async () => {
     const r = await make();
     r.render(list([{ kind: "image", path: "i", matrix: at(10, 10), src: "missing.png", width: 50, height: 50, fit: "fill", opacity: 1 }]), new Map());
@@ -296,7 +332,10 @@ describe("text cache", () => {
   });
 });
 
-const NO_FILTERS: Filters = { pixelate: 0, posterize: 0, halftone: 0, outline: 0, outlineColor: "#111111", chalk: 0, glow: 0, glowIntensity: 1, glowThreshold: 0 };
+const NO_FILTERS: Filters = {
+  pixelate: 0, posterize: 0, halftone: 0, outline: 0, outlineColor: "#111111", chalk: 0, glow: 0, glowIntensity: 1, glowThreshold: 0,
+  sticker: 0, stickerColor: "#ffffff", stickerGap: 6, stickerWobble: 0.5, stickerSeed: 0,
+};
 const filtered = (items: RenderItem[], f: Partial<Filters>, opacity = 1): RenderItem => ({
   kind: "layer", path: "fl", items, opacity, blur: 0, filters: { ...NO_FILTERS, ...f },
 });
@@ -358,6 +397,35 @@ describe("filters", () => {
     expect(edge[0]).toBeLessThan(80);
     expect(lum(px(p, 128, 128))).toBeGreaterThan(240);
     expect(px(p, 100, 128)).toEqual([0, 0, 0, 255]);
+  });
+
+  it("sticker draws a line a gap away from the shape, and nothing touching it", async () => {
+    const r = await make();
+    const box = rectItem({ matrix: at(88, 88), width: 80, height: 80, fill: "#ff0000" });
+    r.render(list([filtered([box], { sticker: 6, stickerGap: 6, stickerWobble: 0, stickerColor: "#ffffff" })]), new Map());
+    const p = await r.readPixels();
+    expect(px(p, 128, 128)[0]).toBeGreaterThan(250); // the shape is untouched
+    expect(px(p, 128, 128)[1]).toBeLessThan(5);
+    expect(lum(px(p, 128, 85))).toBeLessThan(40); // the gap above the box stays background
+    expect(lum(px(p, 128, 79))).toBeGreaterThan(200); // the line: 6–12 px above the top edge
+    expect(lum(px(p, 128, 70))).toBeLessThan(40); // and nothing beyond it
+    expect(lum(px(p, 40, 40))).toBeLessThan(5);
+  });
+
+  it("sticker wobble changes with the seed and is the same for the same seed", async () => {
+    const r = await make();
+    const box = rectItem({ matrix: at(88, 88), width: 80, height: 80, fill: "#ff0000" });
+    const frame = async (seed: number) => {
+      r.render(list([filtered([box], { sticker: 4, stickerGap: 6, stickerWobble: 1, stickerSeed: seed })]), new Map());
+      return await r.readPixels();
+    };
+    const a = await frame(1);
+    const again = await frame(1);
+    const b = await frame(2);
+    expect(again).toEqual(a);
+    let changed = 0;
+    for (let i = 0; i < a.length; i += 4) if (Math.abs(a[i + 1] - b[i + 1]) > 60) changed++;
+    expect(changed).toBeGreaterThan(50);
   });
 
   it("chalk erodes the shape the same way every frame", async () => {

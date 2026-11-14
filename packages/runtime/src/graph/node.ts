@@ -40,12 +40,22 @@ export interface BaseProps {
   glowIntensity: number;
   /** brightness (0–1) a pixel needs before it glows: 0 glows everything, ~0.7 blooms only the highlights */
   glowThreshold: number;
+  /** sticker / cut-out line drawn outside the shape, px wide (0 off) */
+  sticker: number;
+  stickerColor: string;
+  /** px between the shape and the line */
+  stickerGap: number;
+  /** 0–1: how hand-drawn the line wobbles (0 = smooth) */
+  stickerWobble: number;
+  /** times a second the line is redrawn with a new wobble, like hand animation (0 = still) */
+  stickerBoil: number;
 }
 
 export const BASE_DEFAULTS: BaseProps = {
   x: 0, y: 0, scaleX: 1, scaleY: 1, rotation: 0, anchorX: 0, anchorY: 0,
   opacity: 1, z: 0, blur: 0, width: 0, height: 0, radius: 0, clip: false,
   pixelate: 0, posterize: 0, halftone: 0, outline: 0, outlineColor: "#111111", chalk: 0, glow: 0, glowIntensity: 1, glowThreshold: 0,
+  sticker: 0, stickerColor: "#ffffff", stickerGap: 6, stickerWobble: 0.5, stickerBoil: 8,
 };
 
 type PropValue = number | string | boolean;

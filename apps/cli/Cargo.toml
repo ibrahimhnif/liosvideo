@@ -42,6 +42,18 @@ cosmic-text = "0.19.0"
 resvg = "0.49.0"
 git2 = "0.21.0"
 naga = { version = "24", features = ["wgsl-in"] }
+# `asset matte`: MODNet on the GPU (Burn's wgpu backend; its own wgpu, separate from the compositor's)
+burn = { version = "=0.21.0", default-features = false, features = ["std", "wgpu", "autotune"], optional = true }
+burn-store = { version = "=0.21.0", default-features = false, features = ["std", "burnpack"], optional = true }
+sha2 = { version = "0.10", optional = true }
+
+[target.'cfg(target_os = "macos")'.dependencies]
+# Metal shading language instead of WGSL: ~1.7× faster MODNet on Apple GPUs
+burn = { version = "=0.21.0", default-features = false, features = ["metal"], optional = true }
+
+[features]
+default = ["matte"]
+matte = ["dep:burn", "dep:burn-store", "dep:sha2"]
 
 [dev-dependencies]
 tempfile = "3.27.0"

@@ -53,6 +53,8 @@ export type VideoItem = {
   height: number;
   fit: ImageFit;
   opacity: number;
+  /** `src` is a packed cut-out (colour in the top 2/3, its mask below at half height) made from `source` */
+  matte?: { source: string };
 };
 
 export type CircleItem = {
@@ -112,7 +114,7 @@ export type ThreeItem = {
   duration: number;
 };
 
-/** Layer filters, run after blur in the order pixelate → posterize → halftone → outline → chalk → glow. */
+/** Layer filters, run after blur in the order pixelate → posterize → halftone → outline → chalk → sticker → glow. */
 export type Filters = {
   pixelate: number;
   posterize: number;
@@ -124,6 +126,13 @@ export type Filters = {
   glowIntensity: number;
   /** brightness a pixel needs before it glows (bloom); 0 glows everything */
   glowThreshold: number;
+  /** line width px (0 off), drawn outside the layer's shape */
+  sticker: number;
+  stickerColor: string;
+  stickerGap: number;
+  stickerWobble: number;
+  /** which wobble to draw: floor(scene time × stickerBoil) */
+  stickerSeed: number;
 };
 
 export type LayerItem = {

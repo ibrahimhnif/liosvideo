@@ -35,6 +35,23 @@ export interface VideoProps extends BaseProps {
   startOffset: number;
   speed: number;
   loop: boolean;
+  /** play the cut-out made by `liosvideo asset matte`: true for the file next to `src`, or its path */
+  matte: boolean | string;
+}
+
+/** The packed cut-out `liosvideo asset matte` writes for a video: `dir/name.matte.mp4`. */
+export function mattePath(src: string): string {
+  if (src.endsWith(".matte.mp4")) return src;
+  const slash = src.lastIndexOf("/");
+  const dot = src.lastIndexOf(".");
+  const stem = dot > slash ? src.slice(0, dot) : src;
+  return `${stem}.matte.mp4`;
+}
+
+/** The file a video node decodes: its packed cut-out when `matte` is on. */
+export function videoFile(p: { src: string; matte: boolean | string }): string {
+  if (typeof p.matte === "string" && p.matte) return p.matte;
+  return p.matte === true ? mattePath(p.src) : p.src;
 }
 
 export class GroupNode extends Node<BaseProps> {
@@ -129,7 +146,7 @@ export class ImageNode extends Node<ImageProps> {
 
 export class VideoNode extends Node<VideoProps> {
   constructor(init: NodeInit<VideoProps> & { src: string }) {
-    super("video", { ...BASE_DEFAULTS, src: "", fit: "fill", startOffset: 0, speed: 1.0, loop: false }, init);
+    super("video", { ...BASE_DEFAULTS, src: "", fit: "fill", startOffset: 0, speed: 1.0, loop: false, matte: false }, init);
   }
 }
 

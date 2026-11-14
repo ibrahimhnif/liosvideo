@@ -10,6 +10,7 @@ import { PathRasterizer } from "./path";
 import { TextRasterizer } from "./text";
 
 export { measureText } from "./text";
+import { stickerParams } from "./sticker";
 
 export type AssetMap = Map<string, ImageBitmap>;
 
@@ -31,6 +32,7 @@ const TEXT_CACHE_LIMIT = 512;
 const MODE_RECT = 0;
 const MODE_TEXTURE = 1;
 const MODE_SOLID = 2;
+const MODE_PACKED = 3;
 const PREMULTIPLIED: GPUBlendState = {
   color: { srcFactor: "one", dstFactor: "one-minus-src-alpha" },
   alpha: { srcFactor: "one", dstFactor: "one-minus-src-alpha" },
@@ -401,6 +403,8 @@ export async function createRenderer(
       pass.end();
     };
     const filterPass = (view: GPUTextureView, values: number[], src: GPUTexture, extra: GPUTexture) => {
+      // FilterU is 12 floats; passes that don't use the last vec4 leave it zero
+      values = [...values, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0].slice(0, 12);
       const pass = encoder.beginRenderPass({
         colorAttachments: [{ view, loadOp: "clear", storeOp: "store", clearValue: [0, 0, 0, 0] }],
       });
@@ -442,6 +446,17 @@ export async function createRenderer(
       if (f.halftone > 0) step(3, f.halftone * sx);
       if (f.outline > 0) step(4, f.outline * sx);
       if (f.chalk > 0) step(5, Math.min(f.chalk, 1));
+      if (f.sticker > 0) {
+        const s = stickerParams(f, sx);
+        const blurred = acquire();
+        inUse.push(blurred);
+        blurInto(blurred, cur, (2 * s.sigma) / sx);
+        const [sr, sg, sb, sa] = parseColor(f.stickerColor);
+        const out = acquire();
+        inUse.push(out);
+        filterPass(out.createView(), [8, s.inner, sx, s.outer, sr * sa, sg * sa, sb * sa, sa, s.wobble, s.wave, f.stickerSeed, 0], cur, blurred);
+        cur = out;
+      }
       if (f.glow > 0) {
         const halo = acquire();
         inUse.push(halo);
@@ -624,7 +639,9 @@ export async function createRenderer(
       const bitmap = assets.get(media.src);
       if (!bitmap) {
         const kindLabel = leaf.kind === "video" ? "video" : "image";
-        if (!warned.has(media.src)) console.warn(`[liosvideo] missing ${kindLabel} asset "${media.src}"`);
+        const source = (media as VideoItem).matte?.source;
+        const hint = source ? ` (make it with \`liosvideo asset matte ${source}\`)` : "";
+        if (!warned.has(media.src)) console.warn(`[liosvideo] missing ${kindLabel} asset "${media.src}"${hint}`);
         warned.add(media.src);
         w = media.width || 100;
         h = media.height || 100;
@@ -634,10 +651,14 @@ export async function createRenderer(
         let tex = imageTextures.get(bitmap);
         if (!tex) imageTextures.set(bitmap, (tex = uploadSource(bitmap)));
         texture = tex;
+        // a packed cut-out holds the picture in its top 2/3
+        const packed = leaf.kind === "video" && (media as VideoItem).matte !== undefined;
+        const bitmapH = packed ? (bitmap.height * 2) / 3 : bitmap.height;
         w = media.width || bitmap.width;
-        h = media.height || bitmap.height;
+        h = media.height || bitmapH;
         const boxAspect = w / h;
-        const imgAspect = bitmap.width / bitmap.height;
+        const imgAspect = bitmap.width / bitmapH;
+        if (packed) params = [0, 0, leaf.opacity, MODE_PACKED];
         if (media.fit === "contain") {
           const cw = imgAspect > boxAspect ? w : h * imgAspect;
           const ch = imgAspect > boxAspect ? w / imgAspect : h;

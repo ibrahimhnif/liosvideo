@@ -230,3 +230,86 @@ async fn blooms_only_the_bright_parts() -> Result<()> {
     let _ = std::fs::remove_dir_all(&dir);
     Ok(())
 }
+
+/// Same pixel properties as the desktop renderer's sticker test (packages/runtime/test/gpu).
+#[tokio::test]
+async fn draws_a_sticker_line_like_the_preview() -> Result<()> {
+    let dir = std::env::temp_dir().join(format!("liosvideo_sticker_test_{}", std::process::id()));
+    std::fs::create_dir_all(&dir)?;
+    let composition_code = r##"
+        import { composition, scene, group, rect } from "liosvideo";
+
+        const s = scene("s", { duration: 1.0 }, ({ root }) => {
+            root.add(group({ name: "cut", sticker: 6, stickerGap: 6, stickerWobble: 0 }))
+                .add(rect({ name: "box", x: 88, y: 88, width: 80, height: 80, fill: "#ff0000" }));
+        });
+
+        export default composition({ width: 256, height: 256, fps: 30, background: "#000000", scenes: [s] });
+    "##;
+    let entry_file = dir.join("sticker.ts");
+    std::fs::write(&entry_file, composition_code)?;
+    let out_png = dir.join("sticker.png");
+    render_snapshot(&entry_file, 0, &out_png, liosvideo_cli::pipeline::Preset::Native).await?;
+    let img = image::open(&out_png)?.to_rgba8();
+    let lum = |x: u32, y: u32| {
+        let p = img.get_pixel(x, y).0;
+        (p[0] as u32 + p[1] as u32 + p[2] as u32) / 3
+    };
+    let inside = img.get_pixel(128, 128).0;
+    assert!(inside[0] > 250 && inside[1] < 5, "shape changed: {inside:?}");
+    assert!(lum(128, 85) < 40, "gap should stay background, got {}", lum(128, 85));
+    assert!(lum(128, 79) > 200, "expected the white line, got {}", lum(128, 79));
+    assert!(lum(128, 70) < 40, "nothing beyond the line, got {}", lum(128, 70));
+    let _ = std::fs::remove_dir_all(&dir);
+    Ok(())
+}
+
+/// A packed cut-out (`liosvideo asset matte`): colour on top, mask below at half height.
+#[tokio::test]
+async fn cuts_out_a_packed_matte_video() -> Result<()> {
+    use liosvideo_cli::media::encoder::{Mp4Encoder, VideoEncoderKind};
+    let dir = std::env::temp_dir().join(format!("liosvideo_matte_test_{}", std::process::id()));
+    std::fs::create_dir_all(dir.join("assets/video"))?;
+    // 64×96: 64×64 green picture over a 64×32 mask whose left half is white
+    let (w, h) = (64u32, 96u32);
+    let mut frame = vec![0u8; (w * h * 4) as usize];
+    for y in 0..h {
+        for x in 0..w {
+            let i = ((y * w + x) * 4) as usize;
+            let px = if y < 64 { [0, 255, 0] } else if x < 32 { [255, 255, 255] } else { [0, 0, 0] };
+            frame[i..i + 3].copy_from_slice(&px);
+            frame[i + 3] = 255;
+        }
+    }
+    let mut enc = Mp4Encoder::new_with_encoder(
+        &dir.join("assets/video/clip.matte.mp4"), w, h, 30.0, 48000, 4_000_000, 128_000, VideoEncoderKind::Software,
+    )?;
+    for _ in 0..30 {
+        enc.push_frame(&frame)?;
+    }
+    enc.finish()?;
+
+    let composition_code = r##"
+        import { composition, scene, video } from "liosvideo";
+        const s = scene("s", { duration: 1.0 }, ({ root }) => {
+            root.add(video({ src: "assets/video/clip.mp4", matte: true, width: 160, height: 160 }));
+        });
+        export default composition({ width: 256, height: 256, fps: 30, background: "#0000ff", scenes: [s] });
+    "##;
+    let entry_file = dir.join("matte.ts");
+    std::fs::write(&entry_file, composition_code)?;
+    let out_png = dir.join("matte.png");
+    render_snapshot(&entry_file, 3, &out_png, liosvideo_cli::pipeline::Preset::Native).await?;
+    let img = image::open(&out_png)?.to_rgba8();
+    let kept = img.get_pixel(30, 80).0;
+    assert!(kept[1] > 200 && kept[0] < 60, "left half should show the picture, got {kept:?}");
+    let cut = img.get_pixel(130, 80).0;
+    // fully clear, not faintly covered: a sticker line would fill any leftover alpha
+    assert!(cut[0] <= 2 && cut[1] <= 2 && cut[2] >= 252, "right half should show the background, got {cut:?}");
+    // the box shows the picture only, not the mask under it
+    let bottom = img.get_pixel(30, 150).0;
+    assert!(bottom[1] > 200, "the picture should reach y = 160, got {bottom:?}");
+    assert_eq!(img.get_pixel(30, 200).0, [0, 0, 255, 255]);
+    let _ = std::fs::remove_dir_all(&dir);
+    Ok(())
+}

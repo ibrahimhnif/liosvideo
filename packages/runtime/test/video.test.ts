@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { video, VideoNode } from "../src/graph/kinds";
+import { mattePath, video, VideoNode } from "../src/graph/kinds";
 import { collectAssets, evaluateFrame } from "../src/evaluate";
 import { composition, scene } from "../src/composition";
 
@@ -31,5 +31,25 @@ describe("VideoNode", () => {
       width: 1280,
       height: 720,
     });
+  });
+
+  it("matte: true plays the cut-out made by `liosvideo asset matte` (colour over a half-height mask)", () => {
+    const sc = scene("intro", { duration: 2 }, ({ root }) => {
+      root.add(video({ src: "assets/video/talk.mp4", width: 1920, height: 1080, matte: true }));
+      root.add(video({ name: "own", src: "assets/video/b.mp4", matte: "assets/video/b-cut.mp4" }));
+    });
+    const comp = composition({ width: 1920, height: 1080, fps: 30, scenes: [sc] });
+    const [talk, own] = evaluateFrame(comp, 0).items;
+    expect(talk).toMatchObject({ kind: "video", src: "assets/video/talk.matte.mp4", matte: { source: "assets/video/talk.mp4" } });
+    expect(own).toMatchObject({ src: "assets/video/b-cut.mp4", matte: { source: "assets/video/b.mp4" } });
+    // only the packed files are decoded
+    expect(evaluateFrame(comp, 0).assets).toEqual(["assets/video/b-cut.mp4", "assets/video/talk.matte.mp4"]);
+    expect(collectAssets(comp)).toEqual(["assets/video/b-cut.mp4", "assets/video/talk.matte.mp4"]);
+  });
+
+  it("mattePath names the packed file next to the source", () => {
+    expect(mattePath("assets/video/talk.mp4")).toBe("assets/video/talk.matte.mp4");
+    expect(mattePath("clip.final.mov")).toBe("clip.final.matte.mp4");
+    expect(mattePath("assets/video/talk.matte.mp4")).toBe("assets/video/talk.matte.mp4");
   });
 });

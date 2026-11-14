@@ -11,6 +11,8 @@ pub mod gpu;
 pub mod imagegen;
 pub mod mcp;
 pub mod media;
+#[cfg(feature = "matte")]
+pub mod matte;
 pub mod pipeline;
 pub mod project;
 pub mod runtime;

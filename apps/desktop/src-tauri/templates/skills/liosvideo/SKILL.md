@@ -753,6 +753,24 @@ mallet notes.
   });
   ```
 
+### Video Cut-outs & Sticker Outlines (`matte`, `sticker`)
+
+Cut the person out of a talking-head clip once, then use the cut-out like any video:
+
+1. `video_matte` (CLI: `liosvideo asset matte assets/video/talk.mp4`) runs MODNet portrait matting on the GPU and writes `assets/video/talk.matte.mp4` next to the clip (the picture over its mask). About 25 frames a second at the default `quality: "fast"`; `"best"` gives finer hair. Renders only read that file. MP4 with H.264; the model (26 MB) downloads on first use. The desktop app runs the `liosvideo` CLI for it.
+2. Use it in scenes:
+
+```ts
+root.add(video({ name: "bg", src: "assets/video/talk.mp4", width, height, fit: "cover" }));
+root.add(text({ name: "behind", text: "WANNA KNOW?", ...L.type.display, color: "#ffffff" }));   // text behind the person
+const cut = root.add(group({ name: "cut", sticker: 8, stickerGap: 6 }));                       // hand-drawn white line around them
+cut.add(video({ name: "person", src: "assets/video/talk.mp4", matte: true, width, height, fit: "cover" }));
+```
+
+- `matte: true` plays `<name>.matte.mp4` (or pass its path) with the background cut away. Give it the same `src`, size, `fit`, `startOffset` and `speed` as the full clip so the two stay in step.
+- `sticker` is a layer filter on any node (cut-outs, images with transparency, text, shapes): a line `sticker` px wide, `stickerGap` px outside the shape (default 6), `stickerColor` (default `#ffffff`), `stickerWobble` 0–1 (how hand-drawn, default 0.5) and `stickerBoil` (redraws per second like hand animation, default 8; 0 keeps it still). Width + gap up to about 30 px at 1080p.
+- MODNet keeps people only: an object they hold is cut away with the background. Check the result with `capture_frame`.
+
 ---
 
 ## 8. MCP Editor Tools
@@ -764,6 +782,7 @@ When operating as an AI agent connected via ACP:
 - `tts_generate`: Synthesize speech clips with automatic word alignment data.
 - `capture_frame`: Capture a PNG snapshot at any timestamp for visual inspection.
 - `image_generate` / `image_edit`: Generate an image with Gemini into `assets/images/<id>.png`, or revise it with a plain instruction (new version, same path).
+- `video_matte`: Cut the person out of a project video into `<name>.matte.mp4` for `video({ matte: true })`. See *Video Cut-outs & Sticker Outlines*.
 - `validate_scene`: Validate scene TypeScript code against deterministic rendering rules, illegal imports, node naming constraints, and asset existence.
 
 ---

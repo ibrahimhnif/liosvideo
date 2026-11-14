@@ -69,6 +69,8 @@ pub fn register_all(registry: &mut ToolRegistry, session: SharedSession) {
     crate::mcp::image_tools::register_image_tools(registry, Arc::clone(&session));
     crate::mcp::commons_tools::register_commons_tools(registry, session.clone());
     crate::mcp::sound_tools::register_sound_tools(registry, session.clone());
+    #[cfg(feature = "matte")]
+    crate::mcp::matte_tools::register_matte_tools(registry, session.clone());
     crate::mcp::destockd_tools::register_destockd_tools(registry, session);
 }
 

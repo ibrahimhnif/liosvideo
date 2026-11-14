@@ -1,16 +1,22 @@
 import { applyTransition } from "./anim/transition";
 import { clampFrame, instantiateScene, layoutComposition, type Composition } from "./composition";
-import { CircleNode, ImageNode, PathNode, RectNode, ShaderNode, TextNode, ThreeNode, VideoNode } from "./graph/kinds";
+import { CircleNode, ImageNode, PathNode, RectNode, ShaderNode, TextNode, ThreeNode, VideoNode, videoFile } from "./graph/kinds";
 import type { BaseProps, Node } from "./graph/node";
 import { multiply, type Affine } from "./math/affine";
 import { pathBounds } from "./math/svgpath";
 import type { Filters, RenderItem, RenderList } from "./renderlist";
 
 /** The node's filters, or undefined when none is on. */
-export function activeFilters(p: BaseProps): Filters | undefined {
-  if (!(p.pixelate > 0 || p.posterize > 0 || p.halftone > 0 || p.outline > 0 || p.chalk > 0 || p.glow > 0)) return undefined;
+export function activeFilters(p: BaseProps, t = 0): Filters | undefined {
+  if (!(p.pixelate > 0 || p.posterize > 0 || p.halftone > 0 || p.outline > 0 || p.chalk > 0 || p.glow > 0 || p.sticker > 0)) return undefined;
   const { pixelate, posterize, halftone, outline, outlineColor, chalk, glow, glowIntensity, glowThreshold } = p;
-  return { pixelate, posterize, halftone, outline, outlineColor, chalk, glow, glowIntensity, glowThreshold };
+  const { sticker, stickerColor, stickerGap, stickerWobble } = p;
+  // a small epsilon so 0.3 s × 8 lands on 2, not 2.3999…
+  const stickerSeed = p.stickerBoil > 0 ? Math.floor(t * p.stickerBoil + 1e-6) : 0;
+  return {
+    pixelate, posterize, halftone, outline, outlineColor, chalk, glow, glowIntensity, glowThreshold,
+    sticker, stickerColor, stickerGap, stickerWobble, stickerSeed,
+  };
 }
 
 /** The node's own drawable (groups have none), with opacity already multiplied in. */
@@ -60,7 +66,11 @@ function drawable(node: Node<any>, t: number, matrix: Affine, opacity: number, d
   if (node instanceof VideoNode) {
     const p = node.propsAt(t);
     const time = t * p.speed + p.startOffset;
-    return { kind: "video", path, matrix, src: p.src, time, width: p.width, height: p.height, fit: p.fit, opacity };
+    const src = videoFile(p);
+    return {
+      kind: "video", path, matrix, src, time, width: p.width, height: p.height, fit: p.fit, opacity,
+      ...(src !== p.src ? { matte: { source: p.src } } : {}),
+    };
   }
   if (node instanceof ThreeNode) {
     const p = node.propsAt(t);
@@ -82,7 +92,7 @@ function emit(node: Node<any>, t: number, duration: number, parent: Affine, inhe
   const opacity = inherited * p.opacity;
   if (opacity <= 0) return;
   const matrix = multiply(parent, node.localMatrix(t));
-  const filters = activeFilters(p);
+  const filters = activeFilters(p, t);
   const isolated = p.blur > 0 || p.clip || filters !== undefined || (p.opacity < 1 && node.children.length > 0);
   const childOpacity = isolated ? 1 : opacity;
   const target: RenderItem[] = isolated ? [] : out;
@@ -139,7 +149,8 @@ export function evaluateFrame(c: Composition, frame: number): RenderList {
 export function collectAssets(c: Composition): string[] {
   const srcs = new Set<string>();
   const walk = (node: Node<any>) => {
-    if (node instanceof ImageNode || node instanceof VideoNode) srcs.add(node.propsAt(0).src);
+    if (node instanceof ImageNode) srcs.add(node.propsAt(0).src);
+    else if (node instanceof VideoNode) srcs.add(videoFile(node.propsAt(0)));
     node.children.forEach(walk);
   };
   for (const def of c.scenes) walk(instantiateScene(c, def));

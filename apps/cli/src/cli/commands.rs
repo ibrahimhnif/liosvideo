@@ -382,6 +382,7 @@ pub async fn run_asset(project: &Path, command: AssetCommand) -> Result<()> {
         AssetCommand::Commons { command } => commons_command(&root, command).await?,
         AssetCommand::Audio { command } => audio_command(&root, command).await?,
         AssetCommand::Sfx { command } => sfx_command(&root, command).await?,
+        AssetCommand::Matte { video, quality, force } => matte_command(&root, &video, &quality, force).await?,
         AssetCommand::GenerateImage {
             prompt,
             id,
@@ -554,6 +555,45 @@ async fn sfx_command(root: &Path, command: SfxCommand) -> Result<()> {
         }
     }
     Ok(())
+}
+
+#[cfg(feature = "matte")]
+async fn matte_command(root: &Path, video: &str, quality: &str, force: bool) -> Result<()> {
+    use crate::matte;
+    let opts = matte::MatteOptions { quality: matte::Quality::parse(quality)?, force };
+    let src = matte::project_relative(root, video)?;
+    let bar = indicatif::ProgressBar::new(0);
+    bar.set_style(
+        indicatif::ProgressStyle::with_template("{msg} [{bar:30}] {pos}/{len} frames ({per_sec}, {eta})")
+            .unwrap()
+            .progress_chars("=> "),
+    );
+    bar.set_message(format!("Cutting out {src}"));
+    let status_bar = bar.clone();
+    let progress_bar = bar.clone();
+    let made = matte::make(
+        root.to_path_buf(),
+        src,
+        opts,
+        move |m| status_bar.println(m),
+        move |done, total| {
+            progress_bar.set_length(total as u64);
+            progress_bar.set_position(done as u64);
+        },
+    )
+    .await;
+    bar.finish_and_clear();
+    let made = made?;
+    if !made.made {
+        eprintln!("{} already exists; pass --force to make it again", made.rel_path);
+    }
+    println!("{}", serde_json::to_string_pretty(&made)?);
+    Ok(())
+}
+
+#[cfg(not(feature = "matte"))]
+async fn matte_command(_root: &Path, _video: &str, _quality: &str, _force: bool) -> Result<()> {
+    anyhow::bail!("this liosvideo build has no matting; build the CLI with the `matte` feature")
 }
 
 fn truncate(text: &str, max: usize) -> String {
