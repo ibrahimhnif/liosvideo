@@ -39,13 +39,13 @@ Download the latest desktop release for your platform. Installers are published 
 From v0.1.12 on, the desktop app updates itself: it checks GitHub Releases at launch (and every 6 hours), and **Update now** downloads the signed update, installs it in place and restarts. macOS, Windows and the Linux AppImage update this way; `.deb` / `.rpm` installs update through your package manager or a new download.
 
 <!-- downloads:start -->
-Latest release: [`v0.1.12`](https://github.com/ibrahimhnif/liosvideo/releases/tag/v0.1.12) · [All releases](https://github.com/ibrahimhnif/liosvideo/releases)
+Latest release: [`v0.1.13`](https://github.com/ibrahimhnif/liosvideo/releases/tag/v0.1.13) · [All releases](https://github.com/ibrahimhnif/liosvideo/releases)
 
 | Platform | Architecture | Installer |
 | :--- | :--- | :--- |
-| macOS | Universal | [Liosvideo_0.1.12_universal.dmg](https://github.com/ibrahimhnif/liosvideo/releases/download/v0.1.12/Liosvideo_0.1.12_universal.dmg) |
-| Windows | x64 | [Liosvideo_0.1.12_x64-setup.exe](https://github.com/ibrahimhnif/liosvideo/releases/download/v0.1.12/Liosvideo_0.1.12_x64-setup.exe) · [Liosvideo_0.1.12_x64_en-US.msi](https://github.com/ibrahimhnif/liosvideo/releases/download/v0.1.12/Liosvideo_0.1.12_x64_en-US.msi) |
-| Linux | x64 | [Liosvideo-0.1.12-1.x86_64.rpm](https://github.com/ibrahimhnif/liosvideo/releases/download/v0.1.12/Liosvideo-0.1.12-1.x86_64.rpm) · [Liosvideo_0.1.12_amd64.AppImage](https://github.com/ibrahimhnif/liosvideo/releases/download/v0.1.12/Liosvideo_0.1.12_amd64.AppImage) · [Liosvideo_0.1.12_amd64.deb](https://github.com/ibrahimhnif/liosvideo/releases/download/v0.1.12/Liosvideo_0.1.12_amd64.deb) |
+| macOS | Universal | [Liosvideo_0.1.13_universal.dmg](https://github.com/ibrahimhnif/liosvideo/releases/download/v0.1.13/Liosvideo_0.1.13_universal.dmg) |
+| Windows | x64 | [Liosvideo_0.1.13_x64-setup.exe](https://github.com/ibrahimhnif/liosvideo/releases/download/v0.1.13/Liosvideo_0.1.13_x64-setup.exe) · [Liosvideo_0.1.13_x64_en-US.msi](https://github.com/ibrahimhnif/liosvideo/releases/download/v0.1.13/Liosvideo_0.1.13_x64_en-US.msi) |
+| Linux | x64 | [Liosvideo-0.1.13-1.x86_64.rpm](https://github.com/ibrahimhnif/liosvideo/releases/download/v0.1.13/Liosvideo-0.1.13-1.x86_64.rpm) · [Liosvideo_0.1.13_amd64.AppImage](https://github.com/ibrahimhnif/liosvideo/releases/download/v0.1.13/Liosvideo_0.1.13_amd64.AppImage) · [Liosvideo_0.1.13_amd64.deb](https://github.com/ibrahimhnif/liosvideo/releases/download/v0.1.13/Liosvideo_0.1.13_amd64.deb) |
 <!-- downloads:end -->
 
 > On macOS, drag `Liosvideo.app` into `/Applications`. On Windows, run the `.msi` or `-setup.exe` installer. On Linux, use the `.AppImage` (make it executable) or install the `.deb`.
