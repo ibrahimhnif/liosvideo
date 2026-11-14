@@ -61,6 +61,24 @@ describe("PreviewHost", () => {
     expect(workers[0].posted.at(-1)).toEqual({ type: "attributions", markdown: "| `assets/images/a.jpg` | x | Jane | CC BY | |" });
   });
 
+  it("answers the worker's video frame requests with the frame at that time", async () => {
+    const { host, workers } = setup();
+    const w = workers[0];
+    const bitmap = { width: 2 } as unknown as ImageBitmap;
+    const frames = vi.fn(async () => bitmap);
+    host.setVideoFrames(frames);
+    w.reply({ type: "videoFrame", id: 7, src: "assets/video/talk.mp4", time: 812.4 });
+    await vi.waitFor(() => expect(w.posted.at(-1)).toEqual({ type: "videoFrameData", id: 7, bitmap }));
+    expect(frames).toHaveBeenCalledWith("assets/video/talk.mp4", 812.4);
+  });
+
+  it("tells the worker when a video frame can't be read", async () => {
+    const { host, workers } = setup();
+    const w = workers[0];
+    w.reply({ type: "videoFrame", id: 1, src: "a.mp4", time: 0 });
+    await vi.waitFor(() => expect(w.posted.at(-1)).toMatchObject({ type: "videoFrameData", id: 1, error: expect.any(String) }));
+  });
+
   it("resolves load with the composition info", async () => {
     const { host, workers } = setup();
     await expect(loadOk(host, workers[0])).resolves.toMatchObject({ totalFrames: 90, fps: 30 });

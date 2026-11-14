@@ -122,7 +122,7 @@ function narrationTracks(c: Composition, scenes: SceneSpan[], listed: ManifestAu
   const out: ManifestAudioTrack[] = [];
   c.scenes.forEach((def, i) => {
     for (const line of def.vo ?? []) {
-      const src = `assets/audio/vo/${line.id}.mp3`;
+      const src = line.src ?? `assets/audio/vo/${line.id}.mp3`;
       if (!line.ready || have.has(src)) continue;
       const startFrame = scenes[i].startFrame + Math.round(line.at * c.fps);
       out.push({

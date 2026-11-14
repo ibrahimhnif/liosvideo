@@ -313,3 +313,37 @@ async fn cuts_out_a_packed_matte_video() -> Result<()> {
     let _ = std::fs::remove_dir_all(&dir);
     Ok(())
 }
+
+#[tokio::test]
+async fn cover_pans_its_crop_with_focus_like_the_preview() -> Result<()> {
+    let dir = std::env::temp_dir().join(format!("liosvideo_focus_test_{}", std::process::id()));
+    std::fs::create_dir_all(dir.join("assets/images"))?;
+    // 40×10: left quarter red, middle half green, right quarter blue
+    let img = image::RgbaImage::from_fn(40, 10, |x, _| match x {
+        0..=9 => image::Rgba([255, 0, 0, 255]),
+        10..=29 => image::Rgba([0, 255, 0, 255]),
+        _ => image::Rgba([0, 0, 255, 255]),
+    });
+    img.save(dir.join("assets/images/strip.png"))?;
+    let composition_code = r##"
+        import { composition, scene, image } from "liosvideo";
+        const s = scene("s", { duration: 1.0 }, ({ root }) => {
+            const box = { src: "assets/images/strip.png", width: 20, height: 20, fit: "cover" } as const;
+            root.add(image({ ...box, name: "mid", x: 0, y: 0 }));
+            root.add(image({ ...box, name: "left", x: 22, y: 0, focusX: 0 }));
+            root.add(image({ ...box, name: "right", x: 44, y: 0, focusX: 1 }));
+        });
+        export default composition({ width: 64, height: 32, fps: 30, background: "#000000", scenes: [s] });
+    "##;
+    let entry_file = dir.join("focus.ts");
+    std::fs::write(&entry_file, composition_code)?;
+    let out_png = dir.join("focus.png");
+    render_snapshot(&entry_file, 0, &out_png, liosvideo_cli::pipeline::Preset::Native).await?;
+    let out = image::open(&out_png)?.to_rgba8();
+    let (mid, left, right) = (out.get_pixel(10, 10).0, out.get_pixel(24, 10).0, out.get_pixel(62, 10).0);
+    assert!(mid[1] > 200 && mid[0] < 40, "centre crop is green, got {mid:?}");
+    assert!(left[0] > 200 && left[1] < 40, "focusX 0 keeps the left edge, got {left:?}");
+    assert!(right[2] > 200 && right[1] < 40, "focusX 1 keeps the right edge, got {right:?}");
+    let _ = std::fs::remove_dir_all(&dir);
+    Ok(())
+}

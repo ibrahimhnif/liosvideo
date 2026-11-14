@@ -613,7 +613,7 @@ cut.add(video({ name: "person", src: "assets/video/talk.mp4", matte: true, width
 
 ---
 
-### Clips from Long Videos (`youtube_download`, `video_transcript`)
+### Clips from Long Videos (`youtube_download`, `video_clip`, `clipVideo`)
 
 Short clips from a long video (a podcast, a talk, a stream) start from the video and its word-timed transcript:
 
@@ -621,8 +621,26 @@ Short clips from a long video (a podcast, a talk, a stream) start from the video
 2. A video with no captions, or a file the user added: `video_transcribe` (CLI: `liosvideo asset transcript <video> --transcribe`) makes the transcript with ElevenLabs speech-to-text, using the voice-over key.
 3. `video_transcript` (CLI: `liosvideo asset transcript <video> [--from s --to s]`) reads it as `[mm:ss.s → mm:ss.s] text` lines. Long transcripts come in parts: call again with `from: nextFrom`. `words: true` adds every word's time, for exact cut points.
 
+4. `video_clip` (CLI: `liosvideo asset clip <video> --from s --to s --id clip-01`) cuts the stretch into `assets/video/clips/<id>.mp4` (H.264 without B-frames, with its sound) and makes VO line `<id>` from its words; the ends snap to word edges. Needs ffmpeg.
+5. `video_reframe` (CLI: `liosvideo asset reframe clip-01 [--aspect 9:16]`) follows the speaker for a 16:9 → 9:16 crop: MODNet finds the people a few times a second, the crop holds still unless they move, and jumps with camera cuts. A 30 s clip takes a few seconds. The desktop app runs the `liosvideo` CLI for it.
+6. The scene:
+
+```ts
+import { captions, clipVideo, scene } from "liosvideo";
+
+export default scene("clip-01", { vo: ["clip-01"], pad: 0 }, ({ root, width, height }) => {
+  clipVideo(root, "clip-01", { width, height });                        // full-frame, follows the speaker
+  captions(root, { lines: ["clip-01"], background: "#000000aa" });      // karaoke from the clip's words
+});
+```
+
+- The VO line gives the scene its length, places the clip's sound (as voice-over, so music ducks under it), and feeds `captions()`, `cue()` and `word()` in clip time, e.g. a hook title at `word("clip-01", "mars")`.
+- `clipVideo` options: `width`, `height`, `x`, `y`, `at` (scene time the clip starts, when the scene pads), `still: true` (centred crop, no tracking), `name`.
+- `image` and `video` with `fit: "cover"` take `focusX` / `focusY` (0 = left/top edge, 1 = right/bottom, default 0.5) to choose which part stays in the box.
+- The renderer's H.264 decoder can't read B-frames, which YouTube and most cameras use: cut clips with `video_clip` rather than playing the long download directly (the render warns when a video has them).
 - Clip only videos you may clip: your own, a clipping campaign's (the owner allows it), or Creative Commons. Keep the attribution row, and credit the source on screen when the campaign asks for it.
 - Pick moments that stand alone: a hook in the first 2 s, one whole thought, 20–60 s, starting and ending on sentence boundaries.
+- Bright footage needs a caption `background` so white words stay readable.
 
 ## Editor MCP Server Tools
 
@@ -636,6 +654,7 @@ When interacting as an AI agent via ACP (Claude Code, Gemini CLI, Codex), use th
 - `image_generate` / `image_edit`: Generate an image with Gemini into `assets/images/<id>.png`, or revise it with a plain instruction (new version, same path). See *AI Image Generation*.
 - `video_matte`: Cut the person out of a project video into `<name>.matte.mp4` for `video({ matte: true })`. See *Video Cut-outs & Sticker Outlines*.
 - `youtube_download` / `video_transcript` / `video_transcribe`: Fetch a long video with its word-timed transcript, read the transcript to pick clips, or transcribe a video that has none. See *Clips from Long Videos*.
+- `video_clip` / `video_reframe`: Cut a stretch of a long video into clip `<id>` (file + VO line), and follow its speaker for a 9:16 crop. See *Clips from Long Videos*.
 - `validate_scene`: Validate scene TypeScript code against deterministic rendering rules, illegal imports, node naming constraints, and asset existence.
 
 ---

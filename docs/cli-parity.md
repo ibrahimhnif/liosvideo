@@ -77,6 +77,7 @@ backend feature set as the desktop app, with no Node.js, Chromium, or FFmpeg dep
 | Code-made SFX | `liosvideo asset sfx list [--kind k]`, `asset sfx render <id> [--name f] [--dur s] [--apex s] [--pitch E5] [--seed n] [--force]` (needs earshot installed; MCP `earshot_sfx_list` / `earshot_sfx_render` in both apps) |
 | Video cut-outs | `liosvideo asset matte <video> [--quality fast|balanced|best] [--force]` (MODNet on the GPU into `<name>.matte.mp4`; MCP `video_matte` in both apps, the desktop one runs the CLI) |
 | Clips from long videos | `liosvideo asset youtube <url> [--name] [--lang] [--max-height] [--force]` (yt-dlp, H.264, transcript from captions) and `liosvideo asset transcript <video> [--from] [--to] [--transcribe] [--json]` (ElevenLabs speech-to-text when there are no captions); MCP `youtube_download`, `video_transcript`, `video_transcribe` in both apps |
+| Cutting and reframing clips | `liosvideo asset clip <video> --from --to --id [--no-snap] [--force]` (ffmpeg into `assets/video/clips/<id>.mp4` + VO line) and `liosvideo asset reframe <id> [--aspect 9:16]` (MODNet speaker tracking into the clip's timing); MCP `video_clip` in both apps, `video_reframe` in the CLI and through the CLI in the desktop app |
 | API keys | `liosvideo key get|set|delete <service>` |
 | ACP agent | `liosvideo agent list|prompt|chat|auth|set-config|install-adapter|…`; `--handoff <file|auto>` continues on another agent ([details](./acp-handoff.md)) |
 | MCP server | `liosvideo mcp serve [--stdio|--tcp addr]`, `mcp tools`, `mcp call <tool>` |

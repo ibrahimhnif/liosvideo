@@ -56,6 +56,7 @@ export class PreviewHost {
   private size: { width: number; height: number } | undefined;
   private disposed = false;
   private readBytes: ((src: string) => Promise<ArrayBuffer>) | undefined;
+  private videoFrames: ((src: string, time: number) => Promise<ImageBitmap>) | undefined;
 
   constructor(
     private canvas: HTMLCanvasElement,
@@ -68,6 +69,11 @@ export class PreviewHost {
   /** The current canvas element (replaced after a restart). */
   get element(): HTMLCanvasElement {
     return this.canvas;
+  }
+
+  /** How a video item's picture at a time is read (the worker has no <video>). */
+  setVideoFrames(frame: (src: string, time: number) => Promise<ImageBitmap>): void {
+    this.videoFrames = frame;
   }
 
   /** How three() setup reads project files (gltf / hdr / texture); the worker cannot reach them itself. */
@@ -284,6 +290,14 @@ export class PreviewHost {
         read(msg.src).then(
           (bytes) => this.post({ type: "assetBytes", id: msg.id, bytes }, [bytes]),
           (err) => this.post({ type: "assetBytes", id: msg.id, error: err instanceof Error ? err.message : String(err) }),
+        );
+        return;
+      }
+      case "videoFrame": {
+        const read = this.videoFrames ?? (() => Promise.reject(new Error("video frames are not available here")));
+        read(msg.src, msg.time).then(
+          (bitmap) => this.post({ type: "videoFrameData", id: msg.id, bitmap }, [bitmap]),
+          (err) => this.post({ type: "videoFrameData", id: msg.id, error: err instanceof Error ? err.message : String(err) }),
         );
         return;
       }

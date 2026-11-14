@@ -79,25 +79,56 @@ pub async fn matte(root: &Path, video: &str, quality_arg: Option<&str>, force: b
     if !root.join(&video).is_file() {
         return Err(format!("video not found: {video}"));
     }
+    run_cli(root, &args(root, &video, quality, force), "asset matte").await
+}
+
+/// `9:16`-style shapes only.
+pub fn check_aspect(aspect: &str) -> Result<String, String> {
+    let ok = aspect
+        .split_once(':')
+        .is_some_and(|(w, h)| [w, h].iter().all(|n| !n.is_empty() && n.chars().all(|c| c.is_ascii_digit() || c == '.')));
+    if ok { Ok(aspect.to_string()) } else { Err(format!("aspect \"{aspect}\" should look like 9:16")) }
+}
+
+pub fn reframe_args(root: &Path, id: &str, aspect: &str) -> Vec<String> {
+    vec![
+        "asset".into(),
+        "reframe".into(),
+        id.into(),
+        "--aspect".into(),
+        aspect.into(),
+        "--project".into(),
+        root.to_string_lossy().to_string(),
+    ]
+}
+
+/// Runs `liosvideo asset reframe` for clip `id` (made by video_clip) and returns its JSON result.
+pub async fn reframe(root: &Path, id: &str, aspect: Option<&str>) -> Result<Value, String> {
+    let id = crate::clips::check_id(id)?;
+    let aspect = check_aspect(aspect.unwrap_or("9:16"))?;
+    run_cli(root, &reframe_args(root, &id, &aspect), "asset reframe").await
+}
+
+async fn run_cli(root: &Path, cli_args: &[String], what: &str) -> Result<Value, String> {
     let bin = binary().ok_or_else(not_installed)?;
     let child = tokio::process::Command::new(&bin)
-        .args(args(root, &video, quality, force))
+        .args(cli_args)
         .current_dir(root)
         .stdin(std::process::Stdio::null())
         .kill_on_drop(true)
         .output();
     let out = tokio::time::timeout(TIMEOUT, child)
         .await
-        .map_err(|_| "liosvideo asset matte took over an hour and was stopped".to_string())?
+        .map_err(|_| format!("liosvideo {what} took over an hour and was stopped"))?
         .map_err(|e| format!("could not run {}: {e}", bin.display()))?;
     let stdout = String::from_utf8_lossy(&out.stdout);
     if !out.status.success() {
         let stderr = String::from_utf8_lossy(&out.stderr);
         let detail = stderr.lines().rev().find(|l| !l.trim().is_empty()).unwrap_or("").trim();
         if detail.contains("unrecognized subcommand") {
-            return Err(format!("the installed liosvideo CLI is too old for matting; update it with: {INSTALL}"));
+            return Err(format!("the installed liosvideo CLI is too old for this; update it with: {INSTALL}"));
         }
-        return Err(format!("liosvideo asset matte failed: {detail}"));
+        return Err(format!("liosvideo {what} failed: {detail}"));
     }
     // the result is the JSON object printed last
     let start = stdout.find('{').ok_or_else(|| format!("unexpected output from liosvideo: {stdout}"))?;
@@ -116,6 +147,14 @@ mod tests {
         assert!(check_video("assets/../../x.mp4").is_err());
         assert!(quality(Some("ultra")).is_err());
         assert_eq!(quality(None).unwrap(), "fast");
+    }
+
+    #[test]
+    fn builds_the_reframe_call() {
+        assert_eq!(reframe_args(Path::new("/p"), "clip-01", "9:16"), ["asset", "reframe", "clip-01", "--aspect", "9:16", "--project", "/p"]);
+        assert!(check_aspect("9:16").is_ok());
+        assert!(check_aspect("--x").is_err());
+        assert!(check_aspect("9:").is_err());
     }
 
     #[test]

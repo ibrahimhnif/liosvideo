@@ -68,3 +68,56 @@ impl Tool for MatteTool {
         })
     }
 }
+
+pub fn register_reframe_tool(registry: &mut ToolRegistry, session: SharedSession) {
+    registry.register(Arc::new(ReframeTool { session }));
+}
+
+struct ReframeTool {
+    session: SharedSession,
+}
+
+pub const REFRAME_DESCRIPTION: &str = "Follow the speaker in a clip made by video_clip, so clipVideo keeps \
+    them in frame when 16:9 footage fills a 9:16 short: MODNet finds the people a few times a second, the \
+    crop holds still unless they move and jumps with camera cuts. Stores the path in the clip's VO line; \
+    clipVideo uses it on the next render. Run it once per clip (a 30 s clip takes a few seconds).";
+
+pub fn reframe_schema() -> Value {
+    json!({
+        "type": "object",
+        "properties": {
+            "id": { "type": "string", "description": "Clip id from video_clip, e.g. \"clip-01\"" },
+            "aspect": { "type": "string", "default": "9:16", "description": "The short's shape" }
+        },
+        "required": ["id"]
+    })
+}
+
+impl Tool for ReframeTool {
+    fn name(&self) -> &'static str {
+        "video_reframe"
+    }
+
+    fn description(&self) -> &'static str {
+        REFRAME_DESCRIPTION
+    }
+
+    fn input_schema(&self) -> Value {
+        reframe_schema()
+    }
+
+    fn call(&self, args: Value) -> BoxFuture<Result<Value, String>> {
+        let session = Arc::clone(&self.session);
+        Box::pin(async move {
+            let id = crate::clips::check_id(args.get("id").and_then(|v| v.as_str()).unwrap_or(""))?;
+            let aspect = matte::track::parse_aspect(args.get("aspect").and_then(|v| v.as_str()).unwrap_or("9:16"))
+                .map_err(|e| e.to_string())?;
+            let root: PathBuf = session
+                .lock()
+                .map(|s| s.project_root.clone())
+                .map_err(|_| "session lock poisoned".to_string())?;
+            let r = matte::track::reframe(root, id, aspect, |_| {}).await.map_err(|e| format!("{e:#}"))?;
+            serde_json::to_value(r).map_err(|e| e.to_string())
+        })
+    }
+}

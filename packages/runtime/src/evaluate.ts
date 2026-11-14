@@ -59,16 +59,19 @@ function drawable(node: Node<any>, t: number, matrix: Affine, opacity: number, d
       align: p.align, boxWidth: p.width,
     };
   }
+  // only off-centre crops are written, so render lists of existing scenes stay the same
+  const focus = (p: { fit: string; focusX: number; focusY: number }) =>
+    p.fit === "cover" && (p.focusX !== 0.5 || p.focusY !== 0.5) ? { focusX: p.focusX, focusY: p.focusY } : {};
   if (node instanceof ImageNode) {
     const p = node.propsAt(t);
-    return { kind: "image", path, matrix, src: p.src, width: p.width, height: p.height, fit: p.fit, opacity };
+    return { kind: "image", path, matrix, src: p.src, width: p.width, height: p.height, fit: p.fit, opacity, ...focus(p) };
   }
   if (node instanceof VideoNode) {
     const p = node.propsAt(t);
     const time = t * p.speed + p.startOffset;
     const src = videoFile(p);
     return {
-      kind: "video", path, matrix, src, time, width: p.width, height: p.height, fit: p.fit, opacity,
+      kind: "video", path, matrix, src, time, width: p.width, height: p.height, fit: p.fit, opacity, ...focus(p),
       ...(src !== p.src ? { matte: { source: p.src } } : {}),
     };
   }

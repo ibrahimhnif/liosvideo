@@ -402,6 +402,28 @@ pub enum AssetCommand {
         #[arg(long)]
         force: bool,
     },
+    /// Cut from..to (seconds) of a long project video into clip <id>: assets/video/clips/<id>.mp4 and VO line <id>
+    Clip {
+        video: String,
+        #[arg(long)]
+        from: f64,
+        #[arg(long)]
+        to: f64,
+        #[arg(long)]
+        id: String,
+        /// Keep the ends exactly where given instead of moving them to word edges
+        #[arg(long)]
+        no_snap: bool,
+        #[arg(long)]
+        force: bool,
+    },
+    /// Follow the speaker in clip <id> so clipVideo keeps them in frame at another aspect (MODNet on the GPU)
+    Reframe {
+        id: String,
+        /// The short's shape
+        #[arg(long, default_value = "9:16")]
+        aspect: String,
+    },
     /// Print a project video's transcript (from its captions, or made with --transcribe)
     Transcript {
         /// Project video, e.g. assets/video/talk.mp4

@@ -51,7 +51,7 @@ pub struct Downloaded {
     pub next: String,
 }
 
-fn find(name: &str, env: Option<&str>) -> Option<PathBuf> {
+pub fn find(name: &str, env: Option<&str>) -> Option<PathBuf> {
     if let Some(path) = env.and_then(std::env::var_os).map(PathBuf::from) {
         return path.is_file().then_some(path);
     }
@@ -295,10 +295,11 @@ pub async fn download(root: &Path, url: &str, opts: &DownloadOptions) -> Result<
 
 // ---- MCP tools (the same in the CLI and the desktop app) ----
 
-pub const TOOL_NAMES: [&str; 3] = ["youtube_download", "video_transcript", "video_transcribe"];
+pub const TOOL_NAMES: [&str; 4] = ["youtube_download", "video_transcript", "video_transcribe", "video_clip"];
 
 pub fn tool_description(name: &str) -> &'static str {
     match name {
+        "video_clip" => crate::clips::TOOL_DESCRIPTION,
         "youtube_download" => {
             "Download a long video from YouTube (or another site yt-dlp reads) into assets/video/<name>.mp4 \
              as H.264, with a word-timed transcript from its captions (<name>.transcript.json) and its \
@@ -321,6 +322,7 @@ pub fn tool_description(name: &str) -> &'static str {
 
 pub fn tool_schema(name: &str) -> Value {
     match name {
+        "video_clip" => crate::clips::tool_schema(),
         "youtube_download" => serde_json::json!({
             "type": "object",
             "properties": {
@@ -406,6 +408,13 @@ pub async fn call_tool(name: &str, root: &Path, args: Value, elevenlabs_key: Opt
             let t = transcript::read(root, &video()?)?;
             let n = |k: &str| args.get(k).and_then(Value::as_f64);
             Ok(transcript_answer(&t, n("from"), n("to"), args.get("words").and_then(Value::as_bool).unwrap_or(false)))
+        }
+        "video_clip" => {
+            let n = |k: &str| args.get(k).and_then(Value::as_f64).ok_or_else(|| format!("{k} (seconds) is required"));
+            let opts = crate::clips::ClipOptions { snap: args.get("snap").and_then(Value::as_bool).unwrap_or(true), force };
+            let id = s("id").ok_or("id is required")?;
+            let c = crate::clips::make_clip(root, &video()?, n("from")?, n("to")?, &id, &opts).await?;
+            serde_json::to_value(c).map_err(|e| e.to_string())
         }
         "video_transcribe" => {
             let key = elevenlabs_key.ok_or(transcript::NO_KEY)?;

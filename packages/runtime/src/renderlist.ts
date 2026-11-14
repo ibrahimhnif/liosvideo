@@ -41,6 +41,9 @@ export type ImageItem = {
   height: number;
   fit: ImageFit;
   opacity: number;
+  /** cover crop position, 0..1 (default 0.5) */
+  focusX?: number;
+  focusY?: number;
 };
 
 export type VideoItem = {
@@ -53,6 +56,9 @@ export type VideoItem = {
   height: number;
   fit: ImageFit;
   opacity: number;
+  /** cover crop position, 0..1 (default 0.5) */
+  focusX?: number;
+  focusY?: number;
   /** `src` is a packed cut-out (colour in the top 2/3, its mask below at half height) made from `source` */
   matte?: { source: string };
 };

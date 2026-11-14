@@ -44,6 +44,35 @@ describe("render worker sandbox", () => {
     await expect(makeHost().load(project("42"))).rejects.toThrow("Entry file must default-export composition(...)");
   });
 
+  it("draws each video item with the host's frame at that item's time", async () => {
+    const h = makeHost();
+    const asked: number[] = [];
+    // frame colour encodes the requested time: red before 10 s, green after
+    h.setVideoFrames(async (_src, time) => {
+      asked.push(time);
+      const data = new ImageData(4, 4);
+      for (let i = 0; i < 16; i++) data.data.set(time < 10 ? [255, 0, 0, 255] : [0, 255, 0, 255], i * 4);
+      return createImageBitmap(data);
+    });
+    await h.load(
+      project(`L.composition({ width: 64, height: 64, fps: 10, scenes: [L.scene("s", { duration: 2 }, ({ root }) => {
+        root.add(L.video({ src: "assets/video/long.mp4", width: 64, height: 64, startOffset: 9 }));
+      })] })`),
+    );
+    h.resize(64, 64);
+    const pixel = async (frame: number) => {
+      await h.renderFrame(frame);
+      const png = await h.snapshot();
+      const bmp = await createImageBitmap(new Blob([png]));
+      const c = new OffscreenCanvas(64, 64).getContext("2d")!;
+      c.drawImage(bmp, 0, 0);
+      return [...c.getImageData(32, 32, 1, 1).data];
+    };
+    expect((await pixel(0))[0]).toBeGreaterThan(200); // 9.0 s
+    expect((await pixel(15))[1]).toBeGreaterThan(200); // 10.5 s
+    expect(asked).toEqual([9, 10.5]);
+  });
+
   it("renders frames after loading", async () => {
     const h = makeHost();
     await h.load(project(`L.composition({ width: 64, height: 64, fps: 30, scenes: [L.scene("s", { duration: 1 }, ({ root }) => { root.add(L.rect({ width: 10, height: 10 })); })] })`));

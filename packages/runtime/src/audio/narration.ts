@@ -19,6 +19,8 @@ export interface VoCue {
   duration: number;
   /** False until the line has been generated (its duration is then a 2.5 s stand-in). */
   ready: boolean;
+  /** Its audio file when it is not assets/audio/vo/<id>.mp3. */
+  src?: string;
 }
 
 export const VO_PAD = 0.35;
@@ -36,7 +38,7 @@ export function planVo(opts: SceneVoOptions): { cues: VoCue[]; duration: number 
     const line = vo(id);
     const ready = line.isReady && line.duration > 0;
     if (i > 0) t += gap;
-    const cue = { id, at: t, duration: ready ? line.duration : VO_PLACEHOLDER, ready };
+    const cue: VoCue = { id, at: t, duration: ready ? line.duration : VO_PLACEHOLDER, ready, ...(line.src ? { src: line.src } : {}) };
     t += cue.duration;
     return cue;
   });

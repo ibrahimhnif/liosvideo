@@ -10,6 +10,7 @@
 
 #[allow(clippy::all, unused)]
 mod modnet;
+pub mod track;
 
 use std::path::{Path, PathBuf};
 use std::time::Instant;

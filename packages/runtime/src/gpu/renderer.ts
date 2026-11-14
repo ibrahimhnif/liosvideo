@@ -666,12 +666,16 @@ export async function createRenderer(
           w = cw;
           h = ch;
         } else if (media.fit === "cover") {
+          // the crop window slides with focus: 0 puts it at the left/top edge, 1 at the right/bottom
+          const start = (k: number, focus = 0.5) => (1 - k) * Math.min(Math.max(focus, 0), 1);
           if (imgAspect > boxAspect) {
             const k = boxAspect / imgAspect;
-            uv = [(1 - k) / 2, 0, (1 + k) / 2, 1];
+            const u0 = start(k, media.focusX);
+            uv = [u0, 0, u0 + k, 1];
           } else {
             const k = imgAspect / boxAspect;
-            uv = [0, (1 - k) / 2, 1, (1 + k) / 2];
+            const v0 = start(k, media.focusY);
+            uv = [0, v0, 1, v0 + k];
           }
         }
       }

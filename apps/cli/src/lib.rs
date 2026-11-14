@@ -2,6 +2,7 @@ pub mod acp;
 pub mod agents;
 pub mod assets;
 pub mod cli;
+pub mod clips;
 pub mod color;
 pub mod commons;
 pub mod earshot;

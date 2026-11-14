@@ -5,7 +5,7 @@
   import { onMount } from "svelte";
   import { BuildCoordinator, bundleComposition, type BuildError } from "$lib/bundle/bundler";
   import { devLog, devSnapshots } from "$lib/devlog";
-  import { loadProjectBytes, loadProjectImage } from "$lib/preview/assets";
+  import { loadProjectBytes, loadProjectImage, VideoFrames } from "$lib/preview/assets";
   import { AudioPlayer } from "$lib/preview/audio_player";
   import { PlaybackClock } from "$lib/preview/clock";
   import { PreviewHost, SceneError, SupersededError, arrayBufferToBase64 } from "$lib/preview/host";
@@ -45,6 +45,7 @@
   const clock = new PlaybackClock(30, 0);
   const audioPlayer = new AudioPlayer();
   let host: PreviewHost;
+  let videoFrames: VideoFrames | undefined;
   let currentExportEngine: ExportEngine | null = null;
   let referenceOverlayUrl = $state<string | null>(null);
   let overlayMode = $state<"blend" | "difference">("blend");
@@ -259,8 +260,10 @@
   onMount(() => {
     canvas = document.createElement("canvas");
     stage.appendChild(canvas);
+    videoFrames = new VideoFrames();
     host = new PreviewHost(canvas, loadProjectImage);
     host.setBytesReader(loadProjectBytes);
+    host.setVideoFrames((src, time) => videoFrames!.frame(src, time));
     const timingsReady = Promise.all([refreshVoTimings(), refreshAttributions()]);
     host.onError((e) => {
       devLog(`preview-error ${e.phase} ${e.message}${e.location ? ` at ${e.location.file}:${e.location.line}` : ""}`);
@@ -362,6 +365,7 @@
       void unlistenOverlay.then((u) => u());
       audioPlayer.destroy();
       host.dispose();
+      videoFrames?.dispose();
     };
   });
 </script>

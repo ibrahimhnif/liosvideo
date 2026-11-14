@@ -41,6 +41,43 @@ function readProjectFile(src: string): Promise<ArrayBuffer> {
 }
 runtime.registerThreeLoaders(createThreeLoaders({ read: readProjectFile, decodeImage }));
 
+// video pictures come from the host too: it seeks a <video> to each item's time
+const frameReads = new Map<number, { resolve: (b: ImageBitmap) => void; reject: (e: Error) => void }>();
+let nextFrameRead = 0;
+function readVideoFrame(src: string, time: number): Promise<ImageBitmap> {
+  const id = nextFrameRead++;
+  return new Promise((resolve, reject) => {
+    frameReads.set(id, { resolve, reject });
+    post({ type: "videoFrame", id, src, time });
+  });
+}
+/** The time of the picture each video src holds in `assets` now. */
+const videoTimes = new Map<string, number>();
+
+/** Puts every video item's picture at its own time into `assets` before the frame is drawn. */
+async function prepareVideos(list: runtime.RenderList): Promise<void> {
+  const wanted = new Map<string, number>();
+  const walk = (entries: runtime.RenderItem[]) =>
+    entries.forEach((item) => {
+      if (item.kind === "layer") walk(item.items);
+      else if (item.kind === "video") wanted.set(item.src, Math.round(item.time * 1000) / 1000);
+    });
+  walk(list.items);
+  await Promise.all(
+    [...wanted].map(async ([src, time]) => {
+      if (videoTimes.get(src) === time) return;
+      try {
+        const bitmap = await readVideoFrame(src, time);
+        assets.get(src)?.close?.();
+        assets.set(src, bitmap);
+        videoTimes.set(src, time);
+      } catch {
+        // keep the picture it has (the first frame, or the last one read)
+      }
+    }),
+  );
+}
+
 let renderer: Renderer | undefined;
 let rendererReady: Promise<Renderer> | undefined;
 let size: { width: number; height: number } | undefined;
@@ -142,6 +179,7 @@ async function render(frame: number, id: number) {
   if (r && comp) {
     const list = runtime.evaluateFrame(comp, frame);
     await prepareThree(list, frame);
+    await prepareVideos(list);
     await r.prepare(list);
     r.render(list, assets);
   }
@@ -173,8 +211,18 @@ self.onmessage = async (e: MessageEvent<ToWorker>) => {
       (await rendererReady)?.resize(msg.width, msg.height);
       return;
     case "assets":
-      for (const [src, bitmap] of msg.bitmaps) assets.set(src, bitmap);
+      for (const [src, bitmap] of msg.bitmaps) {
+        assets.set(src, bitmap);
+        videoTimes.delete(src);
+      }
       return;
+    case "videoFrameData": {
+      const pending = frameReads.get(msg.id);
+      frameReads.delete(msg.id);
+      if (msg.bitmap) pending?.resolve(msg.bitmap);
+      else pending?.reject(new Error(msg.error ?? "could not read the video frame"));
+      return;
+    }
     case "assetBytes": {
       const pending = assetReads.get(msg.id);
       assetReads.delete(msg.id);

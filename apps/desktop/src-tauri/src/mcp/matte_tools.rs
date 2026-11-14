@@ -55,3 +55,45 @@ impl Tool for MatteTool {
         })
     }
 }
+
+pub fn register_reframe_tool(registry: &mut ToolRegistry, context: Arc<EditorContext>) {
+    registry.register(Arc::new(ReframeTool { context }));
+}
+
+struct ReframeTool {
+    context: Arc<EditorContext>,
+}
+
+impl Tool for ReframeTool {
+    fn name(&self) -> &'static str {
+        "video_reframe"
+    }
+
+    fn description(&self) -> &'static str {
+        "Follow the speaker in a clip made by video_clip, so clipVideo keeps them in frame when 16:9 \
+         footage fills a 9:16 short: MODNet finds the people a few times a second, the crop holds still \
+         unless they move and jumps with camera cuts. Stores the path in the clip's VO line; clipVideo \
+         uses it on the next render. Runs the liosvideo CLI; the error says how to install it if it is missing."
+    }
+
+    fn input_schema(&self) -> Value {
+        json!({
+            "type": "object",
+            "properties": {
+                "id": { "type": "string", "description": "Clip id from video_clip, e.g. \"clip-01\"" },
+                "aspect": { "type": "string", "default": "9:16", "description": "The short's shape" }
+            },
+            "required": ["id"]
+        })
+    }
+
+    fn call(&self, args: Value) -> BoxFuture<Result<Value, String>> {
+        let context = Arc::clone(&self.context);
+        Box::pin(async move {
+            let id = args.get("id").and_then(|v| v.as_str()).ok_or("id is required")?.to_string();
+            let aspect = args.get("aspect").and_then(|v| v.as_str()).map(str::to_string);
+            let root = context.project_state.root().map_err(|e| e.to_string())?;
+            matte_cli::reframe(&root, &id, aspect.as_deref()).await
+        })
+    }
+}

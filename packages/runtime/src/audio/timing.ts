@@ -9,6 +9,25 @@ export interface LineTiming {
   line_id?: string;
   duration: number;
   words: WordTiming[];
+  /** The line's audio file when it is not assets/audio/vo/<id>.mp3 (a clip cut from a long video). */
+  src?: string;
+  /** Set for a clip cut from a long video by `video_clip`. */
+  clip?: ClipInfo;
+}
+
+/** Where the speaker is, 0 (left edge) to 1 (right edge), over one shot: `keys` are [clip seconds, x]. */
+export interface FocusSegment {
+  start: number;
+  end: number;
+  keys: [number, number][];
+}
+
+/** A stretch of a long video: its file, the seconds it spans and where the speaker sits. */
+export interface ClipInfo {
+  video: string;
+  from: number;
+  to: number;
+  focus?: FocusSegment[];
 }
 
 export interface WordSpan {
@@ -48,6 +67,16 @@ export class VoHelper {
 
   get duration(): number {
     return this.end;
+  }
+
+  /** The audio file when it is not the default assets/audio/vo/<id>.mp3. */
+  get src(): string | undefined {
+    return this.timing?.src;
+  }
+
+  /** The long-video stretch this line was cut from, for `clipVideo`. */
+  get clip(): ClipInfo | undefined {
+    return this.timing?.clip;
   }
 
   /** Word timings (seconds from the start of the line); empty until the line has been generated. */

@@ -10,7 +10,9 @@ export type ToWorker =
   | { type: "timings"; timings: Record<string, any> }
   | { type: "attributions"; markdown: string }
   /** answer to readAsset: the file's bytes, or why it could not be read */
-  | { type: "assetBytes"; id: number; bytes?: ArrayBuffer; error?: string };
+  | { type: "assetBytes"; id: number; bytes?: ArrayBuffer; error?: string }
+  /** answer to videoFrame: the picture at that time, or why it could not be read */
+  | { type: "videoFrameData"; id: number; bitmap?: ImageBitmap; error?: string };
 
 export type FromWorker =
   | {
@@ -28,6 +30,8 @@ export type FromWorker =
   | { type: "rendered"; id: number; frame: number }
   /** three() setup asked for a project file (gltf / hdr / texture) */
   | { type: "readAsset"; id: number; src: string }
+  /** a video item needs its picture at `time` seconds into the file */
+  | { type: "videoFrame"; id: number; src: string; time: number }
   /** PNG of the last rendered frame */
   | { type: "snapshot"; id: number; png?: ArrayBuffer; error?: string }
   /** phase "lost": the GPU device is gone and the worker must be replaced */

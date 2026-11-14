@@ -208,6 +208,41 @@ describe("renderer", () => {
     expect(p[0]).toBeLessThan(5);
   });
 
+  it("cover pans its crop window with focusX (0 = left edge, 1 = right edge, default centre)", async () => {
+    // a 40×10 image: left quarter red, middle half green, right quarter blue, drawn into a 20×20 box
+    const c = new OffscreenCanvas(40, 10);
+    const ctx = c.getContext("2d")!;
+    ctx.fillStyle = "#ff0000";
+    ctx.fillRect(0, 0, 10, 10);
+    ctx.fillStyle = "#00ff00";
+    ctx.fillRect(10, 0, 20, 10);
+    ctx.fillStyle = "#0000ff";
+    ctx.fillRect(30, 0, 10, 10);
+    const bmp = await createImageBitmap(c);
+    const draw = async (focus: { focusX?: number }) => {
+      const r = await make();
+      r.render(
+        list([{ kind: "image", path: "i", matrix: at(0, 0), src: "a.png", width: 20, height: 20, fit: "cover", opacity: 1, ...focus }]),
+        new Map([["a.png", bmp]]),
+      );
+      const pixels = await r.readPixels();
+      r.destroy();
+      renderer = undefined;
+      return [px(pixels, 2, 10), px(pixels, 17, 10)];
+    };
+    // the crop is a quarter of the width (10 of 40 px)
+    const [mid] = await draw({});
+    expect(mid[1]).toBeGreaterThan(200);
+    const [leftA, leftB] = await draw({ focusX: 0 });
+    expect(leftA[0]).toBeGreaterThan(200);
+    expect(leftB[0]).toBeGreaterThan(200);
+    const [rightA] = await draw({ focusX: 1 });
+    expect(rightA[2]).toBeGreaterThan(200);
+    // past the edge it stays on the picture
+    const [over] = await draw({ focusX: 1.5 });
+    expect(over[2]).toBeGreaterThan(200);
+  });
+
   it("cuts a packed matte video out by its mask (colour on top, mask below at half height)", async () => {
     const r = await make();
     // 8×12 frame: 8×8 colour (all green) over an 8×4 mask whose left half is white

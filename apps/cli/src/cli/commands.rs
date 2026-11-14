@@ -388,6 +388,12 @@ pub async fn run_asset(project: &Path, command: AssetCommand) -> Result<()> {
             let d = crate::youtube::download(&root, &url, &opts).await.map_err(anyhow::Error::msg)?;
             println!("{}", serde_json::to_string_pretty(&d)?);
         }
+        AssetCommand::Clip { video, from, to, id, no_snap, force } => {
+            let opts = crate::clips::ClipOptions { snap: !no_snap, force };
+            let c = crate::clips::make_clip(&root, &video, from, to, &id, &opts).await.map_err(anyhow::Error::msg)?;
+            println!("{}", serde_json::to_string_pretty(&c)?);
+        }
+        AssetCommand::Reframe { id, aspect } => reframe_command(&root, &id, &aspect).await?,
         AssetCommand::Transcript { video, from, to, transcribe, lang, force, json } => {
             let video = video.trim_start_matches("./").to_string();
             if transcribe && (force || crate::transcript::read(&root, &video).is_err()) {
@@ -586,6 +592,20 @@ async fn sfx_command(root: &Path, command: SfxCommand) -> Result<()> {
 }
 
 #[cfg(feature = "matte")]
+#[cfg(feature = "matte")]
+async fn reframe_command(root: &Path, id: &str, aspect: &str) -> Result<()> {
+    use crate::matte::track;
+    let aspect = track::parse_aspect(aspect)?;
+    let r = track::reframe(root.to_path_buf(), id.to_string(), aspect, |m| eprintln!("{m}")).await?;
+    println!("{}", serde_json::to_string_pretty(&r)?);
+    Ok(())
+}
+
+#[cfg(not(feature = "matte"))]
+async fn reframe_command(_root: &Path, _id: &str, _aspect: &str) -> Result<()> {
+    anyhow::bail!("this liosvideo was built without the matte feature, which reframing needs")
+}
+
 async fn matte_command(root: &Path, video: &str, quality: &str, force: bool) -> Result<()> {
     use crate::matte;
     let opts = matte::MatteOptions { quality: matte::Quality::parse(quality)?, force };

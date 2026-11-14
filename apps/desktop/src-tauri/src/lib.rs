@@ -1,6 +1,7 @@
 mod acp;
 mod agents;
 pub mod audio;
+mod clips;
 mod commons;
 mod earshot;
 mod openverse;

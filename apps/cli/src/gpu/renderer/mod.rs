@@ -796,12 +796,16 @@ impl Renderer {
                             height = ch;
                         }
                         "cover" => {
+                            // the crop window slides with focus: 0 = left/top edge, 1 = right/bottom
+                            let start = |k: f32, focus: f32| (1.0 - k) * focus.clamp(0.0, 1.0);
                             if img_aspect > box_aspect {
                                 let k = box_aspect / img_aspect;
-                                uv = [(1.0 - k) / 2.0, 0.0, (1.0 + k) / 2.0, 1.0];
+                                let u0 = start(k, f32_of(leaf, "focusX", 0.5));
+                                uv = [u0, 0.0, u0 + k, 1.0];
                             } else {
                                 let k = img_aspect / box_aspect;
-                                uv = [0.0, (1.0 - k) / 2.0, 1.0, (1.0 + k) / 2.0];
+                                let v0 = start(k, f32_of(leaf, "focusY", 0.5));
+                                uv = [0.0, v0, 1.0, v0 + k];
                             }
                         }
                         _ => {}

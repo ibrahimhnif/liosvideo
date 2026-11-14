@@ -27,11 +27,17 @@ export type ImageFit = "fill" | "contain" | "cover";
 export interface ImageProps extends BaseProps {
   src: string;
   fit: ImageFit;
+  /** With `fit: "cover"`: which part of the picture stays in the box, 0 = left/top edge, 1 = right/bottom, 0.5 = centre. */
+  focusX: number;
+  focusY: number;
 }
 
 export interface VideoProps extends BaseProps {
   src: string;
   fit: ImageFit;
+  /** With `fit: "cover"`: which part of the picture stays in the box, 0 = left/top edge, 1 = right/bottom, 0.5 = centre. */
+  focusX: number;
+  focusY: number;
   startOffset: number;
   speed: number;
   loop: boolean;
@@ -140,13 +146,13 @@ export class TextNode extends Node<TextProps> {
 
 export class ImageNode extends Node<ImageProps> {
   constructor(init: NodeInit<ImageProps> & { src: string }) {
-    super("image", { ...BASE_DEFAULTS, src: "", fit: "fill" }, init);
+    super("image", { ...BASE_DEFAULTS, src: "", fit: "fill", focusX: 0.5, focusY: 0.5 }, init);
   }
 }
 
 export class VideoNode extends Node<VideoProps> {
   constructor(init: NodeInit<VideoProps> & { src: string }) {
-    super("video", { ...BASE_DEFAULTS, src: "", fit: "fill", startOffset: 0, speed: 1.0, loop: false, matte: false }, init);
+    super("video", { ...BASE_DEFAULTS, src: "", fit: "fill", focusX: 0.5, focusY: 0.5, startOffset: 0, speed: 1.0, loop: false, matte: false }, init);
   }
 }
 

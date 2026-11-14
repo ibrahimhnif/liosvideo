@@ -10,7 +10,7 @@ use std::io::BufReader;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
-use anyhow::{anyhow, Context, Result};
+use anyhow::{anyhow, bail, Context, Result};
 use mp4::{Mp4Reader, TrackType};
 use openh264::decoder::Decoder;
 use serde::Deserialize;
@@ -65,7 +65,14 @@ impl AssetStore {
 
     pub fn video_frame(&mut self, src: &str, time: f64) -> Option<Arc<ImageAsset>> {
         if !self.videos.contains_key(src) {
-            let state = resolve(&self.root, src).and_then(|path| VideoState::open(&path).ok());
+            let state = match resolve(&self.root, src).map(|path| VideoState::open(&path)) {
+                Some(Ok(state)) => Some(state),
+                Some(Err(err)) => {
+                    self.warn_once(src, &format!("can't play video \"{src}\": {err:#}"));
+                    None
+                }
+                None => None,
+            };
             self.videos.insert(src.to_string(), state);
         }
 
@@ -170,6 +177,11 @@ fn premultiply(rgba: &mut [u8]) {
     }
 }
 
+/// Frames stored out of display order (composition offsets): B-frames, which openh264 does not decode.
+fn has_b_frames(composition_offsets: impl IntoIterator<Item = i32>) -> bool {
+    composition_offsets.into_iter().any(|o| o != 0)
+}
+
 struct VideoState {
     reader: Mp4Reader<BufReader<File>>,
     track_id: u32,
@@ -197,6 +209,13 @@ impl VideoState {
             .find(|t| t.track_type().ok() == Some(TrackType::Video))
             .ok_or_else(|| anyhow!("no video track"))?;
 
+        let offsets = track.trak.mdia.minf.stbl.ctts.iter().flat_map(|c| c.entries.iter().map(|e| e.sample_offset));
+        if has_b_frames(offsets) {
+            bail!(
+                "it has B-frames, which the renderer's H.264 decoder can't read (YouTube and most cameras use them). \
+                 Cut the part you need with video_clip, or re-encode it: ffmpeg -i in.mp4 -c:v libx264 -bf 0 -c:a copy out.mp4"
+            );
+        }
         let track_id = track.track_id();
         let timescale = track.timescale();
         let sps = track
@@ -429,6 +448,13 @@ pub struct WordTimingFileWord {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn spots_reordered_frames_the_decoder_cannot_read() {
+        assert!(!has_b_frames([]));
+        assert!(!has_b_frames([0, 0]));
+        assert!(has_b_frames([1001, 0, 2002]));
+    }
 
     #[test]
     fn decodes_limited_range_bt709_to_full_range_rgb() {

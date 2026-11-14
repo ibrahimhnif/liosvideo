@@ -72,6 +72,8 @@ pub fn register_all(registry: &mut ToolRegistry, session: SharedSession) {
     crate::mcp::clip_tools::register_clip_tools(registry, session.clone());
     #[cfg(feature = "matte")]
     crate::mcp::matte_tools::register_matte_tools(registry, session.clone());
+    #[cfg(feature = "matte")]
+    crate::mcp::matte_tools::register_reframe_tool(registry, session.clone());
     crate::mcp::destockd_tools::register_destockd_tools(registry, session);
 }
 
