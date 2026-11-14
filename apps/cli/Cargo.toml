@@ -32,7 +32,7 @@ symphonia = { version = "0.5", features = ["mp3", "wav", "isomp4", "alac", "flac
 openh264 = "0.6"
 mp4 = "0.14"
 fdk-aac-rs = "0.1.0"
-reqwest = { version = "0.13.5", default-features = false, features = ["json", "rustls"] }
+reqwest = { version = "0.13.5", default-features = false, features = ["json", "rustls", "multipart"] }
 thiserror = "2.0.21"
 base64 = "0.23.1"
 dirs = "7.0.0"

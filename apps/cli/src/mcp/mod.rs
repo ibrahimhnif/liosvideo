@@ -6,6 +6,7 @@ pub mod image_tools;
 pub mod protocol;
 pub mod server;
 pub mod sound_tools;
+pub mod clip_tools;
 #[cfg(feature = "matte")]
 pub mod matte_tools;
 pub mod tools;

@@ -387,6 +387,44 @@ pub enum AssetCommand {
         #[arg(long)]
         force: bool,
     },
+    /// Download a long video (YouTube or any site yt-dlp reads) into assets/video with its transcript, to clip
+    Youtube {
+        url: String,
+        /// Output file name without extension (default: from the title)
+        #[arg(long)]
+        name: Option<String>,
+        /// Caption language, e.g. en or id (default: the video's own)
+        #[arg(long)]
+        lang: Option<String>,
+        /// Tallest picture to fetch
+        #[arg(long, default_value_t = 1080)]
+        max_height: u32,
+        #[arg(long)]
+        force: bool,
+    },
+    /// Print a project video's transcript (from its captions, or made with --transcribe)
+    Transcript {
+        /// Project video, e.g. assets/video/talk.mp4
+        video: String,
+        /// Start of the stretch, seconds
+        #[arg(long)]
+        from: Option<f64>,
+        /// End of the stretch, seconds
+        #[arg(long)]
+        to: Option<f64>,
+        /// Make the transcript with ElevenLabs speech-to-text when there is none
+        #[arg(long)]
+        transcribe: bool,
+        /// Spoken language for --transcribe, e.g. en or id
+        #[arg(long)]
+        lang: Option<String>,
+        /// With --transcribe: make it again
+        #[arg(long)]
+        force: bool,
+        /// Print JSON (with each word's time)
+        #[arg(long)]
+        json: bool,
+    },
     /// Sound effects made in code by earshot (optional: uv tool install earshot)
     Sfx {
         #[command(subcommand)]

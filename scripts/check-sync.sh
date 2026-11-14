@@ -27,6 +27,8 @@ pairs=(
   "apps/desktop/src-tauri/src/commons.rs|apps/cli/src/commons.rs"
   "apps/desktop/src-tauri/src/openverse.rs|apps/cli/src/openverse.rs"
   "apps/desktop/src-tauri/src/earshot.rs|apps/cli/src/earshot.rs"
+  "apps/desktop/src-tauri/src/transcript.rs|apps/cli/src/transcript.rs"
+  "apps/desktop/src-tauri/src/youtube.rs|apps/cli/src/youtube.rs"
   "apps/desktop/src-tauri/src/acp/client.rs|apps/cli/src/acp/client.rs"
   "apps/desktop/src-tauri/src/acp/session.rs|apps/cli/src/acp/session.rs"
   "apps/desktop/src-tauri/src/mcp/tools.rs|apps/cli/src/mcp/tools.rs"

@@ -626,6 +626,17 @@ cut.add(video({ name: "person", src: "assets/video/talk.mp4", matte: true, width
 
 ---
 
+### Clips from Long Videos (`youtube_download`, `video_transcript`)
+
+Short clips from a long video (a podcast, a talk, a stream) start from the video and its word-timed transcript:
+
+1. `youtube_download` (CLI: `liosvideo asset youtube <url>`) fetches the video with yt-dlp into `assets/video/<name>.mp4` as H.264, writes `<name>.transcript.json` from its captions (uploaded caption text with speech-recognition word times when both exist) and adds its `assets/ATTRIBUTIONS.md` row. Options: `name`, `lang` (caption language, default the video's own), `maxHeight` (default 1080), `force`. Needs yt-dlp (`brew install yt-dlp` or `uv tool install yt-dlp`) and deno or node for YouTube. Works for the other sites yt-dlp reads too.
+2. A video with no captions, or a file the user added: `video_transcribe` (CLI: `liosvideo asset transcript <video> --transcribe`) makes the transcript with ElevenLabs speech-to-text, using the voice-over key.
+3. `video_transcript` (CLI: `liosvideo asset transcript <video> [--from s --to s]`) reads it as `[mm:ss.s → mm:ss.s] text` lines. Long transcripts come in parts: call again with `from: nextFrom`. `words: true` adds every word's time, for exact cut points.
+
+- Clip only videos you may clip: your own, a clipping campaign's (the owner allows it), or Creative Commons. Keep the attribution row, and credit the source on screen when the campaign asks for it.
+- Pick moments that stand alone: a hook in the first 2 s, one whole thought, 20–60 s, starting and ending on sentence boundaries.
+
 ## Editor MCP Server Tools
 
 When interacting as an AI agent via ACP (Claude Code, Gemini CLI, Codex), use the built-in Editor MCP tools:
@@ -637,6 +648,7 @@ When interacting as an AI agent via ACP (Claude Code, Gemini CLI, Codex), use th
 - `capture_frame`: Capture a PNG frame at timestamp `t` for visual verification.
 - `image_generate` / `image_edit`: Generate an image with Gemini into `assets/images/<id>.png`, or revise it with a plain instruction (new version, same path). See *AI Image Generation*.
 - `video_matte`: Cut the person out of a project video into `<name>.matte.mp4` for `video({ matte: true })`. See *Video Cut-outs & Sticker Outlines*.
+- `youtube_download` / `video_transcript` / `video_transcribe`: Fetch a long video with its word-timed transcript, read the transcript to pick clips, or transcribe a video that has none. See *Clips from Long Videos*.
 - `validate_scene`: Validate scene TypeScript code against deterministic rendering rules, illegal imports, node naming constraints, and asset existence.
 
 ---

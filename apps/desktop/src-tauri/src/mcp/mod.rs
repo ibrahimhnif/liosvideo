@@ -3,6 +3,7 @@ pub mod audio_tools;
 pub mod commons_tools;
 pub mod sound_tools;
 pub mod matte_tools;
+pub mod clip_tools;
 pub mod destockd_tools;
 pub mod image_tools;
 pub mod bridge;

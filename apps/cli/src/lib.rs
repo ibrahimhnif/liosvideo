@@ -17,5 +17,7 @@ pub mod pipeline;
 pub mod project;
 pub mod runtime;
 pub mod text;
+pub mod transcript;
 pub mod tts;
 pub mod watch;
+pub mod youtube;

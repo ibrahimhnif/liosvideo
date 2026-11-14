@@ -382,6 +382,34 @@ pub async fn run_asset(project: &Path, command: AssetCommand) -> Result<()> {
         AssetCommand::Commons { command } => commons_command(&root, command).await?,
         AssetCommand::Audio { command } => audio_command(&root, command).await?,
         AssetCommand::Sfx { command } => sfx_command(&root, command).await?,
+        AssetCommand::Youtube { url, name, lang, max_height, force } => {
+            let opts = crate::youtube::DownloadOptions { name, lang, max_height: Some(max_height), force };
+            eprintln!("Downloading with yt-dlp…");
+            let d = crate::youtube::download(&root, &url, &opts).await.map_err(anyhow::Error::msg)?;
+            println!("{}", serde_json::to_string_pretty(&d)?);
+        }
+        AssetCommand::Transcript { video, from, to, transcribe, lang, force, json } => {
+            let video = video.trim_start_matches("./").to_string();
+            if transcribe && (force || crate::transcript::read(&root, &video).is_err()) {
+                let key = crate::mcp::clip_tools::elevenlabs_key().ok_or_else(|| anyhow::anyhow!(crate::transcript::NO_KEY))?;
+                eprintln!("Transcribing with ElevenLabs…");
+                crate::transcript::transcribe(&root, &video, &key, lang.as_deref(), force).await.map_err(anyhow::Error::msg)?;
+            }
+            let t = crate::transcript::read(&root, &video).map_err(anyhow::Error::msg)?;
+            if json {
+                println!("{}", serde_json::to_string_pretty(&crate::youtube::transcript_answer(&t, from, to, true))?);
+            } else {
+                let mut from = from;
+                loop {
+                    let part = crate::youtube::transcript_answer(&t, from, to, false);
+                    println!("{}", part["text"].as_str().unwrap_or(""));
+                    match part["nextFrom"].as_f64() {
+                        Some(next) => from = Some(next),
+                        None => break,
+                    }
+                }
+            }
+        }
         AssetCommand::Matte { video, quality, force } => matte_command(&root, &video, &quality, force).await?,
         AssetCommand::GenerateImage {
             prompt,

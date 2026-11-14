@@ -16,7 +16,9 @@ mod project;
 mod recent;
 pub mod scene_validator;
 mod scaffold;
+mod transcript;
 mod watch;
+mod youtube;
 
 /// Lets the frontend write diagnostics to the terminal running `tauri dev`.
 #[tauri::command]
