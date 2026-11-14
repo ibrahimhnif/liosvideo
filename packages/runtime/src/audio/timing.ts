@@ -27,6 +27,8 @@ export interface ClipInfo {
   video: string;
   from: number;
   to: number;
+  /** The long video it was cut from, and where (seconds in that video). */
+  source?: { video: string; from: number; to: number };
   focus?: FocusSegment[];
 }
 

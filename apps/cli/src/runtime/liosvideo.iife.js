@@ -2775,6 +2775,7 @@ var __liosvideo = (function(exports) {
 		en: {
 			source: "Source",
 			photo: "Photo",
+			video: "Video",
 			music: "Music",
 			sound: "Sound",
 			ai: "AI illustration"
@@ -2782,18 +2783,25 @@ var __liosvideo = (function(exports) {
 		id: {
 			source: "Sumber",
 			photo: "Foto",
+			video: "Video",
 			music: "Musik",
 			sound: "Suara",
 			ai: "Ilustrasi AI"
 		}
 	};
 	const AUDIO = /\.(mp3|wav|ogg|oga|flac|m4a|aac|opus)$/i;
+	const VIDEO = /\.(mp4|webm|mov|m4v|mkv)$/i;
 	/** Which label an asset's credit takes, from its folder and extension. */
 	function assetLabel(asset) {
 		const path = asset.replace(/^\.\//, "");
 		if (/(^|\/)audio\/music\//i.test(path)) return "music";
 		if (/(^|\/)audio\//i.test(path) || AUDIO.test(path)) return "sound";
+		if (VIDEO.test(path)) return "video";
 		return "photo";
+	}
+	/** A platform's own terms ("YouTube Standard License") grant no reuse, so the screen names only the creator. */
+	function shownLicense(license) {
+		return /standard licen[cs]e/i.test(license) ? "" : license;
 	}
 	/** "https://www.unsplash.com/photos/x" -> "unsplash.com"; anything else is returned as written. */
 	function siteOf(source) {
@@ -2826,8 +2834,9 @@ var __liosvideo = (function(exports) {
 				license ??= row.license;
 				continue;
 			}
-			if (who) assetParts.push(`${L[label]}: ${who}${row.license ? `, ${row.license}` : ""}`);
-			else if (row.license) assetParts.push(row.license);
+			const lic = label === "video" ? shownLicense(row.license) : row.license;
+			if (who) assetParts.push(`${L[label]}: ${who}${lic ? `, ${lic}` : ""}`);
+			else if (lic) assetParts.push(lic);
 		}
 		if (photo) parts.push(`${L.photo}: ${photo}${license ? `, ${license}` : ""}`);
 		else if (license) parts.push(license);
@@ -3021,6 +3030,118 @@ var __liosvideo = (function(exports) {
 		const focus = clip.focus ?? [];
 		if (!opts.still && focus.length) node.drive((t) => ({ focusX: focusAt(focus, t - at) }));
 		return node;
+	}
+	/**
+	* A whole short from one `video_clip` line: the clip full-frame following the speaker, karaoke
+	* captions, an optional hook title and the source credit, as long as the clip. `export default clipShort("clip-01", { title })`.
+	*/
+	function clipShort(id, opts = {}) {
+		const width = opts.width ?? 1080;
+		const height = opts.height ?? 1920;
+		const def = scene(id, {
+			vo: [id],
+			pad: 0,
+			background: "#000000"
+		}, ({ root }) => {
+			clipVideo(root, id, {
+				width,
+				height,
+				still: opts.still
+			});
+			const source = vo(id).clip?.source?.video;
+			if (opts.credit !== false && source) credit(root, {
+				...opts.credit || {},
+				asset: source
+			});
+			if (opts.title) hookTitle(root, opts.title, opts.titleHold ?? 3, opts.fontFamily);
+			if (opts.captions !== false) captions(root, {
+				background: "#000000b3",
+				fontFamily: opts.fontFamily,
+				...opts.captions || {},
+				lines: [id]
+			});
+		});
+		return composition({
+			width,
+			height,
+			fps: opts.fps ?? 30,
+			background: "#000000",
+			scenes: [def],
+			audio: opts.audio,
+			mix: opts.mix
+		});
+	}
+	/** The hook: centred near the top under the credit line, on a dark card, gone after `hold` seconds. */
+	function hookTitle(root, title, hold, fontFamily = "SF Pro Display") {
+		const { width, height } = root.propsAt(0);
+		const L = layout({
+			width,
+			height
+		});
+		const type = L.orientation === "portrait" ? L.type.h2 : L.type.h1;
+		const pad = L.gap(2);
+		const maxWidth = L.safe.width - pad * 2;
+		const text = new TextNode({
+			text: title,
+			...type,
+			fontFamily,
+			maxWidth
+		}).propsAt(0).text;
+		const size = measureText({
+			text,
+			...type,
+			fontFamily
+		});
+		const w = Math.min(size.width, maxWidth) + pad * 2;
+		const h = size.height + pad * 2;
+		const top = L.safe.y + L.type.label.fontSize * L.type.label.lineHeight + L.gap(4);
+		const card = root.add(new GroupNode({
+			name: "hook",
+			x: width / 2,
+			y: top,
+			width: w,
+			height: h,
+			anchorX: .5,
+			anchorY: 0,
+			opacity: 0,
+			scaleX: .92,
+			scaleY: .92
+		}));
+		card.add(new RectNode({
+			name: "card",
+			width: w,
+			height: h,
+			radius: L.u * 1.5,
+			fill: "#000000c7"
+		}));
+		card.add(new TextNode({
+			name: "title",
+			text,
+			...type,
+			fontFamily,
+			color: "#ffffff",
+			align: "center",
+			x: w / 2,
+			y: h / 2,
+			width: w - pad * 2,
+			height: size.height,
+			anchorX: .5,
+			anchorY: .5
+		}));
+		card.to({
+			opacity: 1,
+			scaleX: 1,
+			scaleY: 1
+		}, {
+			at: .1,
+			duration: .35,
+			ease: "outBack"
+		});
+		card.to({ opacity: 0 }, {
+			at: Math.max(hold, .6),
+			duration: .3,
+			ease: "inOutCubic"
+		});
 	}
 	// packages/runtime/src/mockups/window.ts
 	var WindowNode = class extends GroupNode {
@@ -4710,6 +4831,7 @@ var __liosvideo = (function(exports) {
 	exports.chrome = chrome;
 	exports.circle = circle;
 	exports.clampFrame = clampFrame;
+	exports.clipShort = clipShort;
 	exports.clipVideo = clipVideo;
 	exports.collectAssets = collectAssets;
 	exports.composition = composition;

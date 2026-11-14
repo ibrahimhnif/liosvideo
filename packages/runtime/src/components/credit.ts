@@ -11,8 +11,8 @@ export interface CreditOptions {
   /** Licence of that image, e.g. "CC BY-SA 4.0". */
   license?: string;
   /**
-   * Fill the credit from this asset's row in assets/ATTRIBUTIONS.md: "Photo: …" for images,
-   * "Music: …" for assets/audio/music/, "Sound: …" for other audio. Several assets share one line.
+   * Fill the credit from this asset's row in assets/ATTRIBUTIONS.md: "Photo: …" for images, "Video: …"
+   * for video files, "Music: …" for assets/audio/music/, "Sound: …" for other audio. Several assets share one line.
    */
   asset?: string | string[];
   /** Replace the generated line entirely. */
@@ -31,18 +31,25 @@ export interface CreditOptions {
 }
 
 const LABELS = {
-  en: { source: "Source", photo: "Photo", music: "Music", sound: "Sound", ai: "AI illustration" },
-  id: { source: "Sumber", photo: "Foto", music: "Musik", sound: "Suara", ai: "Ilustrasi AI" },
+  en: { source: "Source", photo: "Photo", video: "Video", music: "Music", sound: "Sound", ai: "AI illustration" },
+  id: { source: "Sumber", photo: "Foto", video: "Video", music: "Musik", sound: "Suara", ai: "Ilustrasi AI" },
 } as const;
 
 const AUDIO = /\.(mp3|wav|ogg|oga|flac|m4a|aac|opus)$/i;
+const VIDEO = /\.(mp4|webm|mov|m4v|mkv)$/i;
 
 /** Which label an asset's credit takes, from its folder and extension. */
-function assetLabel(asset: string): "photo" | "music" | "sound" {
+function assetLabel(asset: string): "photo" | "video" | "music" | "sound" {
   const path = asset.replace(/^\.\//, "");
   if (/(^|\/)audio\/music\//i.test(path)) return "music";
   if (/(^|\/)audio\//i.test(path) || AUDIO.test(path)) return "sound";
+  if (VIDEO.test(path)) return "video";
   return "photo";
+}
+
+/** A platform's own terms ("YouTube Standard License") grant no reuse, so the screen names only the creator. */
+function shownLicense(license: string): string {
+  return /standard licen[cs]e/i.test(license) ? "" : license;
 }
 
 /** "https://www.unsplash.com/photos/x" -> "unsplash.com"; anything else is returned as written. */
@@ -81,8 +88,9 @@ export function creditText(opts: CreditOptions): string {
       license ??= row.license;
       continue;
     }
-    if (who) assetParts.push(`${L[label]}: ${who}${row.license ? `, ${row.license}` : ""}`);
-    else if (row.license) assetParts.push(row.license);
+    const lic = label === "video" ? shownLicense(row.license) : row.license;
+    if (who) assetParts.push(`${L[label]}: ${who}${lic ? `, ${lic}` : ""}`);
+    else if (lic) assetParts.push(lic);
   }
   if (photo) parts.push(`${L.photo}: ${photo}${license ? `, ${license}` : ""}`);
   else if (license) parts.push(license);

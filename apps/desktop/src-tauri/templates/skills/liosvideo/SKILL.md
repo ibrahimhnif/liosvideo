@@ -802,6 +802,26 @@ export default scene("clip-01", { vo: ["clip-01"], pad: 0 }, ({ root, width, hei
 - Pick moments that stand alone: a hook in the first 2 s, one whole thought, 20–60 s, starting and ending on sentence boundaries.
 - Bright footage needs a caption `background` so white words stay readable.
 
+#### A whole short in one line (`clipShort`)
+
+```ts
+// clip-01.ts — one file per clip, each a renderable 9:16 composition
+import { clipShort } from "liosvideo";
+
+export default clipShort("clip-01", { title: "Why Mars before the Moon?" });
+```
+
+- 1080×1920 at 30 fps, as long as the clip: the clip following the speaker, karaoke captions on a dark pill, the hook `title` on a card near the top for the first `titleHold` seconds (default 3), and the source credit from the long video's `assets/ATTRIBUTIONS.md` row ("Video: NASA"; a platform's standard licence is left off the screen, a Creative Commons one is shown).
+- Options: `title`, `titleHold`, `captions` (caption options, or `false`), `credit` (credit options such as `lang`, or `false`), `still`, `audio` (a music bed), `mix`, `width`, `height`, `fps`, `fontFamily`. For anything more, write the scene with `clipVideo` and `captions` as above.
+
+#### Picking clips (many shorts from one video)
+
+1. `youtube_download` the video, then read the whole transcript with `video_transcript` in parts (`from: nextFrom`) before choosing anything.
+2. Shortlist moments that stand alone: a hook in the first 2 s (a question, a surprising claim, a strong opinion), one whole thought with its payoff, 20–60 s, starting and ending on sentence boundaries. Skip stretches that need earlier context ("as I said…"), and leave out intros, sponsor reads and housekeeping.
+3. For each pick, read its words (`video_transcript` with `from`/`to` and `words: true`) and cut it: `video_clip` with ids `clip-01`, `clip-02`, …; then `video_reframe` each one for 9:16.
+4. Write one root file per clip (`clip-01.ts` …) with `clipShort` and a short hook `title` in the speaker's language that the first seconds answer. Check a frame of each with `capture_frame`.
+5. Render them all: `for f in clip-*.ts; do liosvideo render "$f" -o "out/${f%.ts}.mp4"; done`. List the picks (id, source times, title) for the user, and copy the attribution `descriptionCredit` into each upload's description.
+
 ## 8. MCP Editor Tools
 
 When operating as an AI agent connected via ACP:
