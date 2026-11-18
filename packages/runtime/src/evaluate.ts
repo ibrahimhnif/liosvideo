@@ -64,7 +64,10 @@ function drawable(node: Node<any>, t: number, matrix: Affine, opacity: number, d
     p.fit === "cover" && (p.focusX !== 0.5 || p.focusY !== 0.5) ? { focusX: p.focusX, focusY: p.focusY } : {};
   if (node instanceof ImageNode) {
     const p = node.propsAt(t);
-    return { kind: "image", path, matrix, src: p.src, width: p.width, height: p.height, fit: p.fit, opacity, ...focus(p) };
+    return {
+      kind: "image", path, matrix, src: p.src, width: p.width, height: p.height, fit: p.fit, opacity, ...focus(p),
+      ...(p.crop ? { crop: [...p.crop] as [number, number, number, number] } : {}),
+    };
   }
   if (node instanceof VideoNode) {
     const p = node.propsAt(t);
@@ -152,7 +155,10 @@ export function evaluateFrame(c: Composition, frame: number): RenderList {
 export function collectAssets(c: Composition): string[] {
   const srcs = new Set<string>();
   const walk = (node: Node<any>) => {
-    if (node instanceof ImageNode) srcs.add(node.propsAt(0).src);
+    if (node instanceof ImageNode) {
+      srcs.add(node.propsAt(0).src);
+      node.uses.forEach((src) => srcs.add(src));
+    }
     else if (node instanceof VideoNode) srcs.add(videoFile(node.propsAt(0)));
     node.children.forEach(walk);
   };

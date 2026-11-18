@@ -44,6 +44,8 @@ export type ImageItem = {
   /** cover crop position, 0..1 (default 0.5) */
   focusX?: number;
   focusY?: number;
+  /** only this `[x, y, width, height]` of the picture, in its pixels */
+  crop?: [number, number, number, number];
 };
 
 export type VideoItem = {

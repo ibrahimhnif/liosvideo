@@ -22,6 +22,7 @@ export * from "./components/captions";
 export * from "./components/credit";
 export * from "./components/callout";
 export * from "./components/clip";
+export * from "./components/spritecast";
 export * from "./assets/attributions";
 export * from "./mockups/window";
 export * from "./mockups/desktop";

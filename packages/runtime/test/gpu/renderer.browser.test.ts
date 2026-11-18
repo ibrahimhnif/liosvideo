@@ -243,6 +243,32 @@ describe("renderer", () => {
     expect(over[2]).toBeGreaterThan(200);
   });
 
+  it("draws only the crop rectangle of an image, sized to it by default (one frame of a sprite strip)", async () => {
+    // a 40×10 strip of four 10×10 frames: red, green, blue, white
+    const c = new OffscreenCanvas(40, 10);
+    const ctx = c.getContext("2d")!;
+    ["#ff0000", "#00ff00", "#0000ff", "#ffffff"].forEach((fill, i) => {
+      ctx.fillStyle = fill;
+      ctx.fillRect(i * 10, 0, 10, 10);
+    });
+    const bmp = await createImageBitmap(c);
+    const r = await make();
+    r.render(
+      list([
+        { kind: "image", path: "a", matrix: at(0, 0), src: "s.png", width: 0, height: 0, fit: "fill", opacity: 1, crop: [20, 0, 10, 10] },
+        { kind: "image", path: "b", matrix: at(20, 0), src: "s.png", width: 40, height: 40, fit: "fill", opacity: 1, crop: [10, 0, 10, 10] },
+      ]),
+      new Map([["s.png", bmp]]),
+    );
+    const p = await r.readPixels();
+    expect(px(p, 5, 5)[2]).toBeGreaterThan(200); // frame 2 (blue), natural 10×10
+    expect(px(p, 5, 5)[0]).toBeLessThan(40);
+    expect(px(p, 12, 5)).toEqual([0, 0, 0, 255]); // nothing past the crop's own width
+    expect(px(p, 21, 2)[1]).toBeGreaterThan(200); // frame 1 (green), scaled to 40×40 edge to edge
+    expect(px(p, 58, 38)[1]).toBeGreaterThan(200);
+    expect(px(p, 58, 38)[0]).toBeLessThan(40);
+  });
+
   it("cuts a packed matte video out by its mask (colour on top, mask below at half height)", async () => {
     const r = await make();
     // 8×12 frame: 8×8 colour (all green) over an 8×4 mask whose left half is white

@@ -148,7 +148,7 @@ export default scene(
 | **Path** | `path(props)` | Group properties plus `d (SVG path string), fill, stroke, strokeWidth` (triangles, polygons, custom vector paths) |
 | **Shader** | `shader(props)` | Group properties plus `code (raw WGSL fragment shader), uniforms` (procedural effects, gradients, noise) |
 | **Text** | `text(props)` | Group properties plus `text, fontFamily, fontSize, fontWeight, color, lineHeight, align ("left" \| "center" \| "right"), maxWidth` (wraps words past `maxWidth`) |
-| **Image** | `image(props)` | Group properties plus `src` (project-relative path), `fit ("fill" \| "contain" \| "cover")` |
+| **Image** | `image(props)` | Group properties plus `src` (project-relative path), `fit ("fill" \| "contain" \| "cover")`, `crop [x, y, w, h]` (part of the file, e.g. a sprite frame) |
 | **Video** | `video(props)` | Group properties plus `src` (project-relative path, e.g. `"assets/video/clip.mp4"`), `fit ("fill" \| "contain" \| "cover")`, `startOffset`, `speed`, `loop` |
 | **Three (3D)** | `three(props)` | Group properties plus `camera ("perspective" \| "orthographic"), fov, shadows, toneMapping, exposure, setup({ scene, camera, width, height }), update(state, progress, time)` (Three.js 3D scenes, meshes, lights, materials) |
 | **Phone** | `phone(props)` | Smartphone device frame for 9:16 mobile compositions with bezel, screen, dynamic island, and home indicator |
@@ -592,6 +592,31 @@ Every render (CLI and desktop export) runs the mix through a master bus:
     );
   });
   ```
+
+### Game Sprites from SpriteCast (`spriteCharacter`, `spriteProp`)
+
+[SpriteCast](https://github.com/Sunghwan0112/spritecast) (a Claude Code plugin, MIT) draws isometric characters and props in an illustration's style. Copy a character's `out/` folder into `assets/sprites/<name>/` (strips, `shadows/`, `character.json`) and a prop's into `assets/props/<name>/` (`sprite.png`, `shadow.png`, `sprite.json`), then import the JSON and play it:
+
+```ts
+import { scene, spriteCharacter, spriteProp } from "liosvideo";
+import girl from "../assets/sprites/rain_girl/character.json" with { type: "json" };
+import chair from "../assets/props/armchair/sprite.json" with { type: "json" };
+
+export default scene("walk", { duration: 8 }, ({ root, width, height }) => {
+  spriteProp(root, { src: "assets/props/armchair", data: chair, x: width * 0.7, y: height * 0.75, height: 300 });
+  const g = spriteCharacter(root, { src: "assets/sprites/rain_girl", data: girl, x: width * 0.2, y: height * 0.8, height: 360, facing: "south-east" });
+  g.walkTo(width * 0.6, height * 0.7, { at: 0.5, duration: 3 })   // faces the way it goes; frames at the set's fps
+    .play("slash", { at: 4 })                                       // an action from character.json, once
+    .face("south", { at: 5.5 })
+    .sit({ at: 6.5 });                                              // the seat point lands on its position
+});
+```
+
+- `x`, `y` is where the feet stand (a prop: its footprint's front corner); `height` is a frame's height on screen (or `scale`). The ground shadow is drawn under it at 30 % (`shadow: 0.5`, or `0` for none).
+- `walkTo(x, y, { at, duration | speed, facing })`, `play(action, { at, duration, facing })` (once, or looped for `duration`; a swing's `trail` is drawn over it), `face(facing, { at })`, `sit({ at, facing })`, `idle({ at })`; `g.end` is when the last move ends and `g.node` is its group. Facings are screen directions: `south` toward the viewer, `east` to the right; a set drawn in four facings shows the nearest one.
+- A typo in an action names the ones the set has. Pixel sets (`pixel64/`, `pixel.json`) are not read yet.
+- Any image can show part of its file with `crop: [x, y, width, height]` (source pixels), e.g. one frame of a strip.
+- List the sprites in `assets/ATTRIBUTIONS.md` (made with SpriteCast from your own illustration).
 
 ### Video Cut-outs & Sticker Outlines (`matte`, `sticker`)
 

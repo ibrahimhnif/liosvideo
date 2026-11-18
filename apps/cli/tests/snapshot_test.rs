@@ -347,3 +347,36 @@ async fn cover_pans_its_crop_with_focus_like_the_preview() -> Result<()> {
     let _ = std::fs::remove_dir_all(&dir);
     Ok(())
 }
+
+#[tokio::test]
+async fn crop_draws_one_frame_of_a_strip_like_the_preview() -> Result<()> {
+    let dir = std::env::temp_dir().join(format!("liosvideo_crop_test_{}", std::process::id()));
+    std::fs::create_dir_all(dir.join("assets/images"))?;
+    // four 10×10 frames: red, green, blue, white
+    let img = image::RgbaImage::from_fn(40, 10, |x, _| match x / 10 {
+        0 => image::Rgba([255, 0, 0, 255]),
+        1 => image::Rgba([0, 255, 0, 255]),
+        2 => image::Rgba([0, 0, 255, 255]),
+        _ => image::Rgba([255, 255, 255, 255]),
+    });
+    img.save(dir.join("assets/images/strip.png"))?;
+    let composition_code = r##"
+        import { composition, scene, image } from "liosvideo";
+        const s = scene("s", { duration: 1.0 }, ({ root }) => {
+            root.add(image({ name: "natural", src: "assets/images/strip.png", x: 0, y: 0, crop: [20, 0, 10, 10] }));
+            root.add(image({ name: "scaled", src: "assets/images/strip.png", x: 20, y: 0, width: 40, height: 40, crop: [10, 0, 10, 10] }));
+        });
+        export default composition({ width: 64, height: 48, fps: 30, background: "#000000", scenes: [s] });
+    "##;
+    let entry_file = dir.join("crop.ts");
+    std::fs::write(&entry_file, composition_code)?;
+    let out_png = dir.join("crop.png");
+    render_snapshot(&entry_file, 0, &out_png, liosvideo_cli::pipeline::Preset::Native).await?;
+    let out = image::open(&out_png)?.to_rgba8();
+    let (natural, past, scaled) = (out.get_pixel(5, 5).0, out.get_pixel(12, 5).0, out.get_pixel(58, 38).0);
+    assert!(natural[2] > 200 && natural[0] < 40, "frame 2 is blue, got {natural:?}");
+    assert!(past[0] < 20 && past[1] < 20 && past[2] < 20, "nothing past the crop width, got {past:?}");
+    assert!(scaled[1] > 200 && scaled[0] < 40, "frame 1 fills the 40×40 box green, got {scaled:?}");
+    let _ = std::fs::remove_dir_all(&dir);
+    Ok(())
+}

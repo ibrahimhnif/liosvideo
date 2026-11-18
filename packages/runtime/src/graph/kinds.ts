@@ -30,6 +30,8 @@ export interface ImageProps extends BaseProps {
   /** With `fit: "cover"`: which part of the picture stays in the box, 0 = left/top edge, 1 = right/bottom, 0.5 = centre. */
   focusX: number;
   focusY: number;
+  /** Draw only this rectangle of the picture, `[x, y, width, height]` in its pixels (one frame of a sprite strip); null for all of it. */
+  crop: [number, number, number, number] | null;
 }
 
 export interface VideoProps extends BaseProps {
@@ -145,8 +147,11 @@ export class TextNode extends Node<TextProps> {
 }
 
 export class ImageNode extends Node<ImageProps> {
+  /** Other files this image may show over time (a `src` set by `drive`), so hosts load them up front. */
+  readonly uses = new Set<string>();
+
   constructor(init: NodeInit<ImageProps> & { src: string }) {
-    super("image", { ...BASE_DEFAULTS, src: "", fit: "fill", focusX: 0.5, focusY: 0.5 }, init);
+    super("image", { ...BASE_DEFAULTS, src: "", fit: "fill", focusX: 0.5, focusY: 0.5, crop: null }, init);
   }
 }
 

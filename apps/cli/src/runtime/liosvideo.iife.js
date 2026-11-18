@@ -1164,13 +1164,16 @@ var __liosvideo = (function(exports) {
 		}
 	};
 	var ImageNode = class extends Node {
+		/** Other files this image may show over time (a `src` set by `drive`), so hosts load them up front. */
+		uses = /* @__PURE__ */ new Set();
 		constructor(init) {
 			super("image", {
 				...BASE_DEFAULTS,
 				src: "",
 				fit: "fill",
 				focusX: .5,
-				focusY: .5
+				focusY: .5,
+				crop: null
 			}, init);
 		}
 	};
@@ -1923,7 +1926,8 @@ var __liosvideo = (function(exports) {
 				height: p.height,
 				fit: p.fit,
 				opacity,
-				...focus(p)
+				...focus(p),
+				...p.crop ? { crop: [...p.crop] } : {}
 			};
 		}
 		if (node instanceof VideoNode) {
@@ -2036,8 +2040,10 @@ var __liosvideo = (function(exports) {
 	function collectAssets(c) {
 		const srcs = /* @__PURE__ */ new Set();
 		const walk = (node) => {
-			if (node instanceof ImageNode) srcs.add(node.propsAt(0).src);
-			else if (node instanceof VideoNode) srcs.add(videoFile(node.propsAt(0)));
+			if (node instanceof ImageNode) {
+				srcs.add(node.propsAt(0).src);
+				node.uses.forEach((src) => srcs.add(src));
+			} else if (node instanceof VideoNode) srcs.add(videoFile(node.propsAt(0)));
 			node.children.forEach(walk);
 		};
 		for (const def of c.scenes) walk(instantiateScene(c, def));
@@ -3142,6 +3148,399 @@ var __liosvideo = (function(exports) {
 			duration: .3,
 			ease: "inOutCubic"
 		});
+	}
+	// packages/runtime/src/components/spritecast.ts
+	/** Screen angles (y down): east is right, south is toward the viewer (down). */
+	const ANGLE = {
+		east: 0,
+		"south-east": 45,
+		south: 90,
+		"south-west": 135,
+		west: 180,
+		"north-west": 225,
+		north: 270,
+		"north-east": 315
+	};
+	const FACINGS = Object.keys(ANGLE);
+	const gap = (a, b) => {
+		const d = Math.abs(a - b) % 360;
+		return Math.min(d, 360 - d);
+	};
+	/** The facing nearest to `want` among those drawn; between two as near, the one turned more toward the viewer. */
+	function nearest(want, drawn) {
+		if (drawn.includes(want)) return want;
+		const known = drawn.filter((f) => f in ANGLE);
+		if (!known.length) return drawn[0];
+		const a = ANGLE[want];
+		return known.sort((x, y) => gap(ANGLE[x], a) - gap(ANGLE[y], a) || gap(ANGLE[x], 90) - gap(ANGLE[y], 90))[0];
+	}
+	/** The facing of a move on screen. */
+	function heading(dx, dy) {
+		const deg = (Math.atan2(dy, dx) * 180 / Math.PI + 360) % 360;
+		return FACINGS.find((f) => gap(ANGLE[f], deg) <= 22.5) ?? "east";
+	}
+	const join = (dir, file) => dir ? `${dir.replace(/\/+$/, "")}/${file}` : file;
+	function checkFacing(f, where) {
+		if (f !== void 0 && !(f in ANGLE)) throw new Error(`${where}: unknown facing "${f}". Use one of: ${FACINGS.join(", ")}`);
+	}
+	/** A SpriteCast character on the stage, moved by `walkTo`, `play`, `face`, `sit` and `idle` (each returns it, to chain). */
+	var SpriteCharacter = class {
+		opts;
+		node;
+		events = [];
+		scale;
+		body;
+		shadowNode;
+		trailNode;
+		constructor(parent, opts) {
+			this.opts = opts;
+			const d = opts.data;
+			if (!d?.frame || !d.walk || !d.idle) throw new Error("spriteCharacter(): `data` must be SpriteCast's character.json (with frame, walk and idle)");
+			checkFacing(opts.facing, "spriteCharacter()");
+			this.scale = opts.scale ?? (opts.height ? opts.height / d.frame[1] : 1);
+			this.node = parent.add(new GroupNode({
+				name: (opts.name ?? "character").replaceAll("/", "-"),
+				x: opts.x,
+				y: opts.y,
+				scaleX: this.scale,
+				scaleY: this.scale
+			}));
+			const shadowOpacity = opts.shadow ?? .3;
+			const shadow = !!(d.shadows?.walk || d.shadows?.idle || Object.values(d.actions ?? {}).some((a) => a.shadows)) && shadowOpacity > 0 ? this.node.add(new ImageNode({
+				name: "shadow",
+				src: ""
+			})) : void 0;
+			this.body = this.node.add(new ImageNode({
+				name: "body",
+				src: ""
+			}));
+			const trail = Object.values(d.actions ?? {}).some((a) => a.trail) ? this.node.add(new ImageNode({
+				name: "trail",
+				src: "",
+				opacity: 0
+			})) : void 0;
+			this.shadowNode = shadow;
+			this.trailNode = trail;
+			this.uses("idle");
+			this.node.drive((t) => {
+				const p = this.poseAt(t);
+				return {
+					x: p.x,
+					y: p.y
+				};
+			});
+			this.body.drive((t) => {
+				const p = this.poseAt(t);
+				return {
+					src: p.file,
+					crop: p.crop,
+					width: p.size[0],
+					height: p.size[1],
+					x: -p.anchor[0] * p.size[0],
+					y: -p.anchor[1] * p.size[1]
+				};
+			});
+			shadow?.drive((t) => {
+				const p = this.poseAt(t);
+				if (!p.shadow) return { opacity: 0 };
+				return {
+					src: join(opts.src, p.shadow.file),
+					opacity: shadowOpacity,
+					x: -p.anchor[0] * p.size[0] + p.shadow.offset[0],
+					y: -p.anchor[1] * p.size[1] + p.shadow.offset[1]
+				};
+			});
+			trail?.drive((t) => {
+				const p = this.poseAt(t);
+				if (!p.trail) return { opacity: 0 };
+				const [, , w, h] = p.trail.crop;
+				return {
+					src: p.trail.file,
+					crop: p.trail.crop,
+					width: w,
+					height: h,
+					opacity: 1,
+					x: -p.anchor[0] * p.size[0] + p.trail.offset[0],
+					y: -p.anchor[1] * p.size[1] + p.trail.offset[1]
+				};
+			});
+		}
+		/** When the last move ends (scene seconds). */
+		get end() {
+			return this.events.reduce((end, e) => Math.max(end, e.at + ("duration" in e && e.duration ? e.duration : e.kind === "play" ? this.actionLength(e.action) : 0)), 0);
+		}
+		/** Walk in a straight line to (x, y), facing the way it goes; `duration` in seconds, or `speed` in px a second. */
+		walkTo(x, y, o) {
+			checkFacing(o.facing, "walkTo()");
+			const from = this.poseAt(o.at);
+			const dist = Math.hypot(x - from.x, y - from.y);
+			const speed = o.speed ?? this.walkSpeed();
+			const duration = o.duration ?? (speed > 0 ? dist / speed : 0);
+			this.events.push({
+				kind: "walk",
+				at: o.at,
+				to: [x, y],
+				duration,
+				facing: o.facing
+			});
+			this.uses("walk");
+			return this;
+		}
+		/** Play one of the character's actions (run, jump, slash…): once, or looped for `duration` seconds. */
+		play(action, o) {
+			checkFacing(o.facing, "play()");
+			const actions = this.opts.data.actions ?? {};
+			if (!actions[action]) {
+				const names = Object.keys(actions);
+				throw new Error(`play(): the character has no action "${action}"${names.length ? `; it has: ${names.join(", ")}` : " (it has only walk and idle)"}`);
+			}
+			this.events.push({
+				kind: "play",
+				at: o.at,
+				action,
+				duration: o.duration,
+				facing: o.facing
+			});
+			this.uses("action", action);
+			return this;
+		}
+		/** Stand facing another way. */
+		face(facing, o) {
+			checkFacing(facing, "face()");
+			this.events.push({
+				kind: "face",
+				at: o.at,
+				facing
+			});
+			return this;
+		}
+		/** Sit (SpriteCast's `sit` set): the seat point lands on the character's position, e.g. a prop's seat. */
+		sit(o) {
+			checkFacing(o.facing, "sit()");
+			if (!this.opts.data.sit) throw new Error("sit(): the character has no sit set (run SpriteCast's `charpipe.py sit <name>.json --draw`)");
+			this.events.push({
+				kind: "sit",
+				at: o.at,
+				facing: o.facing
+			});
+			this.uses("sit");
+			return this;
+		}
+		/** Stop and stand. */
+		idle(o) {
+			this.events.push({
+				kind: "idle",
+				at: o.at
+			});
+			return this;
+		}
+		/** About 0.8 of its height per walk cycle, the stride of a person walking. */
+		walkSpeed() {
+			const d = this.opts.data;
+			const cycle = this.walkFrames(nearest("south", Object.keys(d.walk))) / d.fps;
+			return .8 * d.frame[1] * this.scale / cycle;
+		}
+		walkFrames(facing) {
+			const d = this.opts.data;
+			return d.shadows?.walk?.[facing]?.length || d.frames || 8;
+		}
+		actionLength(name) {
+			const a = this.opts.data.actions?.[name];
+			return a ? a.frames / a.fps : 0;
+		}
+		/** Every file a clip may show, so the preview loads them before playing. */
+		uses(clip, action) {
+			const d = this.opts.data;
+			const files = [];
+			const add = (f) => f && files.push(f);
+			if (clip === "idle") {
+				Object.values(d.idle).forEach(add);
+				Object.values(d.shadows?.idle ?? {}).forEach((s) => add(s?.file));
+			} else if (clip === "walk") {
+				Object.values(d.walk).forEach(add);
+				Object.values(d.shadows?.walk ?? {}).forEach((list) => list?.forEach((s) => add(s.file)));
+			} else if (clip === "sit") {
+				for (const [k, v] of Object.entries(d.sit ?? {})) if (k !== "frame" && v && !Array.isArray(v)) add(v.file), add(v.shadow?.file);
+			} else if (action) {
+				const a = d.actions[action];
+				Object.values(a.strips).forEach(add);
+				Object.values(a.shadows ?? {}).forEach((list) => list?.forEach((s) => add(s.file)));
+				Object.values(a.trail ?? {}).forEach((tr) => add(tr?.file));
+			}
+			for (const f of files) {
+				const src = join(this.opts.src, f);
+				((/(^|\/)shadows\//.test(f) ? this.shadowNode : /-trail\.png$/.test(f) ? this.trailNode : this.body) ?? this.body).uses.add(src);
+			}
+		}
+		/** Where the character is and which frame it shows at scene time `t`. */
+		poseAt(t) {
+			const d = this.opts.data;
+			let pos = [this.opts.x, this.opts.y];
+			let facing = this.opts.facing ?? "south";
+			let mode = "idle";
+			let walk;
+			let play;
+			const lerp = (w, at) => {
+				const k = w.duration > 0 ? Math.min(Math.max((at - w.start) / w.duration, 0), 1) : 1;
+				return [w.from[0] + (w.to[0] - w.from[0]) * k, w.from[1] + (w.to[1] - w.from[1]) * k];
+			};
+			const ordered = this.events.map((e, i) => [e, i]).sort((a, b) => a[0].at - b[0].at || a[1] - b[1]);
+			for (const [e] of ordered) {
+				if (e.at > t) break;
+				if (walk) pos = lerp(walk, e.at);
+				walk = void 0;
+				play = void 0;
+				if (e.kind === "walk") {
+					const [dx, dy] = [e.to[0] - pos[0], e.to[1] - pos[1]];
+					facing = e.facing ?? (Math.hypot(dx, dy) > .001 ? heading(dx, dy) : facing);
+					walk = {
+						from: pos,
+						to: e.to,
+						start: e.at,
+						duration: e.duration
+					};
+					mode = "walk";
+				} else if (e.kind === "play") {
+					facing = e.facing ?? facing;
+					play = {
+						action: e.action,
+						start: e.at,
+						duration: e.duration
+					};
+					mode = "play";
+				} else if (e.kind === "face") {
+					facing = e.facing;
+					mode = "idle";
+				} else if (e.kind === "sit") {
+					facing = e.facing ?? facing;
+					mode = "sit";
+				} else mode = "idle";
+			}
+			if (walk) {
+				pos = lerp(walk, t);
+				if (t >= walk.start + walk.duration) mode = "idle";
+			}
+			const [x, y] = pos;
+			if (mode === "walk" && walk) {
+				const f = nearest(facing, Object.keys(d.walk));
+				const n = this.walkFrames(f);
+				const i = Math.floor((t - walk.start) * d.fps) % n;
+				const [w, h] = d.frame;
+				return {
+					x,
+					y,
+					file: join(this.opts.src, d.walk[f]),
+					size: d.frame,
+					crop: [
+						i * w,
+						0,
+						w,
+						h
+					],
+					anchor: d.anchor,
+					shadow: d.shadows?.walk?.[f]?.[i]
+				};
+			}
+			if (mode === "play" && play) {
+				const a = d.actions[play.action];
+				const elapsed = t - play.start;
+				if (elapsed < (play.duration ?? (a.loop ? Infinity : a.frames / a.fps))) {
+					const f = nearest(facing, Object.keys(a.strips));
+					const raw = Math.floor(elapsed * a.fps);
+					const i = play.duration !== void 0 || a.loop ? raw % a.frames : Math.min(raw, a.frames - 1);
+					const [w, h] = a.frame;
+					const tr = a.trail?.[f];
+					const step = tr ? Math.floor(elapsed * a.fps * tr.per_frame) : 0;
+					const k = tr ? play.duration !== void 0 || a.loop ? step % tr.frames : Math.min(step, tr.frames - 1) : 0;
+					return {
+						x,
+						y,
+						file: join(this.opts.src, a.strips[f]),
+						size: a.frame,
+						crop: [
+							i * w,
+							0,
+							w,
+							h
+						],
+						anchor: a.anchor,
+						shadow: a.shadows?.[f]?.[i],
+						trail: tr ? {
+							file: join(this.opts.src, tr.file),
+							crop: [
+								k * tr.frame[0],
+								0,
+								tr.frame[0],
+								tr.frame[1]
+							],
+							offset: tr.offset
+						} : void 0
+					};
+				}
+			}
+			if (mode === "sit" && d.sit) {
+				const drawn = Object.keys(d.sit).filter((k) => k !== "frame");
+				const seat = d.sit[nearest(facing, drawn)];
+				return {
+					x,
+					y,
+					file: join(this.opts.src, seat.file),
+					size: d.sit.frame,
+					crop: null,
+					anchor: seat.seat,
+					shadow: seat.shadow
+				};
+			}
+			const f = nearest(facing, Object.keys(d.idle));
+			return {
+				x,
+				y,
+				file: join(this.opts.src, d.idle[f]),
+				size: d.frame,
+				crop: null,
+				anchor: d.anchor,
+				shadow: d.shadows?.idle?.[f]
+			};
+		}
+	};
+	/** Put a SpriteCast character on the stage; move it with the returned object's `walkTo`, `play`, `face`, `sit`, `idle`. */
+	function spriteCharacter(parent, opts) {
+		return new SpriteCharacter(parent, opts);
+	}
+	/** A SpriteCast prop standing on (x, y) with its shadow under it. Returns its group, to animate like any node. */
+	function spriteProp(parent, opts) {
+		const s = opts.data?.sprite;
+		if (!s?.file || !s.size || !s.anchor) throw new Error("spriteProp(): `data` must be SpriteCast's sprite.json (with sprite.file, size and anchor)");
+		const scale = opts.scale ?? (opts.height ? opts.height / s.size[1] : 1);
+		const group = parent.add(new GroupNode({
+			name: (opts.name ?? "prop").replaceAll("/", "-"),
+			x: opts.x,
+			y: opts.y,
+			scaleX: scale,
+			scaleY: scale
+		}));
+		const left = -s.anchor[0] * s.size[0];
+		const top = -s.anchor[1] * s.size[1];
+		const shadowOpacity = opts.shadow ?? .3;
+		if (opts.data.shadow && shadowOpacity > 0) {
+			const sh = opts.data.shadow;
+			group.add(new ImageNode({
+				name: "shadow",
+				src: join(opts.src, sh.file),
+				x: left + sh.offset_px[0],
+				y: top + sh.offset_px[1],
+				opacity: shadowOpacity
+			}));
+		}
+		group.add(new ImageNode({
+			name: "body",
+			src: join(opts.src, s.file),
+			x: left,
+			y: top,
+			width: s.size[0],
+			height: s.size[1]
+		}));
+		return group;
 	}
 	// packages/runtime/src/mockups/window.ts
 	var WindowNode = class extends GroupNode {
@@ -4808,6 +5207,7 @@ var __liosvideo = (function(exports) {
 	exports.PhoneNode = PhoneNode;
 	exports.RectNode = RectNode;
 	exports.ShaderNode = ShaderNode;
+	exports.SpriteCharacter = SpriteCharacter;
 	exports.TerminalNode = TerminalNode;
 	exports.TextNode = TextNode;
 	exports.ThreeNode = ThreeNode;
@@ -4895,6 +5295,8 @@ var __liosvideo = (function(exports) {
 	exports.sfxCue = sfxCue;
 	exports.shader = shader;
 	exports.shouldDuck = shouldDuck;
+	exports.spriteCharacter = spriteCharacter;
+	exports.spriteProp = spriteProp;
 	exports.stack = stack;
 	exports.terminal = terminal;
 	exports.text = text;

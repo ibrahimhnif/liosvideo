@@ -91,6 +91,19 @@ fn f32_of(value: &Value, key: &str, default: f32) -> f32 {
         .unwrap_or(default)
 }
 
+/// An image item's `crop: [x, y, width, height]` (source pixels), when it has a usable one.
+fn crop_of(value: &Value) -> Option<[f32; 4]> {
+    let list = value.get("crop")?.as_array()?;
+    if list.len() != 4 {
+        return None;
+    }
+    let mut out = [0.0f32; 4];
+    for (slot, v) in out.iter_mut().zip(list) {
+        *slot = v.as_f64()? as f32;
+    }
+    (out[2] > 0.0 && out[3] > 0.0).then_some(out)
+}
+
 fn str_of<'a>(value: &'a Value, key: &str, default: &'a str) -> &'a str {
     value.get(key).and_then(|v| v.as_str()).unwrap_or(default)
 }
@@ -769,13 +782,19 @@ impl Renderer {
                     } else {
                         image.height as f32
                     };
+                    // a crop rectangle stands in for the whole picture: its size, its aspect, and uv inside it
+                    let crop = (!is_video).then(|| crop_of(leaf)).flatten();
+                    let (src_w, src_h) = match crop {
+                        Some([_, _, cw, ch]) => (cw, ch),
+                        None => (image.width as f32, image_height),
+                    };
                     let item_width = f32_of(leaf, "width", 0.0);
                     let item_height = f32_of(leaf, "height", 0.0);
-                    width = non_zero(item_width, image.width as f32);
-                    height = non_zero(item_height, image_height);
+                    width = non_zero(item_width, src_w);
+                    height = non_zero(item_height, src_h);
 
                     let box_aspect = width / height.max(0.0001);
-                    let img_aspect = image.width as f32 / image_height.max(1.0);
+                    let img_aspect = src_w / src_h.max(1.0);
                     match str_of(leaf, "fit", "fill") {
                         "contain" => {
                             let cw = if img_aspect > box_aspect {
@@ -809,6 +828,15 @@ impl Renderer {
                             }
                         }
                         _ => {}
+                    }
+                    if let Some([cx, cy, cw, ch]) = crop {
+                        let (iw, ih) = (image.width as f32, image.height as f32);
+                        uv = [
+                            (cx + uv[0] * cw) / iw,
+                            (cy + uv[1] * ch) / ih,
+                            (cx + uv[2] * cw) / iw,
+                            (cy + uv[3] * ch) / ih,
+                        ];
                     }
 
                     if is_video {

@@ -44,6 +44,22 @@ describe("bundleComposition", () => {
     expect(project.default.BoxGeometry).toBe(fakeThree.BoxGeometry);
   });
 
+  it("imports a project JSON file (a SpriteCast character.json) and watches it", async () => {
+    const withJson: Record<string, string> = {
+      "sprite.ts": `import hero from "./assets/sprites/hero/character.json" with { type: "json" };\nexport default hero.frame;\n`,
+      "assets/sprites/hero/character.json": `{ "frame": [165, 256], "fps": 6.76 }`,
+    };
+    const r = await bundleComposition("sprite.ts", async (rel) => {
+      if (!(rel in withJson)) throw new Error(`not found: ${rel}`);
+      return withJson[rel];
+    });
+    expect(r.ok).toBe(true);
+    if (!r.ok) return;
+    expect(r.files.sort()).toEqual(["assets/sprites/hero/character.json", "sprite.ts"]);
+    const project = new Function("globalThis", `${r.code};return __liosProject`)({});
+    expect(project.default).toEqual([165, 256]);
+  });
+
   it("reports a missing import with file and line", async () => {
     const r = await bundleComposition("missing.ts", readFile);
     expect(r.ok).toBe(false);

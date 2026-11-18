@@ -654,10 +654,14 @@ export async function createRenderer(
         // a packed cut-out holds the picture in its top 2/3
         const packed = leaf.kind === "video" && (media as VideoItem).matte !== undefined;
         const bitmapH = packed ? (bitmap.height * 2) / 3 : bitmap.height;
-        w = media.width || bitmap.width;
-        h = media.height || bitmapH;
+        // a crop rectangle stands in for the whole picture: its size, its aspect, and uv inside it
+        const crop = leaf.kind === "image" ? (media as ImageItem).crop : undefined;
+        const srcW = crop ? crop[2] : bitmap.width;
+        const srcH = crop ? crop[3] : bitmapH;
+        w = media.width || srcW;
+        h = media.height || srcH;
         const boxAspect = w / h;
-        const imgAspect = bitmap.width / bitmapH;
+        const imgAspect = srcW / srcH;
         if (packed) params = [0, 0, leaf.opacity, MODE_PACKED];
         if (media.fit === "contain") {
           const cw = imgAspect > boxAspect ? w : h * imgAspect;
@@ -677,6 +681,10 @@ export async function createRenderer(
             const v0 = start(k, media.focusY);
             uv = [0, v0, 1, v0 + k];
           }
+        }
+        if (crop) {
+          const [cx, cy, cw, ch] = crop;
+          uv = [(cx + uv[0] * cw) / bitmap.width, (cy + uv[1] * ch) / bitmap.height, (cx + uv[2] * cw) / bitmap.width, (cy + uv[3] * ch) / bitmap.height];
         }
       }
     }

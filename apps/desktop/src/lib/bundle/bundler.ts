@@ -84,13 +84,15 @@ export async function bundleComposition(entry: string, readFile: (rel: string) =
         const base = normalize(`${dirname(args.importer)}/${args.path}`);
         if (base === undefined) return { errors: [{ text: `Import "${args.path}" is outside the project` }] };
         for (const candidate of [base, `${base}.ts`, `${base}/index.ts`]) {
-          if (/\.ts$/.test(candidate) && (await exists(candidate))) return { path: candidate, namespace: PROJECT };
+          // TypeScript modules, and JSON data such as a SpriteCast character.json
+          if (/\.(ts|json)$/.test(candidate) && (await exists(candidate))) return { path: candidate, namespace: PROJECT };
         }
         return { errors: [{ text: `Could not resolve "${args.path}"` }] };
       });
       build.onLoad({ filter: /.*/, namespace: PROJECT }, async (args) => {
         files.add(args.path);
         const contents = await readFile(args.path);
+        if (args.path.endsWith(".json")) return { contents, loader: "json" };
         const dynamic = findDynamicImport(args.path, contents);
         if (dynamic) return { errors: [dynamic] };
         return { contents, loader: "ts" };
